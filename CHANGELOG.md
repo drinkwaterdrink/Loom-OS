@@ -2,6 +2,19 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.7] - 2026-06-07
+
+### Changed
+
+- Increased the maximum compact injection token budget from 1,600 to 10,000.
+- Increased the maximum compiler seed token budget from 2,400 to 10,000.
+- Expanded in-app token guidance to explain the context-window tradeoffs of both budgets.
+- Reworked the README Settings Reference into a comprehensive operational guide covering every stored setting and the distinct injection, compilation, display, storage, latency, and context effects.
+
+### Added
+
+- Boundary tests confirming that both token budgets accept 10,000 and reject 10,001.
+
 ## [0.1.6] - 2026-06-07
 
 ### Added

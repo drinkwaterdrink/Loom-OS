@@ -1,18 +1,16 @@
 # LoomOS Command Deck
 
-Current release: **0.1.6**
+Current release: **0.1.7**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.6
+## Key Features & Upgrades in 0.1.7
 
-- **Schema & Prompt Studio**: Every built-in tracker module now has a readable contract entry showing its current generation schema, compiler instruction, exact prompt block, and full generated compiler prompt.
-- **Editable stock generation contracts**: Replace a stock module's prompt-facing schema and compiler instruction, or append additional guidance, without mutating the strict State V2 runtime validator.
-- **Immutable Appearance module**: A dedicated nineteenth stock module tracks persistent adult physical identity in depth, including hair, eyes, height, weight description, build, body type, proportions, bust/waist/hips description, facial details, marks, scars, tattoos, piercings, posture, movement, and unique features.
-- **Appearance continuity**: Physical identity is normalized, rendered, carried into previous-state seeds, and optionally included in compact injection when the Appearance Inject toggle is on.
-- **Preset compatibility**: Presets saved before `0.1.6` automatically receive the new Appearance module defaults when loaded.
+- **Larger context controls**: Injection and compiler seed token budgets now support values up to `10,000`.
+- **Comprehensive settings guide**: The Settings Reference now explains when every setting is used, what it changes, and the practical tradeoffs of raising, lowering, enabling, or disabling it.
+- **Clearer in-app budget guidance**: Token diagnostics explain that injection consumes future roleplay context, while the seed budget controls how much prior tracker state is supplied during compilation.
 
 ---
 
@@ -237,24 +235,35 @@ Toggle buttons are 44px minimum-height touch targets meeting mobile accessibilit
 
 ## Settings Reference
 
-All settings are stored in `settings.json` inside `spindle.userStorage`.
+All settings are stored per user in `settings.json` inside `spindle.userStorage`. They do not alter the original Lumiverse chat messages.
 
-| Setting | Default | Range | Description |
+| Setting | Default | Range | What it does and affects |
 |---|---|---|---|
-| `skin` | `"auto"` | auto, dark_academia, cyberpunk, fantasy, horror, noir, minimal | Visual theme |
-| `autoGeneration` | `"manual"` | off, assistant, every, manual | Automatic generation trigger |
-| `injectionEnabled` | `false` | boolean | Enable compact prompt injection |
-| `showInjectionPreview` | `false` | boolean | Show injection preview panel in drawer |
-| `injectionTokenBudget` | `320` | 80–1600 | Max tokens for compact injection |
-| `compilerSeedTokenBudget` | `900` | 200–2400 | Max tokens for compiler seed context |
-| `recentMessageLimit` | `24` | 4–80 | Number of recent messages to compile |
-| `generationTimeoutSeconds` | `180` | 30–300 | LLM generation timeout |
-| `connectionId` | `""` | string (max 200) | Preferred Lumiverse connection ID |
-| `modulePreset` | `"balanced"` | string | Active module preset name |
-| `moduleSettings` | (balanced defaults) | per-module object | Per-module Track/Display/Inject toggles |
-| `stockModuleOverrides` | `{}` | per-module object | Metadata plus prompt-facing schema/instruction replacements and additive guidance |
-| `customModulePresets` | `[]` | array | Saved module preset configurations |
-| `customModules` | `[]` | array | User-defined custom tracking modules |
+| `skin` | `"auto"` | auto, dark_academia, cyberpunk, fantasy, horror, noir, minimal | Changes only LoomOS colors and presentation. It does not affect generation, stored tracker data, or injection. |
+| `autoGeneration` | `"manual"` | off, assistant, every, manual | Controls when LoomOS compiles a new exact-swipe state. `manual` waits for Generate; `assistant` compiles after assistant messages; `every` reacts to every supported message event; `off` disables automatic compilation while manual controls remain available. More frequent compilation uses more generation calls. |
+| `injectionEnabled` | `false` | boolean | Enables the outgoing prompt interceptor. When on, LoomOS adds a compact `<loomos_state>` block to future roleplay generations. This can improve continuity but consumes model context. It does not change the saved tracker state itself. |
+| `showInjectionPreview` | `false` | boolean | Shows the exact compact state text, estimated token usage, included modules, and omitted modules in the drawer. This is diagnostic UI only and does not enable injection by itself. |
+| `injectionTokenBudget` | `320` | 80–10,000 | Maximum estimated tokens LoomOS may use for compact state injection. Raising it allows more enabled Inject modules and details to reach future roleplay responses. Lowering it favors only the highest-priority continuity fragments. Very large values can crowd out character cards, world info, chat history, and other prompt content within the model's context window. |
+| `compilerSeedTokenBudget` | `900` | 200–10,000 | Maximum approximate size of the nearest prior tracker state passed to the quiet state compiler. Raising it preserves more cast, appearance, inventory, thread, continuity, world, and custom-module history between snapshots. Lowering it reduces compiler input cost but may discard older detail. This budget affects tracker compilation, not normal roleplay injection. |
+| `recentMessageLimit` | `24` | 4–80 | Number of recent chat messages supplied to the state compiler. Higher values give the compiler more transcript evidence but increase input size and generation latency. Lower values are faster but may miss facts that were stated farther back unless they survived in the prior state seed. |
+| `generationTimeoutSeconds` | `180` | 30–300 | Maximum time allowed for a quiet compiler or repair generation before LoomOS aborts it. Increase this for slow providers or large prompts. Decrease it for faster failure recovery. It does not control normal Lumiverse roleplay generation time. |
+| `connectionId` | `""` | string, max 200 | Selects the Lumiverse connection/profile used for quiet tracker compilation. Empty means LoomOS chooses an available ready connection. The selected provider, model, and connection profile can affect JSON reliability, speed, cost, and tracker detail. |
+| `modulePreset` | `"balanced"` | built-in or custom preset ID | Selects a saved Track/Display/Inject configuration. Changing it updates module controls together; it does not delete previously stored state fields. Manual module changes switch the active configuration to custom. |
+| `moduleSettings` | balanced defaults | per-module Track/Display/Inject controls | Determines which stock data the compiler requests, which sections the dashboard shows, and which compiled fragments may enter future prompt injection. Track affects future compiled snapshots; Display affects UI only; Inject affects prompt context only. |
+| `stockModuleOverrides` | `{}` | per-module object | Stores stock module label, description, group, ordering, visibility, default preferences, prompt-facing schema replacement, compiler instruction replacement, and additional guidance. These overrides affect module presentation and compiler prompting, while the strict State V2 storage validator remains unchanged. |
+| `customModulePresets` | `[]` | array | Stores named snapshots of stock module Track/Display/Inject controls for quick switching. Presets do not contain compiled story state. |
+| `customModules` | `[]` | array | Defines user-created trackers, their compiler instructions, editable field schemas, output modes, templates, ordering, and Track/Display/Inject behavior. Enabled custom modules increase compiler prompt size and may increase generated state size. |
+
+### Understanding the Two Token Budgets
+
+The budgets apply to different generation paths:
+
+1. **Injection budget**: saved tracker state -> future normal roleplay prompt. It influences what the roleplay model remembers from LoomOS.
+2. **Seed budget**: previous tracker state -> next quiet tracker compilation. It influences what the tracker compiler can carry forward while building a new snapshot.
+
+They are independent. Raising the seed budget does not increase normal prompt injection, and raising the injection budget does not give the compiler more previous-state detail.
+
+The `10,000` ceiling is a configurable maximum, not a recommended default. The usable value depends on the context window and on how much room must remain for chat history, character definitions, world information, presets, and the model's response.
 
 ### Custom Module Configuration
 

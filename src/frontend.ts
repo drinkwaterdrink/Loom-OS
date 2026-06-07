@@ -678,8 +678,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           </div>
         ` : ""}
         <div class="loomos-perf-details">
-          <p><strong>Inject Budget (${settings.injectionTokenBudget} tokens)</strong>: Limits future story state injection size in normal generations.</p>
-          <p><strong>Seed Budget (${settings.compilerSeedTokenBudget} tokens)</strong>: Limits prior state size when compiling turn deltas.</p>
+          <p><strong>Inject Budget (${settings.injectionTokenBudget} tokens)</strong>: Caps how much compiled state LoomOS may add to future roleplay prompts. Higher values preserve more enabled Inject modules but consume more model context.</p>
+          <p><strong>Seed Budget (${settings.compilerSeedTokenBudget} tokens)</strong>: Caps the nearest prior state supplied to the tracker compiler. Higher values improve long-form continuity but leave less context room for transcript messages.</p>
         </div>
       </div>
     `;
@@ -968,9 +968,9 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           </select></label>
           <label class="loomos-check"><input type="checkbox" data-setting="injectionEnabled"${checked(settings.injectionEnabled)}><span>Inject compact state</span></label>
           <label class="loomos-check"><input type="checkbox" data-setting="showInjectionPreview"${checked(settings.showInjectionPreview)}><span>Show injection preview</span></label>
-          <label class="loomos-field"><span>Injection token budget</span><input class="loomos-input" type="number" min="80" max="1600" step="20" data-setting="injectionTokenBudget" value="${settings.injectionTokenBudget}"></label>
+          <label class="loomos-field"><span>Injection token budget</span><input class="loomos-input" type="number" min="80" max="10000" step="20" data-setting="injectionTokenBudget" value="${settings.injectionTokenBudget}"></label>
           <label class="loomos-field"><span>Recent messages</span><input class="loomos-input" type="number" min="4" max="80" data-setting="recentMessageLimit" value="${settings.recentMessageLimit}"></label>
-          <label class="loomos-field"><span>Seed token budget</span><input class="loomos-input" type="number" min="200" max="2400" step="50" data-setting="compilerSeedTokenBudget" value="${settings.compilerSeedTokenBudget}"></label>
+          <label class="loomos-field"><span>Seed token budget</span><input class="loomos-input" type="number" min="200" max="10000" step="50" data-setting="compilerSeedTokenBudget" value="${settings.compilerSeedTokenBudget}"></label>
           <label class="loomos-field"><span>Generation timeout (seconds)</span><input class="loomos-input" type="number" min="30" max="300" step="10" data-setting="generationTimeoutSeconds" value="${settings.generationTimeoutSeconds}"></label>
           
           ${renderTokenDiagnostics()}
@@ -982,7 +982,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function diagnosticText(): string {
     const lines = [
-      `version: 0.1.6`,
+      `version: 0.1.7`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,

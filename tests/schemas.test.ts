@@ -60,3 +60,19 @@ test("expanded immutable appearance fields validate", () => {
   assert.deepEqual(appearance.immutableTraits, ["Dark tied-back hair", "Keen grey eyes"]);
   assert.equal(LoomOSStateSchema.safeParse(state).success, true);
 });
+
+test("settings accept token budgets through 10000 and reject larger values", async () => {
+  const { LoomOSSettingsSchema } = await import("../src/shared/schemas");
+  const maximum = LoomOSSettingsSchema.safeParse({
+    injectionTokenBudget: 10000,
+    compilerSeedTokenBudget: 10000,
+  });
+  assert.equal(maximum.success, true);
+
+  assert.equal(LoomOSSettingsSchema.safeParse({
+    injectionTokenBudget: 10001,
+  }).success, false);
+  assert.equal(LoomOSSettingsSchema.safeParse({
+    compilerSeedTokenBudget: 10001,
+  }).success, false);
+});
