@@ -2,6 +2,29 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.4] - 2026-06-07
+
+### Added
+
+- **State History Timeline**: A dedicated History tab lists every state snapshot generated for the active chat, sorted newest-first. Each entry shows scene name, timestamp, focus, location, cast/thread/risk counts, and delta headline. Click **Load** to inspect any historical state. Use the search bar to filter by scene, focus, location, or message ID. Active entries are highlighted. Delete buttons remove snapshots.
+- **Injection Preview Panel**: A collapsible panel (toggled via `showInjectionPreview` in Settings) shows the exact compact injection text, estimated token count vs budget, included/omitted module lists, and a token bar visualization. A Copy button lets you grab the injection text. A warning banner appears when the budget is exceeded.
+- **What Changed Modal**: A dedicated modal launched from the sticky header displays the current state's delta at a glance: headline, all changes with importance badges, carried-forward facts, newly-established facts, and current scene context (location, time, focus). Changes are rendered with a `+` icon and module/age/importance metadata.
+- **Continuity Firewall Explainer**: The Continuity tab now includes an introductory explainer section describing the Firewall's purpose, a four-metric stats bar (Facts, Anchors, Pending, Offscreen), styled risk cards with severity badges and guardrail recommendations, and a safe-state banner when no conflicts are detected.
+
+### Changed
+
+- **renderHistoryTab/InjectionPreview/WhatChangedModal**: Isolated into standalone exported functions in `render.ts` for testability and code organization.
+- **renderContinuity**: Refactored with enhanced explainer layout, risk card styling, and metric summary grid.
+- **StateIdentitySchema**: Moved earlier in schemas.ts to fix a forward-reference crash affecting tests and module imports.
+- **StateHistoryItem type**: Deduplicated — the manual interface was removed in favor of the auto-inferred `z.infer<typeof StateHistoryItemSchema>` type.
+
+### Fixed
+
+- **Circular schema reference**: `StateIdentitySchema` was referenced by `StateHistoryItemSchema` before being defined, causing `ReferenceError: Cannot access before initialization` in all test files. Moved the schema definition earlier to resolve.
+- **Missing ModuleKey import**: `backend.ts` was using `ModuleKey` without importing it — added to the type import block.
+- **Null InjectionPreview handling**: `frontend.ts` now guards `renderInjectionPreview` calls with a null check before passing the value.
+- **Duplicate StateHistoryItem type**: Both a `z.infer` type alias and a manual interface existed with the same name — removed the duplicate interface.
+
 ## [0.1.3] - 2026-06-07
 
 ### Added
