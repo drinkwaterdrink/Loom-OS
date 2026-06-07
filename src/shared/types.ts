@@ -11,6 +11,7 @@ import type {
   CustomModulePresetSchema,
   CustomModuleItemSchema,
   CustomModuleDataSchema,
+  StateHistoryItemSchema,
 } from "./schemas";
 export type {
   ModuleControl,
@@ -29,6 +30,7 @@ export type CustomModule = z.infer<typeof CustomModuleSchema>;
 export type CustomModulePreset = z.infer<typeof CustomModulePresetSchema>;
 export type CustomModuleItem = z.infer<typeof CustomModuleItemSchema>;
 export type CustomModuleData = z.infer<typeof CustomModuleDataSchema>;
+export type StateHistoryItem = z.infer<typeof StateHistoryItemSchema>;
 
 export interface PermissionSnapshot {
   generation: boolean;
@@ -60,4 +62,14 @@ export interface GenerationPipelineReport {
   elapsedMs: number;
   connectionId: string;
   message: string;
+}
+
+export interface InjectionPreview {
+  text: string;
+  estimatedTokens: number;
+  budget: number;
+  withinBudget: boolean;
+  includedModules: string[];
+  omittedModules: string[];
+  warning: string | null;
 }

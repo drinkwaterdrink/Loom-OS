@@ -2,6 +2,9 @@ import type {
   LoomOSSettings,
   LoomOSState,
   ModuleKey,
+  StateHistoryItem,
+  StateIdentity,
+  InjectionPreview,
 } from "../shared/types";
 
 export function escapeHtml(value: unknown): string {
@@ -266,51 +269,78 @@ function renderStory(state: LoomOSState): string {
 
 function renderContinuity(state: LoomOSState): string {
   const firewall = state.continuityFirewall;
-  return section("continuity", "Continuity Firewall", `${firewall.risks.length} risks`, `
-    <div class="loomos-list">
-      ${firewall.risks.length === 0
-        ? `<p class="loomos-muted" style="margin-bottom: 12px;">✅ No continuity conflicts detected.</p>`
-        : firewall.risks.map((risk) => `
-          <article class="loomos-row loomos-severity-${risk.severity}">
-            <div class="loomos-row-title">
-              <strong>${clampProse(risk.issue, 100)}</strong>
-              <span class="loomos-badge loomos-badge-severity-${risk.severity}">${escapeHtml(risk.severity)}</span>
-            </div>
-            <p>${clampProse(risk.evidence, 140)}</p>
-            <small>Guardrail: ${clampProse(risk.recommendation, 120)}</small>
-          </article>
-        `).join("")}
+  const riskCount = firewall.risks.length;
+  
+  const explainerHtml = `
+    <div class="loomos-continuity-explainer">
+      <p class="loomos-continuity-explainer-text">
+        The <strong>Continuity Firewall</strong> protects story coherence by tracking 
+        established facts, detecting conflicts, and preventing retcons. 
+        It evaluates each new state against anchors before accepting it.
+      </p>
+      <div class="loomos-continuity-metrics">
+        <div class="loomos-continuity-metric">
+          <span class="loomos-continuity-metric-value">${firewall.establishedFacts.length}</span>
+          <span class="loomos-continuity-metric-label">Facts</span>
+        </div>
+        <div class="loomos-continuity-metric">
+          <span class="loomos-continuity-metric-value">${firewall.antiRetconAnchors.length}</span>
+          <span class="loomos-continuity-metric-label">Anchors</span>
+        </div>
+        <div class="loomos-continuity-metric">
+          <span class="loomos-continuity-metric-value">${firewall.pendingConsequences.length}</span>
+          <span class="loomos-continuity-metric-label">Pending</span>
+        </div>
+        <div class="loomos-continuity-metric">
+          <span class="loomos-continuity-metric-value">${firewall.offscreenState.length}</span>
+          <span class="loomos-continuity-metric-label">Offscreen</span>
+        </div>
+      </div>
     </div>
+  `;
+
+  const riskCards = firewall.risks.length === 0
+    ? `<div class="loomos-continuity-safe"><strong>✅ No continuity conflicts detected.</strong> The current state is consistent with all established facts and anchors.</div>`
+    : `<div class="loomos-continuity-risks">${firewall.risks.map((risk) => `
+        <div class="loomos-continuity-risk-card loomos-severity-${risk.severity}">
+          <div class="loomos-continuity-risk-header">
+            <strong>${clampProse(risk.issue, 100)}</strong>
+            <span class="loomos-badge loomos-badge-severity-${risk.severity}">${escapeHtml(risk.severity)}</span>
+          </div>
+          <p class="loomos-continuity-risk-evidence">${clampProse(risk.evidence, 140)}</p>
+          <div class="loomos-continuity-risk-guardrail">
+            <span class="loomos-kicker">Guardrail</span>
+            <p>${clampProse(risk.recommendation, 120)}</p>
+          </div>
+        </div>
+      `).join("")}</div>`;
+
+  return section("continuity", "Continuity Firewall", `${riskCount} risks`, `
+    ${explainerHtml}
+    ${riskCards}
     
-    <div class="loomos-stat-grid" style="margin-top: 10px;">
-      <div><strong>${firewall.establishedFacts.length}</strong><span>facts</span></div>
-      <div><strong>${firewall.antiRetconAnchors.length}</strong><span>anchors</span></div>
-      <div><strong>${firewall.pendingConsequences.length}</strong><span>pending</span></div>
-      <div><strong>${firewall.offscreenState.length}</strong><span>offscreen</span></div>
-    </div>
-    
-    <details class="loomos-cast-extra" style="margin-top: 10px;">
-      <summary>Established Facts & Anchors</summary>
+    <details class="loomos-cast-extra">
+      <summary>Established Facts &nbsp;(${firewall.establishedFacts.length})</summary>
       <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
-        <div class="loomos-subhead">Established Facts (${firewall.establishedFacts.length})</div>
+        <div class="loomos-subhead">Established Facts</div>
         ${chips(firewall.establishedFacts)}
-        <div class="loomos-subhead">Anti-retcon Anchors (${firewall.antiRetconAnchors.length})</div>
+        <div class="loomos-subhead">Anti-retcon Anchors</div>
         ${chips(firewall.antiRetconAnchors)}
       </div>
     </details>
     
-    <details class="loomos-cast-extra" style="margin-top: 6px;">
-      <summary>Consequences & Offscreen State</summary>
+    <details class="loomos-cast-extra">
+      <summary>Consequences & Offscreen &nbsp;(${firewall.pendingConsequences.length + firewall.offscreenState.length})</summary>
       <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
-        <div class="loomos-subhead">Pending Consequences (${firewall.pendingConsequences.length})</div>
+        <div class="loomos-subhead">Pending Consequences</div>
         ${chips(firewall.pendingConsequences)}
-        <div class="loomos-subhead">Offscreen State (${firewall.offscreenState.length})</div>
+        <div class="loomos-subhead">Offscreen State</div>
         ${chips(firewall.offscreenState)}
       </div>
     </details>
     
-    <details class="loomos-cast-extra" style="margin-top: 6px;">
-      <summary>Banned / Impossible Next</summary>
+    <details class="loomos-cast-extra">
+      <summary>Banned / Impossible Next &nbsp;(${firewall.bannedNext.length + firewall.impossibleNext.length})</summary>
       <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
         <div class="loomos-subhead">Banned next moves</div>
         ${chips(firewall.bannedNext.map((item) => `${item.text}${item.persistent ? " (persistent)" : ""}`))}
@@ -561,4 +591,173 @@ export function renderDashboard(
   }
 
   return "";
+}
+
+export function renderHistoryTab(
+  items: StateHistoryItem[],
+  filter: string,
+  activeIdentity: StateIdentity | null,
+): string {
+  const filtered = filter
+    ? items.filter((item) =>
+        [item.kernelScene, item.kernelFocus, item.kernelLocation, item.deltaHeadline, item.identity.messageId]
+          .some((v) => v.toLowerCase().includes(filter.toLowerCase())),
+      )
+    : items;
+
+  return `
+    <div class="loomos-history-tab">
+      <div class="loomos-history-explainer">
+        <p>The <strong>State History Timeline</strong> shows every state snapshot generated for this chat.
+        Click any entry to load that state for inspection. Use the search bar to filter by scene, focus, or location.</p>
+      </div>
+      <div class="loomos-search-bar">
+        <input class="loomos-input" type="text" placeholder="Filter history..." 
+          data-loomos-action="filter-history" value="${escapeHtml(filter)}" />
+        ${filter ? `<button class="loomos-button-clear" data-loomos-action="clear-history-filter">&times;</button>` : ""}
+        <span class="loomos-search-count">${filtered.length} / ${items.length}</span>
+      </div>
+      ${filtered.length === 0
+        ? `<div class="loomos-empty"><h3>No matching history entries</h3><p>Try a different search term.</p></div>`
+        : `<div class="loomos-history-list">${filtered.map((item) => {
+            const isActive =
+              activeIdentity?.chatId === item.identity.chatId &&
+              activeIdentity?.messageId === item.identity.messageId &&
+              activeIdentity?.swipeId === item.identity.swipeId;
+            const repaired = item.repaired ? "🛠️" : "";
+            return `
+              <article class="loomos-history-entry${isActive ? " loomos-history-active" : ""}">
+                <div class="loomos-history-entry-main">
+                  <div class="loomos-history-entry-header">
+                    <strong>${escapeHtml(item.kernelScene || "N/A")}</strong>
+                    <span class="loomos-badge">${escapeHtml(item.generatedAt)}</span>
+                    ${repaired ? `<span class="loomos-badge" style="border-color:#d58a42;color:#d58a42;">repaired</span>` : ""}
+                  </div>
+                  <p class="loomos-history-entry-focus">${clampProse(item.kernelFocus, 100)}</p>
+                  <div class="loomos-history-entry-meta">
+                    <span>📍 ${escapeHtml(item.kernelLocation)}</span>
+                    <span>🕐 ${escapeHtml(item.kernelTime)}</span>
+                    <span>👥 ${item.castCount}</span>
+                    <span>🧵 ${item.threadCount}</span>
+                    <span>⚠️ ${item.riskCount}</span>
+                  </div>
+                  <p class="loomos-history-entry-delta">${clampProse(item.deltaHeadline, 120)}</p>
+                </div>
+                <div class="loomos-history-entry-actions">
+                  <button class="loomos-button loomos-btn-sm" data-loomos-action="load-history-state" 
+                    data-message-id="${escapeHtml(item.identity.messageId)}" data-swipe-id="${item.identity.swipeId}">
+                    ${isActive ? "Current" : "Load"}
+                  </button>
+                  <button class="loomos-button loomos-button-danger loomos-btn-sm" data-loomos-action="delete-history-state"
+                      data-message-id="${escapeHtml(item.identity.messageId)}" data-swipe-id="${item.identity.swipeId}">
+                      Delete
+                    </button>
+                </div>
+              </article>
+            `;
+          }).join("")}</div>`}
+    </div>
+  `;
+}
+
+export function renderInjectionPreview(
+  preview: InjectionPreview,
+): string {
+  return `
+    <div class="loomos-injection-preview">
+      <div class="loomos-injection-preview-header">
+        <span class="loomos-kicker">Injection Preview</span>
+        <span class="loomos-badge ${preview.withinBudget ? "loomos-badge-ok" : "loomos-badge-over"}">
+          ${preview.estimatedTokens} / ${preview.budget} tokens
+        </span>
+      </div>
+      ${preview.warning
+        ? `<div class="loomos-injection-preview-warning">⚠️ ${escapeHtml(preview.warning)}</div>`
+        : ""}
+      <div class="loomos-injection-preview-meta">
+        ${preview.includedModules.length > 0
+          ? `<div class="loomos-injection-preview-modules">
+              <span class="loomos-subhead">Included modules</span>
+              <div class="loomos-chip-row">${preview.includedModules.map((m) =>
+                `<span class="loomos-chip">${escapeHtml(m)}</span>`
+              ).join("")}</div>
+            </div>`
+          : ""}
+        ${preview.omittedModules.length > 0
+          ? `<div class="loomos-injection-preview-modules">
+              <span class="loomos-subhead">Omitted modules</span>
+              <div class="loomos-chip-row">${preview.omittedModules.map((m) =>
+                `<span class="loomos-chip">${escapeHtml(m)}</span>`
+              ).join("")}</div>
+            </div>`
+          : ""}
+        <div class="loomos-injection-preview-tokenbar">
+          <div class="loomos-meter-track">
+            <i style="width:${Math.min(100, (preview.estimatedTokens / Math.max(1, preview.budget)) * 100)}%;
+              ${preview.withinBudget ? "background:var(--loomos-accent)" : "background:#df5259"}"></i>
+          </div>
+          <span>${Math.round((preview.estimatedTokens / Math.max(1, preview.budget)) * 100)}% of budget</span>
+        </div>
+      </div>
+      <details class="loomos-cast-extra">
+        <summary>Preview text (${preview.text.length} chars)</summary>
+        <div class="loomos-cast-extra-body">
+          <pre class="loomos-injection-preview-text">${escapeHtml(preview.text)}</pre>
+          <button class="loomos-button loomos-btn-sm" data-loomos-action="copy-injection-preview">Copy</button>
+        </div>
+      </details>
+    </div>
+  `;
+}
+
+export function renderWhatChangedModal(state: LoomOSState): string {
+  const delta = state.delta;
+  return `
+    <div class="loomos-what-changed-modal">
+      <h3 class="loomos-what-changed-title">What Changed</h3>
+      <div class="loomos-what-changed-headline">
+        <span class="loomos-kicker">Headline</span>
+        <p>${escapeHtml(delta.headline || "No headline")}</p>
+      </div>
+      
+      <div class="loomos-what-changed-section">
+        <span class="loomos-subhead">Changes (${delta.changes.length})</span>
+        <div class="loomos-list">
+          ${delta.changes.length === 0
+            ? `<p class="loomos-muted">No changes recorded.</p>`
+            : delta.changes.map((change) => `
+              <div class="loomos-what-changed-change loomos-importance-${change.importance}">
+                <div class="loomos-what-changed-change-icon">+</div>
+                <div class="loomos-what-changed-change-body">
+                  <strong>${clampProse(change.text, 140)}</strong>
+                  <span class="loomos-what-changed-change-meta">
+                    ${escapeHtml(change.module)} · ${escapeHtml(change.age)} · ${escapeHtml(change.importance)}
+                  </span>
+                </div>
+              </div>
+            `).join("")}
+        </div>
+      </div>
+      
+      <div class="loomos-two-column">
+        <div class="loomos-what-changed-section">
+          <span class="loomos-subhead">Carried forward (${delta.carriedForward.length})</span>
+          ${chips(delta.carriedForward, "Nothing carried forward")}
+        </div>
+        <div class="loomos-what-changed-section">
+          <span class="loomos-subhead">Newly established (${delta.newlyEstablished.length})</span>
+          ${chips(delta.newlyEstablished, "Nothing newly established")}
+        </div>
+      </div>
+      
+      <div class="loomos-what-changed-scene">
+        <span class="loomos-subhead">Scene</span>
+        <dl class="loomos-facts">
+          <div><dt>Location</dt><dd>${escapeHtml(state.kernel?.location || "N/A")}</dd></div>
+          <div><dt>Time</dt><dd>${escapeHtml(state.kernel?.timeframe || state.kernel?.time || "N/A")}</dd></div>
+          <div><dt>Focus</dt><dd>${clampProse(state.kernel?.currentFocus || "N/A", 100)}</dd></div>
+        </dl>
+      </div>
+    </div>
+  `;
 }

@@ -9,7 +9,7 @@ import { compileStateWithRepair } from "./backend/compiler";
 import { runQuietGeneration } from "./backend/generation";
 import { buildCompactInjection } from "./shared/compact";
 import { migrateStateToCurrent } from "./shared/migrations";
-import { trackedModuleKeys } from "./shared/modules";
+import { trackedModuleKeys, MODULE_KEYS } from "./shared/modules";
 import type {
   BackendResponse,
   FrontendRequest,
@@ -19,6 +19,7 @@ import {
   DEFAULT_SETTINGS,
   LoomOSSettingsSchema,
   LoomOSStateSchema,
+  StateHistoryItemSchema,
   StateIdentitySchema,
 } from "./shared/schemas";
 import { buildStateSeedForCompiler } from "./shared/seed";
@@ -31,9 +32,12 @@ import {
 import type {
   ConnectionSummary,
   GenerationPhase,
+  InjectionPreview,
   LoomOSSettings,
   LoomOSState,
+  ModuleKey,
   PermissionSnapshot,
+  StateHistoryItem,
   StateIdentity,
 } from "./shared/types";
 
@@ -220,6 +224,130 @@ async function listChatStates(
   } catch (error) {
     spindle.log.warn(`LoomOS could not list chat states: ${errorMessage(error)}`);
     return [];
+  }
+}
+
+async function buildStateHistory(
+  chatId: string,
+  userId: string,
+): Promise<StateHistoryItem[]> {
+  const items: StateHistoryItem[] = [];
+  try {
+    const states = await listChatStates(chatId, userId);
+    for (const entry of states) {
+      const identity: StateIdentity = {
+        chatId,
+        messageId: entry.messageId,
+        swipeId: entry.swipeId,
+      };
+      const fullState = await loadState(identity, userId);
+      if (!fullState) continue;
+      const raw = {
+        identity,
+        generatedAt: fullState.generatedAt,
+        schemaVersion: fullState.schemaVersion,
+        kernelScene: fullState.kernel.scene,
+        kernelFocus: fullState.kernel.currentFocus || fullState.kernel.objective,
+        kernelLocation: fullState.kernel.location,
+        kernelTime: fullState.kernel.timeframe || `${fullState.kernel.date} ${fullState.kernel.time}`,
+        deltaHeadline: fullState.delta.headline,
+        castCount: fullState.castMatrix.length,
+        threadCount: fullState.storyState.threadLoom.filter(t => t.status !== "resolved").length,
+        riskCount: fullState.continuityFirewall.risks.length,
+        repaired: fullState.source.repaired,
+        seedIdentity: fullState.source.seedIdentity,
+        activeModuleCount: fullState.activeModules.length,
+      };
+      items.push(StateHistoryItemSchema.parse(raw));
+    }
+    items.sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
+  } catch (error) {
+    spindle.log.warn(`LoomOS could not build state history: ${errorMessage(error)}`);
+  }
+  return items;
+}
+
+async function buildInjectionPreview(
+  chatId: string,
+  userId: string,
+): Promise<InjectionPreview | null> {
+  try {
+    const settings = await getSettings(userId);
+    const messages = await getMessages(chatId);
+    const latest = messages.at(-1);
+    if (!latest) return null;
+    const identity = StateIdentitySchema.parse({
+      chatId,
+      messageId: latest.id,
+      swipeId: latest.swipe_id,
+    });
+    const state = await loadState(identity, userId);
+    if (!state) return null;
+
+    const budget = settings.injectionTokenBudget;
+    const allFragments: string[] = [];
+    const includedNames: string[] = [];
+    const omittedNames: string[] = [];
+
+    const enabled = (key: ModuleKey) =>
+      settings.moduleSettings[key].track
+      && settings.moduleSettings[key].inject
+      && state.activeModules.includes(key);
+
+    for (const modKey of MODULE_KEYS) {
+      if (!settings.moduleSettings[modKey].track) continue;
+      if (settings.moduleSettings[modKey].inject && state.activeModules.includes(modKey)) {
+        includedNames.push(modKey);
+      } else {
+        omittedNames.push(modKey);
+      }
+    }
+
+    const enabledCustomMods = settings.customModules || [];
+    for (const cm of enabledCustomMods) {
+      if (cm.enabled && cm.inject) {
+        includedNames.push("cmod:" + cm.label);
+      } else if (cm.enabled) {
+        omittedNames.push("cmod:" + cm.label);
+      }
+    }
+
+    const compact = await buildCompactInjection(state, settings, async (text) => {
+      try {
+        return (await spindle.tokens.countText(text, { userId })).total_tokens;
+      } catch {
+        return Math.ceil(text.length / 4);
+      }
+    });
+
+    const tokenResult = await (async () => {
+      try {
+        return (await spindle.tokens.countText(compact, { userId })).total_tokens;
+      } catch {
+        return Math.ceil(compact.length / 4);
+      }
+    })();
+
+    const withinBudget = tokenResult <= budget;
+    let warning: string | null = null;
+    if (!withinBudget) {
+      warning = `Injection is ${tokenResult - budget} tokens over the configured budget of ${budget}. Some data was dropped.`;
+    } else if (tokenResult > budget * 0.8) {
+      warning = `Injection is near the budget limit (${tokenResult}/${budget} tokens).`;
+    }
+
+    return {
+      text: compact,
+      estimatedTokens: tokenResult,
+      budget,
+      withinBudget,
+      includedModules: includedNames,
+      omittedModules: omittedNames,
+      warning,
+    };
+  } catch (error) {
+    spindle.log.warn(`LoomOS injection preview failed: ${errorMessage(error)}`);
+    return null;
   }
 }
 
@@ -584,6 +712,16 @@ async function handleFrontendRequest(payload: unknown, userId: string): Promise<
       case "get_chat_states": {
         const states = await listChatStates(request.chatId, userId);
         send({ type: "chat_states", requestId, chatId: request.chatId, states }, userId);
+        return;
+      }
+      case "list_state_history": {
+        const history = await buildStateHistory(request.chatId, userId);
+        send({ type: "state_history", requestId, chatId: request.chatId, items: history }, userId);
+        return;
+      }
+      case "preview_injection": {
+        const preview = await buildInjectionPreview(request.chatId, userId);
+        send({ type: "injection_preview", requestId, preview }, userId);
         return;
       }
     }

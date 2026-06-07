@@ -60,11 +60,35 @@ export const CustomModuleSchema = z.object({
   maxItems: z.number().int().min(1).max(24).default(6),
 }).strict();
 
+export const StateIdentitySchema = z.object({
+  chatId: z.string().min(1).max(300),
+  messageId: z.string().min(1).max(300),
+  swipeId: z.number().int().nonnegative(),
+}).strict();
+
+export const StateHistoryItemSchema = z.object({
+  identity: StateIdentitySchema,
+  generatedAt: z.string(),
+  schemaVersion: z.number().int(),
+  kernelScene: z.string(),
+  kernelFocus: z.string(),
+  kernelLocation: z.string(),
+  kernelTime: z.string(),
+  deltaHeadline: z.string(),
+  castCount: z.number().int(),
+  threadCount: z.number().int(),
+  riskCount: z.number().int(),
+  repaired: z.boolean(),
+  seedIdentity: StateIdentitySchema.nullable(),
+  activeModuleCount: z.number().int(),
+}).strict();
+
 const RawSettingsSchema = z.object({
   schemaVersion: z.literal(2).default(2),
   skin: LoomOSSkinSchema.default("auto"),
   autoGeneration: AutoGenerationModeSchema.default("manual"),
   injectionEnabled: z.boolean().default(false),
+  showInjectionPreview: z.boolean().default(false),
   injectionTokenBudget: z.number().int().min(80).max(1600).default(320),
   compilerSeedTokenBudget: z.number().int().min(200).max(2400).default(900),
   recentMessageLimit: z.number().int().min(4).max(80).default(24),
@@ -109,6 +133,7 @@ function settingsInput(value: unknown): unknown {
     skin: source.skin,
     autoGeneration: source.autoGeneration,
     injectionEnabled: source.injectionEnabled,
+    showInjectionPreview: source.showInjectionPreview,
     injectionTokenBudget: source.injectionTokenBudget,
     compilerSeedTokenBudget: source.compilerSeedTokenBudget,
     recentMessageLimit: source.recentMessageLimit,
@@ -122,12 +147,6 @@ function settingsInput(value: unknown): unknown {
 }
 
 export const LoomOSSettingsSchema = z.preprocess(settingsInput, RawSettingsSchema);
-
-export const StateIdentitySchema = z.object({
-  chatId: z.string().min(1).max(300),
-  messageId: z.string().min(1).max(300),
-  swipeId: z.number().int().nonnegative(),
-}).strict();
 
 const ShortText = z.string().trim().max(500);
 const MediumText = z.string().trim().max(1600);

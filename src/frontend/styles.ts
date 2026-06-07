@@ -641,6 +641,297 @@ export const LOOMOS_STYLES = `
     margin-bottom: 4px;
   }
 
+  /* === History Timeline === */
+  .loomos-history-tab {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+  }
+  .loomos-history-explainer {
+    background: color-mix(in srgb, var(--loomos-accent) 6%, var(--loomos-panel));
+    border-left: 3px solid var(--loomos-accent);
+    border-radius: 8px;
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 10px 12px;
+  }
+  .loomos-history-explainer p { margin: 0; }
+  .loomos-history-list {
+    display: grid;
+    gap: 6px;
+    max-height: 480px;
+    overflow-y: auto;
+    min-width: 0;
+  }
+  .loomos-history-entry {
+    background: var(--loomos-panel);
+    border: 1px solid var(--loomos-border);
+    border-radius: 10px;
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px;
+    min-width: 0;
+    transition: border-color 0.15s ease;
+  }
+  .loomos-history-entry:hover { border-color: var(--loomos-accent); }
+  .loomos-history-entry.loomos-history-active {
+    border-color: var(--loomos-accent);
+    background: color-mix(in srgb, var(--loomos-accent) 8%, var(--loomos-panel));
+  }
+  .loomos-history-entry-main {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+  }
+  .loomos-history-entry-header {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .loomos-history-entry-header strong { font-size: 12px; }
+  .loomos-history-entry-focus {
+    font-size: 11px;
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--loomos-muted);
+  }
+  .loomos-history-entry-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--loomos-muted);
+  }
+  .loomos-history-entry-delta {
+    font-size: 11px;
+    font-style: italic;
+    margin: 2px 0 0;
+    overflow-wrap: anywhere;
+    color: var(--loomos-ink);
+  }
+  .loomos-history-entry-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .loomos-history-entry-actions .loomos-button {
+    min-width: 64px;
+    text-align: center;
+  }
+
+  /* === Injection Preview === */
+  .loomos-injection-preview {
+    background: var(--loomos-panel);
+    border: 1px solid var(--loomos-border);
+    border-radius: 10px;
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px;
+    min-width: 0;
+  }
+  .loomos-injection-preview-header {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .loomos-badge-ok {
+    background: rgba(76, 210, 126, 0.15);
+    border-color: #4cd27e;
+    color: #4cd27e;
+  }
+  .loomos-badge-over {
+    background: rgba(223, 82, 89, 0.15);
+    border-color: #df5259;
+    color: #df5259;
+  }
+  .loomos-injection-preview-warning {
+    background: rgba(186, 139, 67, 0.12);
+    border: 1px solid #ba8b43;
+    border-radius: 6px;
+    color: #ead9b7;
+    font-size: 11px;
+    padding: 8px 10px;
+  }
+  .loomos-injection-preview-meta {
+    display: grid;
+    gap: 8px;
+  }
+  .loomos-injection-preview-modules {
+    display: grid;
+    gap: 4px;
+  }
+  .loomos-injection-preview-tokenbar {
+    display: grid;
+    gap: 4px;
+    font-size: 10px;
+    color: var(--loomos-muted);
+  }
+  .loomos-injection-preview-text {
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 6px;
+    font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+    max-height: 200px;
+    overflow: auto;
+    padding: 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-width: 100%;
+  }
+
+  /* === What Changed Modal === */
+  .loomos-what-changed-modal {
+    display: grid;
+    gap: 14px;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .loomos-what-changed-title {
+    font-size: 16px;
+    margin: 0;
+  }
+  .loomos-what-changed-headline {
+    background: color-mix(in srgb, var(--loomos-accent) 6%, var(--loomos-panel));
+    border-left: 3px solid var(--loomos-accent);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .loomos-what-changed-headline p {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 4px 0 0;
+    overflow-wrap: anywhere;
+  }
+  .loomos-what-changed-section {
+    display: grid;
+    gap: 6px;
+  }
+  .loomos-what-changed-change {
+    align-items: flex-start;
+    display: flex;
+    gap: 8px;
+    padding: 6px 8px;
+    border-left: 2px solid var(--loomos-border);
+  }
+  .loomos-what-changed-change-icon {
+    background: var(--loomos-accent);
+    border-radius: 50%;
+    color: #fff;
+    flex-shrink: 0;
+    font-size: 9px;
+    font-weight: 900;
+    height: 18px;
+    line-height: 18px;
+    text-align: center;
+    width: 18px;
+  }
+  .loomos-what-changed-change-body {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .loomos-what-changed-change-body strong {
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+  .loomos-what-changed-change-meta {
+    color: var(--loomos-muted);
+    font-size: 10px;
+  }
+  .loomos-what-changed-scene dd {
+    overflow-wrap: anywhere;
+  }
+
+  /* === Continuity Explainer === */
+  .loomos-continuity-explainer {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .loomos-continuity-explainer-text {
+    font-size: 11px;
+    line-height: 1.45;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+  .loomos-continuity-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+  .loomos-continuity-metric {
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    padding: 8px 6px;
+    text-align: center;
+    display: grid;
+    gap: 2px;
+  }
+  .loomos-continuity-metric-value {
+    font-size: 18px;
+    font-weight: 900;
+    color: var(--loomos-accent);
+  }
+  .loomos-continuity-metric-label {
+    color: var(--loomos-muted);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .loomos-continuity-safe {
+    background: rgba(76, 210, 126, 0.08);
+    border: 1px solid rgba(76, 210, 126, 0.25);
+    border-radius: 8px;
+    color: #4cd27e;
+    font-size: 12px;
+    padding: 12px 14px;
+    text-align: center;
+  }
+  .loomos-continuity-risks {
+    display: grid;
+    gap: 8px;
+  }
+  .loomos-continuity-risk-card {
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: grid;
+    gap: 6px;
+  }
+  .loomos-continuity-risk-header {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .loomos-continuity-risk-header strong {
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+  .loomos-continuity-risk-evidence {
+    font-size: 11px;
+    margin: 0;
+    color: var(--loomos-muted);
+    overflow-wrap: anywhere;
+  }
+  .loomos-continuity-risk-guardrail {
+    background: color-mix(in srgb, var(--loomos-accent) 5%, var(--loomos-panel));
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+  .loomos-continuity-risk-guardrail p {
+    margin: 2px 0 0;
+    overflow-wrap: anywhere;
+  }
+
   @media (max-width: 620px) {
     .loomos-root { padding: 6px; }
     .loomos-settings-grid, .loomos-two-column, .loomos-facts, .loomos-card-grid, .loomos-meter-grid { grid-template-columns: 1fr; }

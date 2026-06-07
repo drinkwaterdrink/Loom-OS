@@ -1,9 +1,11 @@
 import type {
   ConnectionSummary,
   GenerationPipelineReport,
+  InjectionPreview,
   LoomOSSettings,
   LoomOSState,
   PermissionSnapshot,
+  StateHistoryItem,
   StateIdentity,
 } from "./types";
 
@@ -25,7 +27,9 @@ export type FrontendRequest =
   | { type: "generate_state"; requestId: string; identity: IdentityRequest }
   | { type: "cancel_generation"; requestId: string }
   | { type: "refresh_permissions"; requestId: string }
-  | { type: "get_chat_states"; requestId: string; chatId: string };
+  | { type: "get_chat_states"; requestId: string; chatId: string }
+  | { type: "list_state_history"; requestId: string; chatId: string }
+  | { type: "preview_injection"; requestId: string; chatId: string };
 
 export type BackendResponse =
   | {
@@ -59,4 +63,15 @@ export type BackendResponse =
       requestId?: string;
       chatId: string;
       states: Array<{ messageId: string; swipeId: number }>;
+    }
+  | {
+      type: "state_history";
+      requestId?: string;
+      chatId: string;
+      items: StateHistoryItem[];
+    }
+  | {
+      type: "injection_preview";
+      requestId?: string;
+      preview: InjectionPreview | null;
     };

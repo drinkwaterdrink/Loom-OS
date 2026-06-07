@@ -4190,11 +4190,33 @@ var CustomModuleSchema = external_exports.object({
   outputMode: external_exports.enum(["cards", "bullets", "chips", "gauge"]).default("cards"),
   maxItems: external_exports.number().int().min(1).max(24).default(6)
 }).strict();
+var StateIdentitySchema = external_exports.object({
+  chatId: external_exports.string().min(1).max(300),
+  messageId: external_exports.string().min(1).max(300),
+  swipeId: external_exports.number().int().nonnegative()
+}).strict();
+var StateHistoryItemSchema = external_exports.object({
+  identity: StateIdentitySchema,
+  generatedAt: external_exports.string(),
+  schemaVersion: external_exports.number().int(),
+  kernelScene: external_exports.string(),
+  kernelFocus: external_exports.string(),
+  kernelLocation: external_exports.string(),
+  kernelTime: external_exports.string(),
+  deltaHeadline: external_exports.string(),
+  castCount: external_exports.number().int(),
+  threadCount: external_exports.number().int(),
+  riskCount: external_exports.number().int(),
+  repaired: external_exports.boolean(),
+  seedIdentity: StateIdentitySchema.nullable(),
+  activeModuleCount: external_exports.number().int()
+}).strict();
 var RawSettingsSchema = external_exports.object({
   schemaVersion: external_exports.literal(2).default(2),
   skin: LoomOSSkinSchema.default("auto"),
   autoGeneration: AutoGenerationModeSchema.default("manual"),
   injectionEnabled: external_exports.boolean().default(false),
+  showInjectionPreview: external_exports.boolean().default(false),
   injectionTokenBudget: external_exports.number().int().min(80).max(1600).default(320),
   compilerSeedTokenBudget: external_exports.number().int().min(200).max(2400).default(900),
   recentMessageLimit: external_exports.number().int().min(4).max(80).default(24),
@@ -4230,6 +4252,7 @@ function settingsInput(value) {
     skin: source.skin,
     autoGeneration: source.autoGeneration,
     injectionEnabled: source.injectionEnabled,
+    showInjectionPreview: source.showInjectionPreview,
     injectionTokenBudget: source.injectionTokenBudget,
     compilerSeedTokenBudget: source.compilerSeedTokenBudget,
     recentMessageLimit: source.recentMessageLimit,
@@ -4242,11 +4265,6 @@ function settingsInput(value) {
   };
 }
 var LoomOSSettingsSchema = external_exports.preprocess(settingsInput, RawSettingsSchema);
-var StateIdentitySchema = external_exports.object({
-  chatId: external_exports.string().min(1).max(300),
-  messageId: external_exports.string().min(1).max(300),
-  swipeId: external_exports.number().int().nonnegative()
-}).strict();
 var ShortText = external_exports.string().trim().max(500);
 var MediumText = external_exports.string().trim().max(1600);
 var TinyText = external_exports.string().trim().max(160);
@@ -5433,6 +5451,111 @@ async function listChatStates(chatId, userId) {
     return [];
   }
 }
+async function buildStateHistory(chatId, userId) {
+  const items = [];
+  try {
+    const states = await listChatStates(chatId, userId);
+    for (const entry of states) {
+      const identity = {
+        chatId,
+        messageId: entry.messageId,
+        swipeId: entry.swipeId
+      };
+      const fullState = await loadState(identity, userId);
+      if (!fullState) continue;
+      const raw = {
+        identity,
+        generatedAt: fullState.generatedAt,
+        schemaVersion: fullState.schemaVersion,
+        kernelScene: fullState.kernel.scene,
+        kernelFocus: fullState.kernel.currentFocus || fullState.kernel.objective,
+        kernelLocation: fullState.kernel.location,
+        kernelTime: fullState.kernel.timeframe || `${fullState.kernel.date} ${fullState.kernel.time}`,
+        deltaHeadline: fullState.delta.headline,
+        castCount: fullState.castMatrix.length,
+        threadCount: fullState.storyState.threadLoom.filter((t) => t.status !== "resolved").length,
+        riskCount: fullState.continuityFirewall.risks.length,
+        repaired: fullState.source.repaired,
+        seedIdentity: fullState.source.seedIdentity,
+        activeModuleCount: fullState.activeModules.length
+      };
+      items.push(StateHistoryItemSchema.parse(raw));
+    }
+    items.sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
+  } catch (error) {
+    spindle.log.warn(`LoomOS could not build state history: ${errorMessage(error)}`);
+  }
+  return items;
+}
+async function buildInjectionPreview(chatId, userId) {
+  try {
+    const settings = await getSettings(userId);
+    const messages = await getMessages(chatId);
+    const latest = messages.at(-1);
+    if (!latest) return null;
+    const identity = StateIdentitySchema.parse({
+      chatId,
+      messageId: latest.id,
+      swipeId: latest.swipe_id
+    });
+    const state = await loadState(identity, userId);
+    if (!state) return null;
+    const budget = settings.injectionTokenBudget;
+    const allFragments = [];
+    const includedNames = [];
+    const omittedNames = [];
+    const enabled = (key) => settings.moduleSettings[key].track && settings.moduleSettings[key].inject && state.activeModules.includes(key);
+    for (const modKey of MODULE_KEYS) {
+      if (!settings.moduleSettings[modKey].track) continue;
+      if (settings.moduleSettings[modKey].inject && state.activeModules.includes(modKey)) {
+        includedNames.push(modKey);
+      } else {
+        omittedNames.push(modKey);
+      }
+    }
+    const enabledCustomMods = settings.customModules || [];
+    for (const cm of enabledCustomMods) {
+      if (cm.enabled && cm.inject) {
+        includedNames.push("cmod:" + cm.label);
+      } else if (cm.enabled) {
+        omittedNames.push("cmod:" + cm.label);
+      }
+    }
+    const compact = await buildCompactInjection(state, settings, async (text) => {
+      try {
+        return (await spindle.tokens.countText(text, { userId })).total_tokens;
+      } catch {
+        return Math.ceil(text.length / 4);
+      }
+    });
+    const tokenResult = await (async () => {
+      try {
+        return (await spindle.tokens.countText(compact, { userId })).total_tokens;
+      } catch {
+        return Math.ceil(compact.length / 4);
+      }
+    })();
+    const withinBudget = tokenResult <= budget;
+    let warning = null;
+    if (!withinBudget) {
+      warning = `Injection is ${tokenResult - budget} tokens over the configured budget of ${budget}. Some data was dropped.`;
+    } else if (tokenResult > budget * 0.8) {
+      warning = `Injection is near the budget limit (${tokenResult}/${budget} tokens).`;
+    }
+    return {
+      text: compact,
+      estimatedTokens: tokenResult,
+      budget,
+      withinBudget,
+      includedModules: includedNames,
+      omittedModules: omittedNames,
+      warning
+    };
+  } catch (error) {
+    spindle.log.warn(`LoomOS injection preview failed: ${errorMessage(error)}`);
+    return null;
+  }
+}
 async function sendExactState(userId, identity, requestId) {
   send({
     type: "state",
@@ -5740,6 +5863,16 @@ async function handleFrontendRequest(payload, userId) {
       case "get_chat_states": {
         const states = await listChatStates(request.chatId, userId);
         send({ type: "chat_states", requestId, chatId: request.chatId, states }, userId);
+        return;
+      }
+      case "list_state_history": {
+        const history = await buildStateHistory(request.chatId, userId);
+        send({ type: "state_history", requestId, chatId: request.chatId, items: history }, userId);
+        return;
+      }
+      case "preview_injection": {
+        const preview = await buildInjectionPreview(request.chatId, userId);
+        send({ type: "injection_preview", requestId, preview }, userId);
         return;
       }
     }

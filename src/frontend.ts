@@ -23,17 +23,22 @@ import {
 import type {
   ConnectionSummary,
   GenerationPipelineReport,
+  InjectionPreview,
   LoomOSSettings,
   LoomOSState,
   ModuleControl,
   ModuleKey,
   ModulePreset,
   PermissionSnapshot,
+  StateHistoryItem,
   StateIdentity,
 } from "./shared/types";
 import {
   escapeHtml,
   renderDashboard,
+  renderHistoryTab,
+  renderInjectionPreview,
+  renderWhatChangedModal,
 } from "./frontend/render";
 import { LOOMOS_STYLES } from "./frontend/styles";
 
@@ -97,6 +102,9 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   let elapsedTimer: ReturnType<typeof setInterval> | null = null;
   const messageWidgetCleanups = new Map<string, () => void>();
   let chatStates: Array<{ messageId: string; swipeId: number }> = [];
+  let historyItems: StateHistoryItem[] = [];
+  let injectionPreview: InjectionPreview | null = null;
+  let historyFilter = "";
   let modal: SpindleModalHandle | null = null;
   let modalListenerCleanup: (() => void) | null = null;
   let activeTab = "overview";
@@ -316,9 +324,11 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     for (const item of chatStates) {
       if (item.messageId === latestId) continue;
 
+      const widgetKey = `${item.messageId}-sw${item.swipeId}`;
+
       const cleanup = ctx.messages.renderWidget({
         messageId: item.messageId,
-        widgetId: "loomos-action-history",
+        widgetId: `loomos-history-${item.swipeId}`,
         html: `
           <style>
             :root { color-scheme: light dark; }
@@ -370,9 +380,9 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           </style>
           <div class="bar">
             <div class="label-wrapper">
-              <span>📝 LoomOS State (swipe ${item.swipeId})</span>
+              <span>📝 Tracker (swipe ${item.swipeId})</span>
             </div>
-            <button id="open" type="button">Open State</button>
+            <button id="open" type="button">Open Tracker</button>
           </div>
           <script>
             document.getElementById("open").addEventListener("click",()=>window.spindleSandbox.postMessage({type:"open"}));
@@ -394,7 +404,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       });
 
       if (cleanup) {
-        messageWidgetCleanups.set(item.messageId, cleanup);
+        messageWidgetCleanups.set(widgetKey, cleanup);
       }
     }
 
@@ -852,6 +862,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
             <option value="off"${selected("off", settings.autoGeneration)}>Off</option>
           </select></label>
           <label class="loomos-check"><input type="checkbox" data-setting="injectionEnabled"${checked(settings.injectionEnabled)}><span>Inject compact state</span></label>
+          <label class="loomos-check"><input type="checkbox" data-setting="showInjectionPreview"${checked(settings.showInjectionPreview)}><span>Show injection preview</span></label>
           <label class="loomos-field"><span>Injection token budget</span><input class="loomos-input" type="number" min="80" max="1600" step="20" data-setting="injectionTokenBudget" value="${settings.injectionTokenBudget}"></label>
           <label class="loomos-field"><span>Recent messages</span><input class="loomos-input" type="number" min="4" max="80" data-setting="recentMessageLimit" value="${settings.recentMessageLimit}"></label>
           <label class="loomos-field"><span>Seed token budget</span><input class="loomos-input" type="number" min="200" max="2400" step="50" data-setting="compilerSeedTokenBudget" value="${settings.compilerSeedTokenBudget}"></label>
@@ -892,6 +903,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       { id: "world", label: "World" },
       { id: "story", label: "Story" },
       { id: "continuity", label: "Continuity" },
+      { id: "history", label: "History" },
     ];
     return `<nav class="loomos-tabs-nav">${tabs.map(t =>
       `<button class="loomos-tab-btn${activeTab === t.id ? " active" : ""}" data-tab="${t.id}">${t.label}</button>`
@@ -928,16 +940,24 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     tab.root.dataset.skin = settings.skin;
     tab.root.dataset.view = "drawer";
     tab.root.innerHTML = `
-      ${stickyHeaderHtml(Boolean(state))}
+      ${stickyHeaderHtml(Boolean(state) || historyItems.length > 0)}
       ${compileStatusCardHtml()}
       ${renderSettings()}
       <div class="loomos-tab-pane">
-        ${state ? renderDashboard(state, settings, activeTab) : emptyStateHtml()}
+        ${activeTab === "history"
+          ? renderHistoryTab(historyItems, historyFilter, activeIdentity)
+          : activeTab === "injection"
+          ? injectionPreview ? renderInjectionPreview(injectionPreview) : ""
+          : state
+            ? renderDashboard(state, settings, activeTab)
+            : emptyStateHtml()
+        }
       </div>
       <details class="loomos-shell loomos-settings" data-details="diagnostics">
         <summary>Pipeline Diagnostics</summary>
         <pre class="loomos-diagnostic">${escapeHtml(diagnosticText())}</pre>
-      </details>`;
+      </details>
+      ${settings.showInjectionPreview && injectionPreview ? renderInjectionPreview(injectionPreview) : ""}`;
   }
 
   function renderViewer(): void {
@@ -947,10 +967,17 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     modal.root.dataset.view = "modal";
     modal.setTitle(`LoomOS | ${exactLabel()}`);
     modal.root.innerHTML = `
-      ${stickyHeaderHtml(Boolean(state))}
+      ${stickyHeaderHtml(Boolean(state) || historyItems.length > 0)}
       ${compileStatusCardHtml()}
       <div class="loomos-tab-pane">
-        ${state ? renderDashboard(state, settings, activeTab) : emptyStateHtml()}
+        ${activeTab === "history"
+          ? renderHistoryTab(historyItems, historyFilter, activeIdentity)
+          : activeTab === "injection"
+          ? injectionPreview ? renderInjectionPreview(injectionPreview) : ""
+          : state
+            ? renderDashboard(state, settings, activeTab)
+            : emptyStateHtml()
+        }
       </div>`;
   }
 
@@ -1023,6 +1050,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       connectionId: root.querySelector<HTMLSelectElement>('[data-setting="connectionId"]')?.value ?? "",
       autoGeneration: root.querySelector<HTMLSelectElement>('[data-setting="autoGeneration"]')?.value,
       injectionEnabled: root.querySelector<HTMLInputElement>('[data-setting="injectionEnabled"]')?.checked,
+      showInjectionPreview: root.querySelector<HTMLInputElement>('[data-setting="showInjectionPreview"]')?.checked,
       injectionTokenBudget: Number(root.querySelector<HTMLInputElement>('[data-setting="injectionTokenBudget"]')?.value),
       compilerSeedTokenBudget: Number(root.querySelector<HTMLInputElement>('[data-setting="compilerSeedTokenBudget"]')?.value),
       recentMessageLimit: Number(root.querySelector<HTMLInputElement>('[data-setting="recentMessageLimit"]')?.value),
@@ -1039,6 +1067,9 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       if (saveSettingsTimeout) clearTimeout(saveSettingsTimeout);
       saveSettingsTimeout = setTimeout(() => {
         send({ type: "save_settings", requestId: requestId("settings"), settings });
+        if (settings.showInjectionPreview && activeIdentity?.chatId) {
+          send({ type: "preview_injection", requestId: requestId("preview-settings"), chatId: activeIdentity.chatId });
+        }
       }, 600);
     } catch (error) {
       status = error instanceof Error ? error.message : String(error);
@@ -1129,6 +1160,18 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     send({ type: "delete_state", requestId: requestId("delete"), identity });
   }
 
+  function showWhatChangedModal(): void {
+    if (!state) return;
+    const wm = ctx.ui.showModal({
+      title: `What Changed - ${state.delta.headline.slice(0, 40) || "No headline"}`,
+      width: 700,
+      maxHeight: 700,
+    });
+    wm.root.innerHTML = renderWhatChangedModal(state);
+    wm.root.querySelector(".loomos-button[data-action='close']")?.addEventListener("click", () => wm.dismiss());
+    const dismiss = wm.onDismiss(() => { dismiss(); });
+  }
+
   async function requestPermissions(): Promise<void> {
     try {
       const requested: Array<"generation" | "chat_mutation" | "interceptor"> = [
@@ -1166,6 +1209,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       send({ type: "get_state", requestId: requestId("sync"), identity: active });
     }
     send({ type: "get_chat_states", requestId: requestId("chat-states-sync"), chatId: active.chatId });
+    send({ type: "list_state_history", requestId: requestId("history-sync"), chatId: active.chatId });
+    if (settings.showInjectionPreview) {
+      send({ type: "preview_injection", requestId: requestId("preview-sync"), chatId: active.chatId });
+    }
     renderAll();
   }
 
@@ -1648,6 +1695,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         
         if (activeIdentity?.chatId) {
           send({ type: "get_chat_states", requestId: requestId("chat-states"), chatId: activeIdentity.chatId });
+          send({ type: "list_state_history", requestId: requestId("history"), chatId: activeIdentity.chatId });
+          if (settings.showInjectionPreview) {
+            send({ type: "preview_injection", requestId: requestId("preview"), chatId: activeIdentity.chatId });
+          }
         }
         break;
       case "settings":
@@ -1665,6 +1716,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         
         if (activeIdentity?.chatId) {
           send({ type: "get_chat_states", requestId: requestId("chat-states"), chatId: activeIdentity.chatId });
+          send({ type: "list_state_history", requestId: requestId("history"), chatId: activeIdentity.chatId });
+          if (settings.showInjectionPreview) {
+            send({ type: "preview_injection", requestId: requestId("preview"), chatId: activeIdentity.chatId });
+          }
         }
         break;
       case "permissions":
@@ -1692,6 +1747,12 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           chatStates = response.states;
           refreshAllMessageWidgets();
         }
+        break;
+      case "state_history":
+        historyItems = response.items;
+        break;
+      case "injection_preview":
+        injectionPreview = response.preview;
         break;
       case "error":
         if (response.requestId === activeGenerationRequestId) {
@@ -1730,6 +1791,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       }
       if (action === "delete") void deleteCurrentState();
       if (action === "permissions") void requestPermissions();
+      if (action === "what-changed" && state) void showWhatChangedModal();
       if (action === "clear-search") {
         const searchInput = tab.root.querySelector<HTMLInputElement>("[data-module-search]");
         if (searchInput) {
@@ -1825,6 +1887,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       status = "Loading selected swipe";
       send({ type: "get_state", requestId: requestId("swipe"), identity });
       send({ type: "get_chat_states", requestId: requestId("chat-states-swipe"), chatId: identity.chatId });
+      send({ type: "list_state_history", requestId: requestId("history-swipe"), chatId: identity.chatId });
       renderAll();
     }
   }));
@@ -1833,6 +1896,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     if (identity) {
       send({ type: "get_state", requestId: requestId("swipe-edit"), identity });
       send({ type: "get_chat_states", requestId: requestId("chat-states-swipe-edit"), chatId: identity.chatId });
+      send({ type: "list_state_history", requestId: requestId("history-swipe-edit"), chatId: identity.chatId });
     }
   }));
   cleanups.push(ctx.events.on("CHARACTER_MESSAGE_RENDERED", refreshAllMessageWidgets));
