@@ -4051,6 +4051,7 @@ var MODULE_KEYS = [
   "deltas",
   "meters",
   "castCore",
+  "appearance",
   "castVisuals",
   "clothing",
   "relationships",
@@ -4116,11 +4117,23 @@ var MODULE_CATALOG = [
     group: "Cast",
     core: true,
     intensity: "heavy",
-    description: "Presence, intent, status, awareness, goals, anchors, appearance, clothing, current state, uncertainty.",
-    schemaSummary: "id, name, kind, role, location, status, awareness, threat, spotlight, appearance{}, clothing{}, currentState{}, goals[], stableFacts[], continuity{}, changed, changeNote",
-    compilerInstruction: "Track all named characters appearing in the scene. Include appearance, clothing state, current pose/hands/proximity, emotional state, intent, relationships, pocket items, stable facts, and uncertainty. Mark changed=true and add changeNote when any field updates. Carry forward stable visual identity. Crowd/background groups summarized compactly.",
+    description: "Presence, identity, intent, status, awareness, goals, anchors, and uncertainty.",
+    schemaSummary: "id, name, kind, qty, role, location, status, awareness, threat, spotlight, emotionalState, intent, goals[], stableFacts[], continuity{}, changed, changeNote",
+    compilerInstruction: "Track all named characters appearing in the scene. Maintain identity, presence, role, location, status, awareness, intent, goals, stable facts, and uncertainty. Mark changed=true and add changeNote when tracked state updates. Crowd/background groups are summarized compactly.",
     injectionBehavior: "Injected as cast.Name: status; intent; goal for POV/main/high-spotlight characters. Up to 6 entries.",
     renderBehavior: "Cast tab \u2014 full character ledger with search, filters, expandable detail panels. Overview tab \u2014 compact cast cards."
+  },
+  {
+    key: "appearance",
+    label: "Immutable Appearance",
+    group: "Cast",
+    core: false,
+    intensity: "medium",
+    description: "Persistent physical identity: hair, eyes, height, weight, build, body shape, proportions, marks, and unique features.",
+    schemaSummary: "castMatrix[].appearance{species, ageBand, apparentAge, genderPresentation, height, weight, build, bodyType, frame, proportions, silhouette, bodyComposition, shoulders, chest, bust, waist, hips, arms, legs, hands, skin, complexion, face, facialStructure, hair, eyes, eyebrows, nose, lips, ears, facialHair, posture, movement, voice, distinguishingMarks, scars, tattoos, piercings, birthmarks, uniqueFeatures, immutableTraits[], presence, fullDescription, anchor}",
+    compilerInstruction: "Track grounded, persistent physical traits for adult named characters. Preserve established hair, eyes, height, weight description, build, body type, proportions, bust/waist/hips description, skin, face, marks, scars, tattoos, piercings, posture, movement, and unique features until transcript evidence changes them. Use neutral non-explicit language. Never infer exact measurements, cup sizes, weight numbers, or hidden anatomy when the transcript does not provide them. Use empty fields rather than inventing details.",
+    injectionBehavior: "When enabled, injects a compact immutable appearance anchor for important cast members. Budget-aware.",
+    renderBehavior: "Cast tab - dedicated expandable appearance profile with physical traits, proportions, identifying marks, and immutable anchors."
   },
   {
     key: "castVisuals",
@@ -4299,6 +4312,7 @@ var BALANCED_MODULE_SETTINGS = {
   deltas: control(true, true, true),
   meters: control(true, true, false),
   castCore: control(true, true, true),
+  appearance: control(true, true, false),
   castVisuals: control(true, true, false),
   clothing: control(true, true, false),
   relationships: control(true, true, true),
@@ -4340,12 +4354,14 @@ function getEffectiveModuleCatalog(settings) {
   const overrides = settings?.stockModuleOverrides ?? {};
   return MODULE_CATALOG.map((module, index) => {
     const override = overrides[module.key];
-    const compilerInstruction = override?.compilerGuidanceAddendum ? `${module.compilerInstruction} [Override: ${override.compilerGuidanceAddendum}]`.trim() : module.compilerInstruction;
+    const baseCompilerInstruction = override?.compilerInstructionOverride ?? module.compilerInstruction;
+    const compilerInstruction = override?.compilerGuidanceAddendum ? `${baseCompilerInstruction} [Additional guidance: ${override.compilerGuidanceAddendum}]`.trim() : baseCompilerInstruction;
     return {
       ...module,
       label: override?.label ?? module.label,
       description: override?.description ?? module.description,
       group: override?.group ?? module.group,
+      schemaSummary: override?.schemaSummaryOverride ?? module.schemaSummary,
       compilerInstruction,
       icon: override?.icon ?? "",
       displayOrder: override?.displayOrder ?? index * 10,
@@ -4392,13 +4408,19 @@ var ModuleSettingsSchema = external_exports.object(
     MODULE_KEYS.map((key) => [key, ModuleControlSchema])
   )
 ).strict();
+var PresetModuleSettingsSchema = external_exports.preprocess(
+  (value) => normalizeModuleSettings(
+    typeof value === "object" && value !== null ? value : void 0
+  ),
+  ModuleSettingsSchema
+);
 var CustomModulePresetSchema = external_exports.object({
   id: external_exports.string().min(1).max(160),
   name: external_exports.string().trim().min(1).max(160),
   description: external_exports.string().trim().max(500).default(""),
   createdAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
   updatedAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
-  moduleSettings: ModuleSettingsSchema
+  moduleSettings: PresetModuleSettingsSchema
 }).strict();
 var CustomModuleFieldTypeSchema = external_exports.enum([
   "text",
@@ -4504,6 +4526,8 @@ var RawSettingsSchema = external_exports.object({
       defaultDisplay: external_exports.boolean().optional(),
       defaultInject: external_exports.boolean().optional(),
       compilerGuidanceAddendum: external_exports.string().max(1e3).optional(),
+      compilerInstructionOverride: external_exports.string().max(6e3).optional(),
+      schemaSummaryOverride: external_exports.string().max(6e3).optional(),
       injectionPriority: external_exports.number().int().optional(),
       renderHint: external_exports.string().max(200).optional(),
       hiddenFromSettings: external_exports.boolean().optional()
@@ -4674,17 +4698,45 @@ var UncertaintyEntrySchema = external_exports.object({
 var AppearanceSchema = external_exports.object({
   species: ShortText.optional(),
   ageBand: ShortText.optional(),
+  apparentAge: ShortText.optional(),
   genderPresentation: ShortText.optional(),
   height: ShortText.optional(),
+  weight: ShortText.optional(),
   build: ShortText.optional(),
+  bodyType: ShortText.optional(),
+  frame: ShortText.optional(),
+  proportions: MediumText.optional(),
+  silhouette: ShortText.optional(),
+  bodyComposition: ShortText.optional(),
+  shoulders: ShortText.optional(),
+  chest: ShortText.optional(),
+  bust: ShortText.optional(),
+  waist: ShortText.optional(),
+  hips: ShortText.optional(),
+  arms: ShortText.optional(),
+  legs: ShortText.optional(),
+  hands: ShortText.optional(),
   skin: ShortText.optional(),
+  complexion: ShortText.optional(),
   face: ShortText.optional(),
   facialStructure: ShortText.optional(),
   hair: ShortText.optional(),
   eyes: ShortText.optional(),
+  eyebrows: ShortText.optional(),
+  nose: ShortText.optional(),
+  lips: ShortText.optional(),
+  ears: ShortText.optional(),
+  facialHair: ShortText.optional(),
   voice: ShortText.optional(),
   movement: ShortText.optional(),
+  posture: ShortText.optional(),
   distinguishingMarks: MediumText.optional(),
+  scars: MediumText.optional(),
+  tattoos: MediumText.optional(),
+  piercings: MediumText.optional(),
+  birthmarks: MediumText.optional(),
+  uniqueFeatures: MediumText.optional(),
+  immutableTraits: external_exports.array(ShortText).max(16).optional().default([]),
   presence: ShortText.optional(),
   fullDescription: MediumText.optional(),
   anchor: MediumText.optional()
@@ -5247,6 +5299,72 @@ function normalizeOptionalTextObject(value, fields) {
     return normalized ? [[field, normalized]] : [];
   }));
 }
+function normalizeAppearance(value) {
+  const source = asRecord(value);
+  const mediumFields = /* @__PURE__ */ new Set([
+    "proportions",
+    "distinguishingMarks",
+    "scars",
+    "tattoos",
+    "piercings",
+    "birthmarks",
+    "uniqueFeatures",
+    "fullDescription",
+    "anchor"
+  ]);
+  const fields = [
+    "species",
+    "ageBand",
+    "apparentAge",
+    "genderPresentation",
+    "height",
+    "weight",
+    "build",
+    "bodyType",
+    "frame",
+    "proportions",
+    "silhouette",
+    "bodyComposition",
+    "shoulders",
+    "chest",
+    "bust",
+    "waist",
+    "hips",
+    "arms",
+    "legs",
+    "hands",
+    "skin",
+    "complexion",
+    "face",
+    "facialStructure",
+    "hair",
+    "eyes",
+    "eyebrows",
+    "nose",
+    "lips",
+    "ears",
+    "facialHair",
+    "voice",
+    "movement",
+    "posture",
+    "distinguishingMarks",
+    "scars",
+    "tattoos",
+    "piercings",
+    "birthmarks",
+    "uniqueFeatures",
+    "presence",
+    "fullDescription",
+    "anchor"
+  ];
+  return {
+    ...Object.fromEntries(fields.flatMap((field) => {
+      const normalized = text(source[field], mediumFields.has(field) ? 1600 : 500);
+      return normalized ? [[field, normalized]] : [];
+    })),
+    immutableTraits: stringArray(source.immutableTraits, 16, 500)
+  };
+}
 function normalizeClothing(value) {
   const source = asRecord(value);
   const layers = arrayValue(source.layers).map((item) => {
@@ -5381,24 +5499,7 @@ function normalizeCastMember(value, index) {
     ...base,
     changed: booleanValue(source.changed, false),
     ...changeNote ? { changeNote } : {},
-    appearance: normalizeOptionalTextObject(source.appearance, [
-      "species",
-      "ageBand",
-      "genderPresentation",
-      "height",
-      "build",
-      "skin",
-      "face",
-      "facialStructure",
-      "hair",
-      "eyes",
-      "voice",
-      "movement",
-      "distinguishingMarks",
-      "presence",
-      "fullDescription",
-      "anchor"
-    ]),
+    appearance: normalizeAppearance(source.appearance),
     clothing: normalizeClothing(source.clothing),
     currentState: normalizeOptionalTextObject(source.currentState, [
       "injury",
@@ -6070,7 +6171,18 @@ Exact JSON field contract (values below are type examples, not story facts):
     "status":"","awareness":"ambient","changed":false,
     "threat":{"value":0,"pct":"0%","band":"","color":"","note":""},
     "spotlight":{"value":0,"pct":"0%","band":"","color":"","trend":"unknown","note":""},
-    "appearance":{},
+    "appearance":{
+      "species":"","ageBand":"","apparentAge":"","genderPresentation":"",
+      "height":"","weight":"","build":"","bodyType":"","frame":"",
+      "proportions":"","silhouette":"","bodyComposition":"",
+      "shoulders":"","chest":"","bust":"","waist":"","hips":"",
+      "arms":"","legs":"","hands":"","skin":"","complexion":"",
+      "face":"","facialStructure":"","hair":"","eyes":"","eyebrows":"",
+      "nose":"","lips":"","ears":"","facialHair":"","voice":"",
+      "movement":"","posture":"","distinguishingMarks":"","scars":"",
+      "tattoos":"","piercings":"","birthmarks":"","uniqueFeatures":"",
+      "immutableTraits":[],"presence":"","fullDescription":"","anchor":""
+    },
     "clothing":{"summary":"","layerCount":0,"layers":[]},
     "currentState":{"pose":"","proximity":"","leftHand":"","rightHand":"","emotion":"","intent":"","injury":""},
     "emotionalState":"","intent":"","pose":"","proximity":"","hands":"",
@@ -6130,12 +6242,17 @@ Exact JSON field contract (values below are type examples, not story facts):
 For disabled optional modules: meters=[], scene=null, worldState=null, the
 corresponding tools member=null, and auditLog=[]. Empty optional arrays inside an
 enabled object are valid. Do not emit example rows when there is no evidence.`;
+function buildStockModulePromptBlock(key, overrides = {}) {
+  const module = getEffectiveModuleCatalog({ stockModuleOverrides: overrides }).find((candidate) => candidate.key === key);
+  if (!module) return "";
+  return [
+    `- ${module.key} (${module.label}): ${module.compilerInstruction}`,
+    `  Schema: ${module.schemaSummary}`
+  ].join("\n");
+}
 function buildStateCompilerPrompt(enabledModules, customModules = [], overrides = {}) {
   const enabled = getEffectiveModuleCatalog({ stockModuleOverrides: overrides }).filter((module) => enabledModules.includes(module.key)).map((module) => {
-    return [
-      `- ${module.key} (${module.label}): ${module.compilerInstruction}`,
-      `  Schema: ${module.schemaSummary}`
-    ].join("\n");
+    return buildStockModulePromptBlock(module.key, overrides);
   }).join("\n");
   const enabledCustom = customModules.filter((m) => m.enabled).map((m) => {
     const fields = Object.fromEntries(m.schemaFields.map((field) => {
@@ -6186,6 +6303,13 @@ function buildStateCompilerPrompt(enabledModules, customModules = [], overrides 
   ]`;
   }
   const coreContractWithCustom = CORE_CONTRACT + customContract;
+  const appearanceRules = enabledModules.includes("appearance") ? `
+- For each named adult character, populate grounded appearance fields when transcript or seed evidence exists.
+- Treat appearance as persistent identity state. Carry it forward unchanged unless the transcript explicitly changes it.
+- Track hair, eyes, height, weight description, build, bodyType, frame, proportions, silhouette, shoulders, chest, bust, waist, hips, limbs, hands, skin, face, marks, scars, tattoos, piercings, posture, movement, voice, unique features, and immutableTraits when known.
+- Use neutral, non-explicit physical language. Never infer exact measurements, cup sizes, weight numbers, hidden anatomy, or other unsupported details.
+- Use empty strings and arrays for unknown appearance fields. Never reset established appearance each turn.` : `
+- Appearance tracking is disabled. Preserve an empty appearance object and do not invent new physical traits.`;
   const closingBraceIdx = STATE_SHAPE_GUIDE.lastIndexOf("}");
   const shapeGuideWithCustom = STATE_SHAPE_GUIDE.substring(0, closingBraceIdx) + customShape + "\n}";
   return `You are LoomOS, a strict story-state compiler.
@@ -6220,8 +6344,7 @@ Rules:
 - Use numeric ranges exactly as named: percentages 0-100, threat/observer pressure 0-10, urgency 0-5, conflict severity 1-3.
 
 Character depth rules:
-- For each named character, include appearance fields (species, ageBand, height, build, skin, hair, eyes, voice, presence) when transcript evidence exists. Use empty object {} otherwise.
-- Carry forward appearance from seed unless contradicted. Never reset appearance each turn.
+${appearanceRules}
 - Clothing persists until transcript explicitly shows change. Track layers (outer/upper/lower/feet/accessory). Mark clothing.changed=true when clothing updates.
 - Update currentState (pose, proximity, leftHand, rightHand, emotion, intent, physicalTell, injury) from latest transcript actions and descriptions.
 - Relationships: use axis labels (Trust, Fear, Attraction, Rivalry, Loyalty, Debt). Value -100 (hostile) to 100 (devoted). Include evidence for changes.
@@ -6508,8 +6631,19 @@ function clean(value, max = 260) {
 function xmlEscape(value, max = 260) {
   return clean(value, max).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
-function memberInjection(member, hasVisuals, hasClothing) {
+function memberInjection(member, hasAppearance, hasVisuals, hasClothing) {
   let text2 = `cast.${xmlEscape(member.name, 80)}: ${xmlEscape(member.status)}; intent=${xmlEscape(member.intent)}; goal=${xmlEscape(member.goals[0] ?? "")}`;
+  if (hasAppearance) {
+    const appearance = member.appearance;
+    const anchor = appearance?.anchor || appearance?.fullDescription || [
+      appearance?.height,
+      appearance?.bodyType || appearance?.build,
+      appearance?.hair,
+      appearance?.eyes,
+      appearance?.uniqueFeatures || appearance?.distinguishingMarks
+    ].filter(Boolean).join(", ");
+    if (anchor) text2 += `; appearance=${xmlEscape(anchor, 220)}`;
+  }
   if (hasVisuals) {
     text2 += `; pose=${xmlEscape(member.currentState?.pose ?? member.pose ?? "")}; emotion=${xmlEscape(member.currentState?.emotion ?? member.emotionalState ?? "")}`;
   }
@@ -6553,9 +6687,10 @@ async function buildCompactInjection(state, settings, countTokens, overrides) {
     );
   }
   if (enabled("castCore")) {
+    const hasAppearance = enabled("appearance");
     const hasVisuals = enabled("castVisuals") || enabled("imagePrompt");
     const hasClothing = enabled("clothing");
-    fragments.push(...state.castMatrix.filter((member) => member.kind === "pov" || member.kind === "main" || member.spotlight.value >= 45).slice(0, 6).map((member) => memberInjection(member, hasVisuals, hasClothing)));
+    fragments.push(...state.castMatrix.filter((member) => member.kind === "pov" || member.kind === "main" || member.spotlight.value >= 45).slice(0, 6).map((member) => memberInjection(member, hasAppearance, hasVisuals, hasClothing)));
   }
   if (enabled("worldSpace") && state.scene) {
     fragments.push(
@@ -6767,6 +6902,11 @@ function migrateStateToCurrent(value) {
 function compactText(value, max = 240) {
   return value.replace(/\s+/g, " ").trim().slice(0, max);
 }
+function hasAppearanceEvidence(appearance) {
+  return Object.values(appearance ?? {}).some(
+    (value) => Array.isArray(value) ? value.length > 0 : Boolean(value)
+  );
+}
 function trimJsonToBudget(value, tokenBudget) {
   const serialized = JSON.stringify(value);
   const maxChars = Math.max(800, tokenBudget * 4);
@@ -6802,13 +6942,34 @@ function buildStateSeedForCompiler(state, settings) {
       location: compactText(member.location),
       status: compactText(member.status),
       intent: compactText(member.intent),
-      appearance: modules.castCore.track && member.appearance?.species ? {
+      appearance: modules.appearance.track && hasAppearanceEvidence(member.appearance) ? {
         species: member.appearance.species,
+        ageBand: member.appearance.ageBand,
+        apparentAge: member.appearance.apparentAge,
+        genderPresentation: member.appearance.genderPresentation,
         height: member.appearance.height,
+        weight: member.appearance.weight,
         build: member.appearance.build,
+        bodyType: member.appearance.bodyType,
+        frame: member.appearance.frame,
+        proportions: member.appearance.proportions,
+        silhouette: member.appearance.silhouette,
+        shoulders: member.appearance.shoulders,
+        bust: member.appearance.bust,
+        waist: member.appearance.waist,
+        hips: member.appearance.hips,
+        skin: member.appearance.skin,
+        complexion: member.appearance.complexion,
         hair: member.appearance.hair,
         eyes: member.appearance.eyes,
-        presence: member.appearance.presence
+        distinguishingMarks: member.appearance.distinguishingMarks,
+        scars: member.appearance.scars,
+        tattoos: member.appearance.tattoos,
+        piercings: member.appearance.piercings,
+        uniqueFeatures: member.appearance.uniqueFeatures,
+        immutableTraits: member.appearance.immutableTraits?.slice(0, 8),
+        presence: member.appearance.presence,
+        anchor: member.appearance.anchor
       } : void 0,
       clothing: modules.clothing.track ? {
         summary: compactText(member.clothing?.summary ?? member.clothingSummary ?? ""),

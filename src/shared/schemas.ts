@@ -38,13 +38,22 @@ const ModuleSettingsSchema = z.object(
   ) as Record<typeof MODULE_KEYS[number], typeof ModuleControlSchema>,
 ).strict();
 
+const PresetModuleSettingsSchema = z.preprocess(
+  (value) => normalizeModuleSettings(
+    typeof value === "object" && value !== null
+      ? value as Partial<Record<typeof MODULE_KEYS[number], Partial<z.infer<typeof ModuleControlSchema>>>>
+      : undefined,
+  ),
+  ModuleSettingsSchema,
+);
+
 export const CustomModulePresetSchema = z.object({
   id: z.string().min(1).max(160),
   name: z.string().trim().min(1).max(160),
   description: z.string().trim().max(500).default(""),
   createdAt: z.string().datetime().default(() => new Date().toISOString()),
   updatedAt: z.string().datetime().default(() => new Date().toISOString()),
-  moduleSettings: ModuleSettingsSchema,
+  moduleSettings: PresetModuleSettingsSchema,
 }).strict();
 
 export const CustomModuleFieldTypeSchema = z.enum([
@@ -156,6 +165,8 @@ const RawSettingsSchema = z.object({
       defaultDisplay: z.boolean().optional(),
       defaultInject: z.boolean().optional(),
       compilerGuidanceAddendum: z.string().max(1000).optional(),
+      compilerInstructionOverride: z.string().max(6000).optional(),
+      schemaSummaryOverride: z.string().max(6000).optional(),
       injectionPriority: z.number().int().optional(),
       renderHint: z.string().max(200).optional(),
       hiddenFromSettings: z.boolean().optional(),
@@ -348,17 +359,45 @@ const UncertaintyEntrySchema = z.object({
 const AppearanceSchema = z.object({
   species: ShortText.optional(),
   ageBand: ShortText.optional(),
+  apparentAge: ShortText.optional(),
   genderPresentation: ShortText.optional(),
   height: ShortText.optional(),
+  weight: ShortText.optional(),
   build: ShortText.optional(),
+  bodyType: ShortText.optional(),
+  frame: ShortText.optional(),
+  proportions: MediumText.optional(),
+  silhouette: ShortText.optional(),
+  bodyComposition: ShortText.optional(),
+  shoulders: ShortText.optional(),
+  chest: ShortText.optional(),
+  bust: ShortText.optional(),
+  waist: ShortText.optional(),
+  hips: ShortText.optional(),
+  arms: ShortText.optional(),
+  legs: ShortText.optional(),
+  hands: ShortText.optional(),
   skin: ShortText.optional(),
+  complexion: ShortText.optional(),
   face: ShortText.optional(),
   facialStructure: ShortText.optional(),
   hair: ShortText.optional(),
   eyes: ShortText.optional(),
+  eyebrows: ShortText.optional(),
+  nose: ShortText.optional(),
+  lips: ShortText.optional(),
+  ears: ShortText.optional(),
+  facialHair: ShortText.optional(),
   voice: ShortText.optional(),
   movement: ShortText.optional(),
+  posture: ShortText.optional(),
   distinguishingMarks: MediumText.optional(),
+  scars: MediumText.optional(),
+  tattoos: MediumText.optional(),
+  piercings: MediumText.optional(),
+  birthmarks: MediumText.optional(),
+  uniqueFeatures: MediumText.optional(),
+  immutableTraits: z.array(ShortText).max(16).optional().default([]),
   presence: ShortText.optional(),
   fullDescription: MediumText.optional(),
   anchor: MediumText.optional(),

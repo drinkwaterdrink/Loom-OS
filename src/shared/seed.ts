@@ -7,6 +7,14 @@ function compactText(value: string, max = 240): string {
   return value.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
+function hasAppearanceEvidence(
+  appearance: LoomOSState["castMatrix"][number]["appearance"],
+): boolean {
+  return Object.values(appearance ?? {}).some((value) =>
+    Array.isArray(value) ? value.length > 0 : Boolean(value)
+  );
+}
+
 function trimJsonToBudget(value: unknown, tokenBudget: number): string {
   const serialized = JSON.stringify(value);
   const maxChars = Math.max(800, tokenBudget * 4);
@@ -46,14 +54,35 @@ export function buildStateSeedForCompiler(
       location: compactText(member.location),
       status: compactText(member.status),
       intent: compactText(member.intent),
-      appearance: modules.castCore.track && member.appearance?.species
+      appearance: modules.appearance.track && hasAppearanceEvidence(member.appearance)
         ? {
             species: member.appearance.species,
+            ageBand: member.appearance.ageBand,
+            apparentAge: member.appearance.apparentAge,
+            genderPresentation: member.appearance.genderPresentation,
             height: member.appearance.height,
+            weight: member.appearance.weight,
             build: member.appearance.build,
+            bodyType: member.appearance.bodyType,
+            frame: member.appearance.frame,
+            proportions: member.appearance.proportions,
+            silhouette: member.appearance.silhouette,
+            shoulders: member.appearance.shoulders,
+            bust: member.appearance.bust,
+            waist: member.appearance.waist,
+            hips: member.appearance.hips,
+            skin: member.appearance.skin,
+            complexion: member.appearance.complexion,
             hair: member.appearance.hair,
             eyes: member.appearance.eyes,
+            distinguishingMarks: member.appearance.distinguishingMarks,
+            scars: member.appearance.scars,
+            tattoos: member.appearance.tattoos,
+            piercings: member.appearance.piercings,
+            uniqueFeatures: member.appearance.uniqueFeatures,
+            immutableTraits: member.appearance.immutableTraits?.slice(0, 8),
             presence: member.appearance.presence,
+            anchor: member.appearance.anchor,
           }
         : undefined,
       clothing: modules.clothing.track

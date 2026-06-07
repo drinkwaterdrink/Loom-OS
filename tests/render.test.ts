@@ -136,3 +136,14 @@ test("enhanced renderContinuity renders explainer and metrics", async () => {
   assert.match(html, /loomos-continuity-risk-guardrail/);
   assert.match(html, /Do not use the east stair/);
 });
+
+test("cast dashboard renders the dedicated immutable appearance profile", async () => {
+  const state = makeState();
+  const { renderDashboard } = await import("../src/frontend/render");
+  const html = renderDashboard(state, DEFAULT_SETTINGS, "cast");
+  assert.match(html, /Immutable Appearance/);
+  assert.match(html, /Slim with subtle curves/);
+  assert.match(html, /Modest/);
+  assert.match(html, /A faint crescent scar beneath the left eye/);
+  assert.match(html, /Dark tied-back hair/);
+});

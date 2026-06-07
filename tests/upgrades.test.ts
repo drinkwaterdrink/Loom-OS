@@ -3,7 +3,6 @@ import test from "node:test";
 import { LoomOSSettingsSchema, LoomOSStateSchema } from "../src/shared/schemas";
 import { buildStateCompilerPrompt } from "../src/shared/prompts";
 import { makeState } from "./fixtures";
-import type { LoomOSSettings } from "../src/shared/types";
 
 test("core modules cannot be disabled during settings parsing", () => {
   const rawSettings = {
@@ -19,7 +18,7 @@ test("core modules cannot be disabled during settings parsing", () => {
 });
 
 test("custom presets validate and serialize in settings", () => {
-  const rawSettings: Partial<LoomOSSettings> = {
+  const rawSettings = {
     modulePreset: "custom:preset-123",
     customModulePresets: [
       {
@@ -56,6 +55,7 @@ test("custom presets validate and serialize in settings", () => {
   assert.equal(parsed.modulePreset, "custom:preset-123");
   assert.equal(parsed.customModulePresets.length, 1);
   assert.equal(parsed.customModulePresets[0]?.name, "My Custom Preset");
+  assert.equal(parsed.customModulePresets[0]?.moduleSettings.appearance.track, true);
 });
 
 test("custom modules validate and serialize in settings", () => {

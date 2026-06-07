@@ -43,6 +43,74 @@ function clampProse(text: string, maxLength = 140): string {
   `;
 }
 
+function renderAppearanceProfile(
+  appearance: LoomOSState["castMatrix"][number]["appearance"],
+): string {
+  const allFields: Array<[string, unknown]> = [
+    ["Species", appearance.species],
+    ["Age band", appearance.ageBand],
+    ["Apparent age", appearance.apparentAge],
+    ["Gender presentation", appearance.genderPresentation],
+    ["Height", appearance.height],
+    ["Weight", appearance.weight],
+    ["Build", appearance.build],
+    ["Body type", appearance.bodyType],
+    ["Frame", appearance.frame],
+    ["Proportions", appearance.proportions],
+    ["Silhouette", appearance.silhouette],
+    ["Body composition", appearance.bodyComposition],
+    ["Shoulders", appearance.shoulders],
+    ["Chest", appearance.chest],
+    ["Bust", appearance.bust],
+    ["Waist", appearance.waist],
+    ["Hips", appearance.hips],
+    ["Arms", appearance.arms],
+    ["Legs", appearance.legs],
+    ["Hands", appearance.hands],
+    ["Skin", appearance.skin],
+    ["Complexion", appearance.complexion],
+    ["Face", appearance.face],
+    ["Facial structure", appearance.facialStructure],
+    ["Hair", appearance.hair],
+    ["Eyes", appearance.eyes],
+    ["Eyebrows", appearance.eyebrows],
+    ["Nose", appearance.nose],
+    ["Lips", appearance.lips],
+    ["Ears", appearance.ears],
+    ["Facial hair", appearance.facialHair],
+    ["Posture", appearance.posture],
+    ["Movement", appearance.movement],
+    ["Voice", appearance.voice],
+    ["Distinguishing marks", appearance.distinguishingMarks],
+    ["Scars", appearance.scars],
+    ["Tattoos", appearance.tattoos],
+    ["Piercings", appearance.piercings],
+    ["Birthmarks", appearance.birthmarks],
+    ["Unique features", appearance.uniqueFeatures],
+    ["Presence", appearance.presence],
+    ["Full description", appearance.fullDescription],
+    ["Immutable anchor", appearance.anchor],
+  ];
+  const fields = allFields.filter(([, value]) => Boolean(value));
+  const immutableTraits = appearance.immutableTraits ?? [];
+  if (fields.length === 0 && immutableTraits.length === 0) return "";
+  return `
+    <details class="loomos-cast-extra">
+      <summary>Immutable Appearance</summary>
+      <div class="loomos-cast-extra-body">
+        ${fields.length > 0 ? `<dl class="loomos-facts loomos-appearance-facts">
+          ${fields.map(([label, value]) => `
+            <div><dt>${escapeHtml(label)}</dt><dd>${clampProse(String(value), 180)}</dd></div>
+          `).join("")}
+        </dl>` : ""}
+        ${immutableTraits.length > 0
+          ? `<div class="loomos-subhead">Immutable traits</div>${chips(immutableTraits)}`
+          : ""}
+      </div>
+    </details>
+  `;
+}
+
 function section(
   key: string,
   title: string,
@@ -141,6 +209,9 @@ function renderCast(state: LoomOSState, settings: LoomOSSettings): string {
       ${state.castMatrix.length === 0
         ? `<p class="loomos-muted">No cast evidence in this state.</p>`
         : state.castMatrix.map((member) => {
+            const appearanceHtml = visible(settings, "appearance")
+              ? renderAppearanceProfile(member.appearance)
+              : "";
             const hasExtra = member.pose || member.proximity || member.hands || member.visualAnchor || 
                              (visible(settings, "clothing") && member.clothingSummary) || 
                              member.goals.length > 0 || 
@@ -163,6 +234,7 @@ function renderCast(state: LoomOSState, settings: LoomOSSettings): string {
                 </div>
                 <p><strong>Intent:</strong> ${clampProse(member.intent, 100)}</p>
                 <p><strong>Status:</strong> ${clampProse(member.status, 100)}</p>
+                ${appearanceHtml}
                 
                 ${hasExtra ? `
                   <details class="loomos-cast-extra">
@@ -577,11 +649,13 @@ export function renderDashboard(
   
   if (activeTab === "cast") {
     const sections = [
-      visible(settings, "castCore") ? renderCast(state, settings) : "",
+      visible(settings, "castCore") || visible(settings, "appearance")
+        ? renderCast(state, settings)
+        : "",
     ].filter(Boolean);
     return sections.length > 0
       ? `<div class="loomos-dashboard">${sections.join("")}</div>`
-      : `<div class="loomos-empty"><h3>Cast Core display is hidden</h3><p>Enable Cast Core display in settings.</p></div>`;
+      : `<div class="loomos-empty"><h3>Cast modules are hidden</h3><p>Enable Cast Core or Immutable Appearance display in settings.</p></div>`;
   }
   
   if (activeTab === "world") {

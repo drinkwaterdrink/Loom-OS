@@ -41,6 +41,11 @@ import type {
 } from "./shared/types";
 import { createCustomModuleFromStock } from "./shared/customModuleFactory";
 import {
+  buildStateCompilerPrompt,
+  buildStockModuleContractDocument,
+  buildStockModulePromptBlock,
+} from "./shared/prompts";
+import {
   customModuleExpectedShape,
   renderCustomTemplate,
   STARTER_CUSTOM_CSS,
@@ -680,6 +685,66 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     `;
   }
 
+  function renderSchemaPromptStudio(): string {
+    const modules = getEffectiveModuleCatalog(settings);
+    return `
+      <details class="loomos-schema-studio" data-details="schema-prompt-studio">
+        <summary>
+          <span>Schema & Prompt Studio</span>
+          <small>${modules.length} stock module templates</small>
+        </summary>
+        <div class="loomos-schema-studio-body">
+          <p class="loomos-hint">These are the exact generation-facing contracts used by the compiler. Schema and compiler replacements affect prompting; the strict State V2 runtime validator remains locked for storage safety.</p>
+          <div class="loomos-bulk-actions">
+            <button type="button" class="loomos-button loomos-btn-sm" data-action="copy-schema-catalog">Copy All Module Contracts</button>
+          </div>
+          <div class="loomos-schema-module-list">
+            ${modules.map((module) => {
+              const stock = MODULE_CATALOG.find((candidate) => candidate.key === module.key)!;
+              const overridden = module.overridden;
+              const promptBlock = buildStockModulePromptBlock(module.key, settings.stockModuleOverrides);
+              return `
+                <details class="loomos-schema-module">
+                  <summary>
+                    <span>${escapeHtml(module.label)} <code>${escapeHtml(module.key)}</code></span>
+                    <span class="loomos-badge">${overridden ? "Customized" : "Stock"}</span>
+                  </summary>
+                  <div class="loomos-schema-module-body">
+                    <div>
+                      <span class="loomos-subhead">Effective generation schema</span>
+                      <pre class="loomos-contract-code">${escapeHtml(module.schemaSummary)}</pre>
+                    </div>
+                    ${module.schemaSummary !== stock.schemaSummary ? `
+                      <details class="loomos-cast-extra">
+                        <summary>Stock schema template</summary>
+                        <div class="loomos-cast-extra-body"><pre class="loomos-contract-code">${escapeHtml(stock.schemaSummary)}</pre></div>
+                      </details>
+                    ` : ""}
+                    <div>
+                      <span class="loomos-subhead">Effective compiler instruction</span>
+                      <pre class="loomos-contract-code">${escapeHtml(module.compilerInstruction)}</pre>
+                    </div>
+                    <details class="loomos-cast-extra">
+                      <summary>Exact module prompt block</summary>
+                      <div class="loomos-cast-extra-body"><pre class="loomos-contract-code">${escapeHtml(promptBlock)}</pre></div>
+                    </details>
+                    <div class="loomos-schema-actions">
+                      <button type="button" class="loomos-button loomos-btn-sm" data-stock-action="inspect" data-stock-key="${escapeHtml(module.key)}">Inspect Full Contract</button>
+                      <button type="button" class="loomos-button loomos-btn-sm" data-stock-action="edit" data-stock-key="${escapeHtml(module.key)}">Edit / Replace</button>
+                      <button type="button" class="loomos-button loomos-btn-sm" data-action="copy-module-prompt" data-schema-module="${escapeHtml(module.key)}">Copy Prompt Block</button>
+                      <button type="button" class="loomos-button loomos-btn-sm" data-action="copy-full-module-prompt" data-schema-module="${escapeHtml(module.key)}">Copy Full Generated Prompt</button>
+                      ${overridden ? `<button type="button" class="loomos-button loomos-button-danger loomos-btn-sm" data-stock-action="reset" data-stock-key="${escapeHtml(module.key)}">Reset</button>` : ""}
+                    </div>
+                  </div>
+                </details>
+              `;
+            }).join("")}
+          </div>
+        </div>
+      </details>
+    `;
+  }
+
   function hasOverride(key: string): boolean {
     const ov = settings.stockModuleOverrides?.[key];
     return ov !== undefined && Object.keys(ov).length > 0;
@@ -909,6 +974,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           <label class="loomos-field"><span>Generation timeout (seconds)</span><input class="loomos-input" type="number" min="30" max="300" step="10" data-setting="generationTimeoutSeconds" value="${settings.generationTimeoutSeconds}"></label>
           
           ${renderTokenDiagnostics()}
+          ${renderSchemaPromptStudio()}
           ${renderModuleMatrix()}
         </div>
       </details>`;
@@ -916,7 +982,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function diagnosticText(): string {
     const lines = [
-      `version: 0.1.5`,
+      `version: 0.1.6`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -1548,7 +1614,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       const entry = MODULE_CATALOG.find((m) => m.key === moduleKey);
       if (!entry) return;
       const ov = settings.stockModuleOverrides?.[moduleKey];
+      const effective = getEffectiveModuleCatalog(settings).find((m) => m.key === entry.key)!;
       const schemaStructure = MODULE_SCHEMA_STRUCTURES[moduleKey as keyof typeof MODULE_SCHEMA_STRUCTURES] || "No structure summary available.";
+      const modulePrompt = buildStockModulePromptBlock(entry.key, settings.stockModuleOverrides);
+      const fullPrompt = buildStateCompilerPrompt([entry.key], [], settings.stockModuleOverrides);
       const html = `
         <div class="loomos-root loomos-prompt-dialog" data-skin="${settings.skin}">
           <details class="loomos-cast-extra" open>
@@ -1556,12 +1625,12 @@ export function setup(ctx: SpindleFrontendContext): () => void {
             <div class="loomos-cast-extra-body" style="display:grid;gap:4px;font-size:11px;">
               <p><strong>Key:</strong> <code>${escapeHtml(entry.key)}</code></p>
               <p><strong>Stock Label:</strong> ${escapeHtml(entry.label)}</p>
-              <p><strong>Effective Label:</strong> ${escapeHtml(ov?.label || entry.label)}</p>
-              <p><strong>Group:</strong> ${escapeHtml(ov?.group || entry.group)}</p>
+              <p><strong>Effective Label:</strong> ${escapeHtml(effective.label)}</p>
+              <p><strong>Stock Group:</strong> ${escapeHtml(entry.group)} / <strong>Effective Group:</strong> ${escapeHtml(effective.group)}</p>
               <p><strong>Core:</strong> ${entry.core ? "Yes (locked)" : "No"}</p>
               <p><strong>Default Track:</strong> ${BALANCED_MODULE_SETTINGS[entry.key].track} / <strong>Default Display:</strong> ${BALANCED_MODULE_SETTINGS[entry.key].display} / <strong>Default Inject:</strong> ${BALANCED_MODULE_SETTINGS[entry.key].inject}</p>
               <p><strong>Current Track:</strong> ${settings.moduleSettings[entry.key].track} / <strong>Current Display:</strong> ${settings.moduleSettings[entry.key].display} / <strong>Current Inject:</strong> ${settings.moduleSettings[entry.key].inject}</p>
-              <p><strong>Intensity:</strong> ${ov?.intensityLabel || entry.intensity}</p>
+              <p><strong>Intensity:</strong> ${escapeHtml(effective.intensityLabel)}</p>
               ${ov ? `<p><strong style="color:#d58a42;">Overridden fields:</strong> ${Object.keys(ov).join(", ")}</p>` : ""}
             </div>
           </details>
@@ -1571,16 +1640,45 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           </details>
           ${ov?.description ? `<details class="loomos-cast-extra"><summary>Override Description</summary><div class="loomos-cast-extra-body" style="font-size:11px;"><p>${escapeHtml(ov.description)}</p></div></details>` : ""}
           <details class="loomos-cast-extra">
-            <summary>Schema / Structure</summary>
+            <summary>Runtime State V2 Structure (locked)</summary>
             <div class="loomos-cast-extra-body" style="font-size:11px;">
-              <pre style="background:var(--loomos-bg);padding:8px;border-radius:6px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;max-width:100%;font-size:10px;line-height:1.45;">${escapeHtml(schemaStructure)}</pre>
+              <p class="loomos-hint">This path is enforced by Zod and cannot be changed from settings.</p>
+              <pre class="loomos-contract-code">${escapeHtml(schemaStructure)}</pre>
               <button type="button" class="loomos-button loomos-btn-sm" data-action="copy-schema" data-copy="${escapeHtml(schemaStructure)}" style="margin-top:6px;">Copy Structure</button>
             </div>
           </details>
           <details class="loomos-cast-extra">
+            <summary>Generation Schema Template</summary>
+            <div class="loomos-cast-extra-body" style="font-size:11px;">
+              <div class="loomos-subhead">Stock</div>
+              <pre class="loomos-contract-code">${escapeHtml(entry.schemaSummary)}</pre>
+              <div class="loomos-subhead">Effective</div>
+              <pre class="loomos-contract-code">${escapeHtml(effective.schemaSummary)}</pre>
+            </div>
+          </details>
+          <details class="loomos-cast-extra">
             <summary>Compiler Instruction</summary>
-            <div class="loomos-cast-extra-body" style="font-size:11px;"><p>${escapeHtml(entry.compilerInstruction)}</p>
-            ${ov?.compilerGuidanceAddendum ? `<p><strong>Override addendum:</strong> ${escapeHtml(ov.compilerGuidanceAddendum)}</p>` : ""}</div>
+            <div class="loomos-cast-extra-body" style="font-size:11px;">
+              <div class="loomos-subhead">Stock</div>
+              <pre class="loomos-contract-code">${escapeHtml(entry.compilerInstruction)}</pre>
+              <div class="loomos-subhead">Effective</div>
+              <pre class="loomos-contract-code">${escapeHtml(effective.compilerInstruction)}</pre>
+            </div>
+          </details>
+          <details class="loomos-cast-extra">
+            <summary>Exact Module Prompt Block</summary>
+            <div class="loomos-cast-extra-body" style="font-size:11px;">
+              <textarea class="loomos-input loomos-contract-textarea" id="inspect-module-prompt" readonly>${escapeHtml(modulePrompt)}</textarea>
+              <button type="button" class="loomos-button loomos-btn-sm" data-copy-contract="inspect-module-prompt">Copy Module Prompt</button>
+            </div>
+          </details>
+          <details class="loomos-cast-extra">
+            <summary>Full Generated Compiler Prompt</summary>
+            <div class="loomos-cast-extra-body" style="font-size:11px;">
+              <p class="loomos-hint">Includes the global compiler contract, full State V2 example, shared rules, and this module's effective schema and instruction.</p>
+              <textarea class="loomos-input loomos-contract-textarea loomos-contract-textarea-full" id="inspect-full-prompt" readonly>${escapeHtml(fullPrompt)}</textarea>
+              <button type="button" class="loomos-button loomos-btn-sm" data-copy-contract="inspect-full-prompt">Copy Full Prompt</button>
+            </div>
           </details>
           <details class="loomos-cast-extra">
             <summary>Injection Behavior</summary>
@@ -1597,7 +1695,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           </div>
         </div>
       `;
-      const im = ctx.ui.showModal({ title: `Inspect: ${ov?.label || entry.label}`, width: Math.min(700, window.innerWidth - 16), maxHeight: Math.min(700, window.innerHeight - 32) });
+      const im = ctx.ui.showModal({ title: `Inspect: ${effective.label}`, width: Math.min(760, window.innerWidth - 16), maxHeight: Math.min(760, window.innerHeight - 32) });
       im.root.className = "loomos-root";
       im.root.innerHTML = html;
       im.root.querySelector("[data-action='close-inspect']")?.addEventListener("click", () => im.dismiss());
@@ -1612,6 +1710,20 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           btn.textContent = "Copy failed";
         }
       });
+      im.root.querySelectorAll<HTMLElement>("[data-copy-contract]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const id = button.dataset.copyContract;
+          const value = id
+            ? im.root.querySelector<HTMLTextAreaElement>(`#${id}`)?.value ?? ""
+            : "";
+          try {
+            await navigator.clipboard.writeText(value);
+            button.textContent = "Copied";
+          } catch {
+            button.textContent = "Copy failed";
+          }
+        });
+      });
       const dismiss = im.onDismiss(() => { dismiss(); });
       return;
     }
@@ -1625,13 +1737,16 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       em.root.className = "loomos-root";
       em.root.innerHTML = `
         <div class="loomos-prompt-dialog" data-skin="${settings.skin}">
+          <div class="loomos-note"><strong>Generation contract override:</strong> Replace the prompt-facing schema or compiler instruction here. The stored State V2 Zod schema remains locked, so replacements must still describe compatible output fields.</div>
           <label class="loomos-field"><span>Label override</span><input class="loomos-input" type="text" id="sm-label" value="${escapeHtml(ov?.label || "")}" placeholder="${escapeHtml(entry.label)}"></label>
           <label class="loomos-field"><span>Group override</span><input class="loomos-input" type="text" id="sm-group" value="${escapeHtml(ov?.group || "")}" placeholder="${escapeHtml(entry.group)}"></label>
           <label class="loomos-field"><span>Description override</span><input class="loomos-input" type="text" id="sm-desc" value="${escapeHtml(ov?.description || "")}" placeholder="${escapeHtml(entry.description)}"></label>
           <label class="loomos-field"><span>Icon/Emoji</span><input class="loomos-input" type="text" id="sm-icon" value="${escapeHtml(ov?.icon || "")}" placeholder="e.g. 🎭" maxlength="20"></label>
           <label class="loomos-field"><span>Display order</span><input class="loomos-input" type="number" id="sm-order" value="${ov?.displayOrder ?? ""}" placeholder="Auto"></label>
           <label class="loomos-field"><span>Intensity label</span><input class="loomos-input" type="text" id="sm-intensity" value="${escapeHtml(ov?.intensityLabel || "")}" placeholder="${escapeHtml(entry.intensity)}"></label>
-          <label class="loomos-field"><span>Compiler guidance addendum</span><textarea class="loomos-input" id="sm-addendum" style="height:60px;" placeholder="Extra compiler instruction for this module">${escapeHtml(ov?.compilerGuidanceAddendum || "")}</textarea></label>
+          <label class="loomos-field"><span>Generation schema replacement</span><textarea class="loomos-input loomos-contract-textarea" id="sm-schema-override" placeholder="${escapeHtml(entry.schemaSummary)}">${escapeHtml(ov?.schemaSummaryOverride || "")}</textarea></label>
+          <label class="loomos-field"><span>Compiler instruction replacement</span><textarea class="loomos-input loomos-contract-textarea" id="sm-compiler-override" placeholder="${escapeHtml(entry.compilerInstruction)}">${escapeHtml(ov?.compilerInstructionOverride || "")}</textarea></label>
+          <label class="loomos-field"><span>Additional compiler guidance</span><textarea class="loomos-input" id="sm-addendum" style="height:80px;" placeholder="Appended after the effective compiler instruction">${escapeHtml(ov?.compilerGuidanceAddendum || "")}</textarea></label>
           <label class="loomos-field"><span>Injection priority (higher = injected first)</span><input class="loomos-input" type="number" id="sm-priority" value="${ov?.injectionPriority ?? ""}" placeholder="Auto"></label>
           <label class="loomos-field"><span>Render hint</span><input class="loomos-input" type="text" id="sm-render-hint" value="${escapeHtml(ov?.renderHint || "")}" placeholder="Custom render behavior hint"></label>
           <label class="loomos-check" style="margin-top:4px;"><input type="checkbox" id="sm-hidden"${checked(ov?.hiddenFromSettings === true)}><span>Hidden from settings</span></label>
@@ -1658,6 +1773,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         if (order) { const n = parseInt(order, 10); if (!isNaN(n)) override.displayOrder = n; }
         const intensity = em.root.querySelector<HTMLInputElement>("#sm-intensity")?.value.trim();
         if (intensity) override.intensityLabel = intensity;
+        const schemaOverride = em.root.querySelector<HTMLTextAreaElement>("#sm-schema-override")?.value.trim();
+        if (schemaOverride) override.schemaSummaryOverride = schemaOverride;
+        const compilerOverride = em.root.querySelector<HTMLTextAreaElement>("#sm-compiler-override")?.value.trim();
+        if (compilerOverride) override.compilerInstructionOverride = compilerOverride;
         const addendum = em.root.querySelector<HTMLTextAreaElement>("#sm-addendum")?.value.trim();
         if (addendum) override.compilerGuidanceAddendum = addendum;
         const priority = em.root.querySelector<HTMLInputElement>("#sm-priority")?.value;
@@ -2248,6 +2367,33 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           status = "Debug report copied";
           renderAll();
         });
+      }
+      if (action === "copy-schema-catalog") {
+        const text = buildStockModuleContractDocument(settings.stockModuleOverrides);
+        void navigator.clipboard.writeText(text).then(() => {
+          status = "All stock module contracts copied";
+          renderAll();
+        }).catch(() => {
+          status = "Could not copy module contracts";
+          renderAll();
+        });
+      }
+      if (action === "copy-module-prompt" || action === "copy-full-module-prompt") {
+        const key = actionBtn.dataset.schemaModule as ModuleKey | undefined;
+        if (key && MODULE_KEYS.includes(key)) {
+          const text = action === "copy-module-prompt"
+            ? buildStockModulePromptBlock(key, settings.stockModuleOverrides)
+            : buildStateCompilerPrompt([key], [], settings.stockModuleOverrides);
+          void navigator.clipboard.writeText(text).then(() => {
+            status = action === "copy-module-prompt"
+              ? "Module prompt block copied"
+              : "Full generated compiler prompt copied";
+            renderAll();
+          }).catch(() => {
+            status = "Could not copy compiler prompt";
+            renderAll();
+          });
+        }
       }
       if (action === "clear-search") {
         const searchInput = tab.root.querySelector<HTMLInputElement>("[data-module-search]");

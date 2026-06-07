@@ -1,19 +1,18 @@
 # LoomOS Command Deck
 
-Current release: **0.1.5**
+Current release: **0.1.6**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.5
+## Key Features & Upgrades in 0.1.6
 
-- **Normalization V2 fallback path**: Compiler JSON is normalized into a complete minimum State V2 shell before strict validation. If the first output and the single repair output both remain invalid, LoomOS saves a minimal valid exact-swipe fallback state instead of leaving the tracker empty.
-- **Expanded shape repair**: Goals, pockets, relationships, impossible moves, scene items, pending consequences, banned next actions, terms, gauges, enums, world rows, tools, and custom module data are coerced where safe without inventing story facts.
-- **Stock module effective catalog**: Built-in modules now use a merged effective catalog for labels, descriptions, groups, icons, ordering, hidden state, default Display/Inject values, prompt guidance, inspector output, and duplicate-as-custom creation.
-- **Custom module schema builder**: Custom modules support typed fields (`text`, `longText`, `number`, `boolean`, `enum`, `gauge`, `chips`, `list`) with reorderable definitions, default values, enum options, min/max constraints, max item limits, display hints, and a copyable expected JSON shape.
-- **Safe HTML/CSS templates**: Custom modules can render escaped compiled data through user-authored templates. Scripts, iframes, forms, event handlers, URL attributes, inline styles, external CSS/assets, unsafe CSS URLs, fixed/sticky positioning, and z-index rules are stripped; CSS selectors are scoped to the module wrapper.
-- **Better diagnostics**: The pipeline panel shows normalization, fallback, and the first validation issues, with a copyable debug report for deeper troubleshooting.
+- **Schema & Prompt Studio**: Every built-in tracker module now has a readable contract entry showing its current generation schema, compiler instruction, exact prompt block, and full generated compiler prompt.
+- **Editable stock generation contracts**: Replace a stock module's prompt-facing schema and compiler instruction, or append additional guidance, without mutating the strict State V2 runtime validator.
+- **Immutable Appearance module**: A dedicated nineteenth stock module tracks persistent adult physical identity in depth, including hair, eyes, height, weight description, build, body type, proportions, bust/waist/hips description, facial details, marks, scars, tattoos, piercings, posture, movement, and unique features.
+- **Appearance continuity**: Physical identity is normalized, rendered, carried into previous-state seeds, and optionally included in compact injection when the Appearance Inject toggle is on.
+- **Preset compatibility**: Presets saved before `0.1.6` automatically receive the new Appearance module defaults when loaded.
 
 ---
 
@@ -26,6 +25,8 @@ LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat h
 - [What Changed Modal](#what-changed-modal)
 - [Latest-Message Tracker Widget](#latest-message-tracker-widget)
 - [Tracker Modules Catalog](#tracker-modules-catalog)
+- [Schema & Prompt Studio](#schema--prompt-studio)
+- [Immutable Appearance Module](#immutable-appearance-module)
 - [Track / Display / Inject Controls](#track--display--inject-controls)
 - [Settings Reference](#settings-reference)
 - [Theme Skins](#theme-skins)
@@ -52,7 +53,7 @@ A high-level summary block showing the current delta headline, location and time
 - **Custom Modules** — User-defined module cards rendered in their configured output mode (cards, bullets, chips, gauge, or sanitized template).
 
 ### Cast
-Full cast matrix with all tracked characters. Each card shows name, kind (POV/main/NPC/crowd), quantity, awareness level, location, emotional state, threat rating, intent, and status. A collapsible "Visuals & Pockets" section contains pose, proximity, hands, visual anchor, clothing summary, goals, relationships, pocket inventories, and stable facts. Card visibility respects per-module Display settings.
+Full cast matrix with all tracked characters. Each card shows name, kind (POV/main/NPC/crowd), quantity, awareness level, location, emotional state, threat rating, intent, and status. A dedicated **Immutable Appearance** profile presents persistent physical traits when the Appearance module is displayed. A separate "Visuals & Pockets" section contains turn-level pose, proximity, hands, visual anchor, clothing summary, goals, relationships, pocket inventories, and stable facts. Card visibility respects per-module Display settings.
 
 ### World
 Spatial and environmental state:
@@ -152,7 +153,7 @@ Each message-swipe combination gets a unique widget ID, so multiple swipes in th
 
 ## Tracker Modules Catalog
 
-LoomOS has 18 built-in modules and unlimited custom modules:
+LoomOS has 19 built-in modules and unlimited custom modules:
 
 | Group | Module Key | Description | Core (locked Track) |
 |---|---|---|---|
@@ -160,6 +161,7 @@ LoomOS has 18 built-in modules and unlimited custom modules:
 |  | `deltas` | Direct diff comparison between the previous turn and the current | ✅ |
 | **Scene** | `meters` | Tension, danger, and coherence diagnostic gauges | |
 | **Cast** | `castCore` | Core presence, status, goals, and visual anchors | ✅ |
+|  | `appearance` | Persistent physical identity, body description, facial details, marks, and immutable anchors | |
 |  | `castVisuals` | Spatial arrangement, poses, and Spotlight metrics | |
 |  | `clothing` | Grounded clothing and wardrobe continuity | |
 |  | `relationships` | Emotional standings and character alignments | |
@@ -176,6 +178,46 @@ LoomOS has 18 built-in modules and unlimited custom modules:
 | **System** | `auditLog` | Compiler steps, validation failures, and repairs | |
 
 Five continuity-critical modules are locked **Track: on** for system safety. Their Display and Inject controls remain freely configurable.
+
+---
+
+## Schema & Prompt Studio
+
+Open **Tracker Settings -> Schema & Prompt Studio** to inspect every stock module contract without reading source code. Each module entry exposes:
+
+- The effective generation schema sent to the compiler.
+- The effective compiler instruction.
+- The exact per-module prompt block.
+- The full compiler prompt containing the global rules, State V2 example, and selected module contract.
+- Copy controls for one module or the complete stock contract catalog.
+- Inspect, Edit / Replace, and Reset actions.
+
+The stock editor supports three prompt-level controls:
+
+| Control | Behavior |
+|---|---|
+| **Generation schema replacement** | Replaces the module's schema guidance shown to the LLM |
+| **Compiler instruction replacement** | Replaces the stock module instruction |
+| **Additional compiler guidance** | Appends extra rules after the effective instruction |
+
+These controls intentionally do not rewrite the runtime Zod schema. Generated output must still fit the stable State V2 fields before it can be saved. For a genuinely different data shape, duplicate a stock module as custom and use the custom Schema Builder.
+
+---
+
+## Immutable Appearance Module
+
+The `appearance` module owns `castMatrix[].appearance` and is enabled for Track and Display in the Balanced preset. Inject is off by default to conserve prompt budget.
+
+It can retain:
+
+- Identity basics: species, age band, apparent age, and gender presentation.
+- Scale and build: height, weight description, build, body type, frame, silhouette, body composition, and proportions.
+- Body shape: shoulders, chest, bust, waist, hips, arms, legs, and hands.
+- Surface and facial identity: skin, complexion, face, facial structure, hair, eyes, eyebrows, nose, lips, ears, and facial hair.
+- Distinguishing identity: scars, tattoos, piercings, birthmarks, marks, unique features, and immutable trait chips.
+- Presentation: posture, movement, voice, presence, full description, and a compact immutable anchor.
+
+Compiler safety rules keep this non-explicit and evidence-based. LoomOS does not infer exact measurements, cup sizes, numeric weight, hidden anatomy, or unsupported physical details. Unknown fields remain empty, while established traits persist through the previous-state seed until the transcript changes them.
 
 ---
 
@@ -210,6 +252,7 @@ All settings are stored in `settings.json` inside `spindle.userStorage`.
 | `connectionId` | `""` | string (max 200) | Preferred Lumiverse connection ID |
 | `modulePreset` | `"balanced"` | string | Active module preset name |
 | `moduleSettings` | (balanced defaults) | per-module object | Per-module Track/Display/Inject toggles |
+| `stockModuleOverrides` | `{}` | per-module object | Metadata plus prompt-facing schema/instruction replacements and additive guidance |
 | `customModulePresets` | `[]` | array | Saved module preset configurations |
 | `customModules` | `[]` | array | User-defined custom tracking modules |
 
@@ -273,8 +316,9 @@ When compact injection is active, LoomOS inserts state data into future generati
 3. Continuity Firewall anchors and consequences
 4. Action Resolver state
 5. Cast Core poses, intent, and goals
-6. Spatial coordinates, pocket inventory, and active countdowns
-7. Rumors, secrets, and custom modules (with budget headroom)
+6. Immutable Appearance anchors when Appearance Inject is enabled
+7. Spatial coordinates, pocket inventory, and active countdowns
+8. Rumors, secrets, and custom modules (with budget headroom)
 
 Modules with Inject disabled are excluded. The budget is checked after each priority tier, and lower-priority data is truncated if the budget is exceeded.
 
@@ -295,12 +339,26 @@ Each compiled state contains the following structure:
     "seedIdentity": { "chatId": "...", "messageId": "...", "swipeId": 0 },
     "connectionId": "..."
   },
-  "activeModules": ["sceneKernel", "deltas", "castCore"],
+  "activeModules": ["sceneKernel", "deltas", "castCore", "appearance"],
   "kernel": { "scene": "...", "location": "...", "pov": "...", "constraints": [], ... },
   "delta": { "headline": "...", "changes": [], "carriedForward": [], "newlyEstablished": [] },
   "meters": [ { "id": "tension", "label": "Tension", "value": 50, "trend": "steady", ... } ],
   "scene": { "privacy": "semi-private", "access": { "exit": "WATCHED", ... }, "items": [], ... },
-  "castMatrix": [ { "id": "mara", "name": "Mara", "kind": "pov", "pockets": [], ... } ],
+  "castMatrix": [
+    {
+      "id": "mara",
+      "name": "Mara",
+      "kind": "pov",
+      "appearance": {
+        "height": "Average",
+        "bodyType": "Slim with subtle curves",
+        "hair": "Dark, tied back",
+        "eyes": "Keen grey",
+        "immutableTraits": ["Dark tied-back hair", "Keen grey eyes"]
+      },
+      "pockets": []
+    }
+  ],
   "worldState": { "recentEnvironmentalChanges": [], "activeHazards": [], "rumors": [], ... },
   "storyState": { "threadLoom": [], "goals": [], "stakes": [], "countdowns": [], ... },
   "continuityFirewall": { "establishedFacts": [], "risks": [], "bannedNext": [], ... },

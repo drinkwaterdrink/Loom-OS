@@ -46,3 +46,25 @@ test("compact injection respects per-module inject controls", async () => {
   assert.equal(result.includes("item.Mara"), false);
   assert.match(result, /scene:/);
 });
+
+test("compact injection includes immutable appearance only when its module injects", async () => {
+  const state = makeState();
+  const count = async (text: string) => Math.ceil(text.length / 4);
+  const enabledSettings = {
+    ...DEFAULT_SETTINGS,
+    injectionTokenBudget: 1600,
+    moduleSettings: {
+      ...DEFAULT_SETTINGS.moduleSettings,
+      appearance: {
+        ...DEFAULT_SETTINGS.moduleSettings.appearance,
+        inject: true,
+      },
+    },
+  };
+  const included = await buildCompactInjection(state, enabledSettings, count);
+  assert.match(included, /appearance=/);
+  assert.match(included, /crescent scar|Slim with subtle curves|Dark, tied back/);
+
+  const excluded = await buildCompactInjection(state, DEFAULT_SETTINGS, count);
+  assert.equal(excluded.includes("appearance="), false);
+});

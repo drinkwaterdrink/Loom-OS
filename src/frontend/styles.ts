@@ -620,6 +620,87 @@ export const LOOMOS_STYLES = `
     margin: 4px 0;
   }
 
+  .loomos-schema-studio {
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    grid-column: 1 / -1;
+    overflow: hidden;
+  }
+  .loomos-schema-studio > summary,
+  .loomos-schema-module > summary {
+    align-items: center;
+    cursor: pointer;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    list-style: none;
+    padding: 10px;
+  }
+  .loomos-schema-studio > summary::-webkit-details-marker,
+  .loomos-schema-module > summary::-webkit-details-marker {
+    display: none;
+  }
+  .loomos-schema-studio > summary small {
+    color: var(--loomos-muted);
+    font-size: 10px;
+  }
+  .loomos-schema-studio-body {
+    border-top: 1px solid var(--loomos-border);
+    display: grid;
+    gap: 10px;
+    padding: 10px;
+  }
+  .loomos-schema-module-list {
+    display: grid;
+    gap: 7px;
+  }
+  .loomos-schema-module {
+    background: var(--loomos-panel);
+    border: 1px solid var(--loomos-border);
+    border-radius: 7px;
+    overflow: hidden;
+  }
+  .loomos-schema-module > summary code {
+    color: var(--loomos-muted);
+    font-size: 10px;
+    margin-left: 4px;
+  }
+  .loomos-schema-module-body {
+    border-top: 1px solid var(--loomos-border);
+    display: grid;
+    gap: 10px;
+    padding: 9px;
+  }
+  .loomos-contract-code {
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 6px;
+    font: 10px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+    margin: 5px 0 0;
+    max-height: 240px;
+    overflow: auto;
+    padding: 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .loomos-contract-textarea {
+    font: 10px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+    min-height: 130px;
+    resize: vertical;
+    width: 100%;
+  }
+  .loomos-contract-textarea-full {
+    min-height: 280px;
+  }
+  .loomos-schema-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .loomos-appearance-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .loomos-cast-extra {
     border: 1px solid var(--loomos-border);
     border-radius: 8px;
@@ -955,7 +1036,7 @@ export const LOOMOS_STYLES = `
 
   @media (max-width: 620px) {
     .loomos-root { padding: 6px; }
-    .loomos-settings-grid, .loomos-two-column, .loomos-facts, .loomos-card-grid, .loomos-meter-grid { grid-template-columns: 1fr; }
+    .loomos-settings-grid, .loomos-two-column, .loomos-facts, .loomos-card-grid, .loomos-meter-grid, .loomos-appearance-facts { grid-template-columns: 1fr; }
     .loomos-status { max-width: 100%; }
     .loomos-button { flex: 1 1 auto; }
     .loomos-stat-grid { grid-template-columns: repeat(2, 1fr); }

@@ -18,8 +18,26 @@ function xmlEscape(value: string, max = 260): string {
     .replaceAll(">", "&gt;");
 }
 
-function memberInjection(member: LoomOSState["castMatrix"][number], hasVisuals: boolean, hasClothing: boolean): string {
+function memberInjection(
+  member: LoomOSState["castMatrix"][number],
+  hasAppearance: boolean,
+  hasVisuals: boolean,
+  hasClothing: boolean,
+): string {
   let text = `cast.${xmlEscape(member.name, 80)}: ${xmlEscape(member.status)}; intent=${xmlEscape(member.intent)}; goal=${xmlEscape(member.goals[0] ?? "")}`;
+  if (hasAppearance) {
+    const appearance = member.appearance;
+    const anchor = appearance?.anchor
+      || appearance?.fullDescription
+      || [
+        appearance?.height,
+        appearance?.bodyType || appearance?.build,
+        appearance?.hair,
+        appearance?.eyes,
+        appearance?.uniqueFeatures || appearance?.distinguishingMarks,
+      ].filter(Boolean).join(", ");
+    if (anchor) text += `; appearance=${xmlEscape(anchor, 220)}`;
+  }
   if (hasVisuals) {
     text += `; pose=${xmlEscape(member.currentState?.pose ?? member.pose ?? "")}; emotion=${xmlEscape(member.currentState?.emotion ?? member.emotionalState ?? "")}`;
   }
@@ -73,12 +91,13 @@ export async function buildCompactInjection(
     );
   }
   if (enabled("castCore")) {
+    const hasAppearance = enabled("appearance");
     const hasVisuals = enabled("castVisuals") || enabled("imagePrompt");
     const hasClothing = enabled("clothing");
     fragments.push(...state.castMatrix
       .filter((member) => member.kind === "pov" || member.kind === "main" || member.spotlight.value >= 45)
       .slice(0, 6)
-      .map((member) => memberInjection(member, hasVisuals, hasClothing)));
+      .map((member) => memberInjection(member, hasAppearance, hasVisuals, hasClothing)));
   }
   if (enabled("worldSpace") && state.scene) {
     fragments.push(

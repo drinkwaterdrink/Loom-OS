@@ -10,6 +10,7 @@ var MODULE_KEYS = [
   "deltas",
   "meters",
   "castCore",
+  "appearance",
   "castVisuals",
   "clothing",
   "relationships",
@@ -75,11 +76,23 @@ var MODULE_CATALOG = [
     group: "Cast",
     core: true,
     intensity: "heavy",
-    description: "Presence, intent, status, awareness, goals, anchors, appearance, clothing, current state, uncertainty.",
-    schemaSummary: "id, name, kind, role, location, status, awareness, threat, spotlight, appearance{}, clothing{}, currentState{}, goals[], stableFacts[], continuity{}, changed, changeNote",
-    compilerInstruction: "Track all named characters appearing in the scene. Include appearance, clothing state, current pose/hands/proximity, emotional state, intent, relationships, pocket items, stable facts, and uncertainty. Mark changed=true and add changeNote when any field updates. Carry forward stable visual identity. Crowd/background groups summarized compactly.",
+    description: "Presence, identity, intent, status, awareness, goals, anchors, and uncertainty.",
+    schemaSummary: "id, name, kind, qty, role, location, status, awareness, threat, spotlight, emotionalState, intent, goals[], stableFacts[], continuity{}, changed, changeNote",
+    compilerInstruction: "Track all named characters appearing in the scene. Maintain identity, presence, role, location, status, awareness, intent, goals, stable facts, and uncertainty. Mark changed=true and add changeNote when tracked state updates. Crowd/background groups are summarized compactly.",
     injectionBehavior: "Injected as cast.Name: status; intent; goal for POV/main/high-spotlight characters. Up to 6 entries.",
     renderBehavior: "Cast tab \u2014 full character ledger with search, filters, expandable detail panels. Overview tab \u2014 compact cast cards."
+  },
+  {
+    key: "appearance",
+    label: "Immutable Appearance",
+    group: "Cast",
+    core: false,
+    intensity: "medium",
+    description: "Persistent physical identity: hair, eyes, height, weight, build, body shape, proportions, marks, and unique features.",
+    schemaSummary: "castMatrix[].appearance{species, ageBand, apparentAge, genderPresentation, height, weight, build, bodyType, frame, proportions, silhouette, bodyComposition, shoulders, chest, bust, waist, hips, arms, legs, hands, skin, complexion, face, facialStructure, hair, eyes, eyebrows, nose, lips, ears, facialHair, posture, movement, voice, distinguishingMarks, scars, tattoos, piercings, birthmarks, uniqueFeatures, immutableTraits[], presence, fullDescription, anchor}",
+    compilerInstruction: "Track grounded, persistent physical traits for adult named characters. Preserve established hair, eyes, height, weight description, build, body type, proportions, bust/waist/hips description, skin, face, marks, scars, tattoos, piercings, posture, movement, and unique features until transcript evidence changes them. Use neutral non-explicit language. Never infer exact measurements, cup sizes, weight numbers, or hidden anatomy when the transcript does not provide them. Use empty fields rather than inventing details.",
+    injectionBehavior: "When enabled, injects a compact immutable appearance anchor for important cast members. Budget-aware.",
+    renderBehavior: "Cast tab - dedicated expandable appearance profile with physical traits, proportions, identifying marks, and immutable anchors."
   },
   {
     key: "castVisuals",
@@ -258,6 +271,7 @@ var BALANCED_MODULE_SETTINGS = {
   deltas: control(true, true, true),
   meters: control(true, true, false),
   castCore: control(true, true, true),
+  appearance: control(true, true, false),
   castVisuals: control(true, true, false),
   clothing: control(true, true, false),
   relationships: control(true, true, true),
@@ -322,12 +336,14 @@ function getEffectiveModuleCatalog(settings) {
   const overrides = settings?.stockModuleOverrides ?? {};
   return MODULE_CATALOG.map((module, index) => {
     const override = overrides[module.key];
-    const compilerInstruction = override?.compilerGuidanceAddendum ? `${module.compilerInstruction} [Override: ${override.compilerGuidanceAddendum}]`.trim() : module.compilerInstruction;
+    const baseCompilerInstruction = override?.compilerInstructionOverride ?? module.compilerInstruction;
+    const compilerInstruction = override?.compilerGuidanceAddendum ? `${baseCompilerInstruction} [Additional guidance: ${override.compilerGuidanceAddendum}]`.trim() : baseCompilerInstruction;
     return {
       ...module,
       label: override?.label ?? module.label,
       description: override?.description ?? module.description,
       group: override?.group ?? module.group,
+      schemaSummary: override?.schemaSummaryOverride ?? module.schemaSummary,
       compilerInstruction,
       icon: override?.icon ?? "",
       displayOrder: override?.displayOrder ?? index * 10,
@@ -346,7 +362,8 @@ var MODULE_SCHEMA_STRUCTURES = {
   sceneKernel: "kernel.scene, kernel.location, kernel.timeframe, kernel.date, kernel.time, kernel.elapsed, kernel.weather, kernel.pov, kernel.tone, kernel.topic, kernel.theme, kernel.objective, kernel.summary, kernel.currentFocus, kernel.nextFocus, kernel.currentRisk, kernel.stopMode, kernel.stopWhy, kernel.constraints[]",
   deltas: "delta.headline, delta.changedModules[], delta.changes[{text, age, module, importance}], delta.carriedForward[], delta.newlyEstablished[]",
   meters: "meters[{id(tension|danger|socialHeat|coherence|hiddenInfo|omen), label, value 0-100, pct, band, color, trend(down|steady|up|unknown), note}]",
-  castCore: "castMatrix[{id, name, kind(pov|main|npc|crowd|background), qty, role, location, status, awareness(none|ambient|watching|alerted|hostile), threat{value 0-10, pct, band, color, note}, spotlight{value 0-100, pct, band, color, trend, note}, appearance{}, clothing{}, currentState{}, goals[], stableFacts[], pockets[], relationships[], leverage[], changed, changeNote, continuity{}}]",
+  castCore: "castMatrix[{id, name, kind(pov|main|npc|crowd|background), qty, role, location, status, awareness(none|ambient|watching|alerted|hostile), threat{value 0-10, pct, band, color, note}, spotlight{value 0-100, pct, band, color, trend, note}, emotionalState, intent, goals[], stableFacts[], changed, changeNote, continuity{}}]",
+  appearance: "castMatrix[].appearance{species, ageBand, apparentAge, genderPresentation, height, weight, build, bodyType, frame, proportions, silhouette, bodyComposition, shoulders, chest, bust, waist, hips, arms, legs, hands, skin, complexion, face, facialStructure, hair, eyes, eyebrows, nose, lips, ears, facialHair, posture, movement, voice, distinguishingMarks, scars, tattoos, piercings, birthmarks, uniqueFeatures, immutableTraits[], presence, fullDescription, anchor}",
   castVisuals: "castMatrix[].currentState{pose, proximity, leftHand, rightHand, emotion, intent, physicalTell, injury}, castMatrix[].spotlight, castMatrix[].visualAnchor",
   clothing: "castMatrix[].clothing{summary, silhouette, palette, fabric, fit, condition, notable, layerCount, layers[{slot(outer|upper|lower|feet|accessory|other), text, state, color}]}",
   relationships: "castMatrix[].relSummary, castMatrix[].relationships[{target, axis, value -100..100, pct, label, color, trend, evidence}]",
@@ -4432,13 +4449,19 @@ var ModuleSettingsSchema = external_exports.object(
     MODULE_KEYS.map((key) => [key, ModuleControlSchema])
   )
 ).strict();
+var PresetModuleSettingsSchema = external_exports.preprocess(
+  (value) => normalizeModuleSettings(
+    typeof value === "object" && value !== null ? value : void 0
+  ),
+  ModuleSettingsSchema
+);
 var CustomModulePresetSchema = external_exports.object({
   id: external_exports.string().min(1).max(160),
   name: external_exports.string().trim().min(1).max(160),
   description: external_exports.string().trim().max(500).default(""),
   createdAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
   updatedAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
-  moduleSettings: ModuleSettingsSchema
+  moduleSettings: PresetModuleSettingsSchema
 }).strict();
 var CustomModuleFieldTypeSchema = external_exports.enum([
   "text",
@@ -4544,6 +4567,8 @@ var RawSettingsSchema = external_exports.object({
       defaultDisplay: external_exports.boolean().optional(),
       defaultInject: external_exports.boolean().optional(),
       compilerGuidanceAddendum: external_exports.string().max(1e3).optional(),
+      compilerInstructionOverride: external_exports.string().max(6e3).optional(),
+      schemaSummaryOverride: external_exports.string().max(6e3).optional(),
       injectionPriority: external_exports.number().int().optional(),
       renderHint: external_exports.string().max(200).optional(),
       hiddenFromSettings: external_exports.boolean().optional()
@@ -4714,17 +4739,45 @@ var UncertaintyEntrySchema = external_exports.object({
 var AppearanceSchema = external_exports.object({
   species: ShortText.optional(),
   ageBand: ShortText.optional(),
+  apparentAge: ShortText.optional(),
   genderPresentation: ShortText.optional(),
   height: ShortText.optional(),
+  weight: ShortText.optional(),
   build: ShortText.optional(),
+  bodyType: ShortText.optional(),
+  frame: ShortText.optional(),
+  proportions: MediumText.optional(),
+  silhouette: ShortText.optional(),
+  bodyComposition: ShortText.optional(),
+  shoulders: ShortText.optional(),
+  chest: ShortText.optional(),
+  bust: ShortText.optional(),
+  waist: ShortText.optional(),
+  hips: ShortText.optional(),
+  arms: ShortText.optional(),
+  legs: ShortText.optional(),
+  hands: ShortText.optional(),
   skin: ShortText.optional(),
+  complexion: ShortText.optional(),
   face: ShortText.optional(),
   facialStructure: ShortText.optional(),
   hair: ShortText.optional(),
   eyes: ShortText.optional(),
+  eyebrows: ShortText.optional(),
+  nose: ShortText.optional(),
+  lips: ShortText.optional(),
+  ears: ShortText.optional(),
+  facialHair: ShortText.optional(),
   voice: ShortText.optional(),
   movement: ShortText.optional(),
+  posture: ShortText.optional(),
   distinguishingMarks: MediumText.optional(),
+  scars: MediumText.optional(),
+  tattoos: MediumText.optional(),
+  piercings: MediumText.optional(),
+  birthmarks: MediumText.optional(),
+  uniqueFeatures: MediumText.optional(),
+  immutableTraits: external_exports.array(ShortText).max(16).optional().default([]),
   presence: ShortText.optional(),
   fullDescription: MediumText.optional(),
   anchor: MediumText.optional()
@@ -5070,6 +5123,270 @@ function createCustomModuleFromStock(key, settings, id) {
   });
 }
 
+// src/shared/prompts.ts
+var CORE_CONTRACT = `
+Always return these top-level keys:
+- activeModules: enabled module keys actually represented
+- kernel: scene/location/time/tone/focus/objective/summary/risk/constraints
+- delta: headline, changedModules, up to 6 changes, carriedForward, newlyEstablished
+- castMatrix: compact cast records
+- storyState: goals, conflicts, threadLoom, stakes, countdowns, autonomyQueue
+- continuityFirewall: facts, anchors, consequences, offscreen state, banned/impossible next, risks
+
+Return optional module containers only through their stable top-level locations:
+- meters: diagnostic meter array
+- scene: privacy, observers, light, spatial/access/carryover/items
+- worldState: environmental changes, hazards, rumors, secrets, loaded signs
+- tools: actionResolver, dialogueState, directorStyle, closenessState, imagePrompt
+- auditLog: compact compiler audit entries
+
+For disabled optional modules use [] or null as appropriate. Never omit required
+core objects. Every object and array must match the supplied contract names.`;
+var STATE_SHAPE_GUIDE = `
+Exact JSON field contract (values below are type examples, not story facts):
+{
+  "activeModules": ["sceneKernel"],
+  "kernel": {
+    "scene": "", "location": "", "timeframe": "", "date": "", "time": "",
+    "elapsed": "", "weather": "", "pov": "", "tone": "", "topic": "",
+    "theme": "", "objective": "", "summary": "", "currentFocus": "",
+    "nextFocus": "", "currentRisk": "", "stopMode": "", "stopWhy": "",
+    "constraints": []
+  },
+  "delta": {
+    "headline": "", "changedModules": [],
+    "changes": [{"text":"","age":"","module":"deltas","importance":"medium"}],
+    "carriedForward": [], "newlyEstablished": []
+  },
+  "meters": [{
+    "id": "tension", "label": "Tension", "value": 0, "pct": "0%",
+    "band": "", "color": "", "trend": "unknown", "note": ""
+  }],
+  "scene": {
+    "privacy": "private", "observerCount": 0,
+    "observerPressure": {
+      "value": 0, "pct": "0%", "band": "", "color": "",
+      "trend": "unknown", "note": ""
+    },
+    "crowdNoise": "", "crowdFlow": "",
+    "light": {"primary":"","secondary":"","quality":"","color":""},
+    "spatial": [],
+    "access": {
+      "exit": "FREE", "lineOfSight": "", "noiseMask": "",
+      "items": [], "people": []
+    },
+    "carryover": {"body":[],"room":[],"social":[]},
+    "items": [{
+      "name":"","owner":"","location":"","condition":"","lastTouch":"",
+      "importance":"medium"
+    }]
+  },
+  "castMatrix": [{
+    "id":"","name":"","kind":"npc","qty":1,"role":"","location":"",
+    "status":"","awareness":"ambient","changed":false,
+    "threat":{"value":0,"pct":"0%","band":"","color":"","note":""},
+    "spotlight":{"value":0,"pct":"0%","band":"","color":"","trend":"unknown","note":""},
+    "appearance":{
+      "species":"","ageBand":"","apparentAge":"","genderPresentation":"",
+      "height":"","weight":"","build":"","bodyType":"","frame":"",
+      "proportions":"","silhouette":"","bodyComposition":"",
+      "shoulders":"","chest":"","bust":"","waist":"","hips":"",
+      "arms":"","legs":"","hands":"","skin":"","complexion":"",
+      "face":"","facialStructure":"","hair":"","eyes":"","eyebrows":"",
+      "nose":"","lips":"","ears":"","facialHair":"","voice":"",
+      "movement":"","posture":"","distinguishingMarks":"","scars":"",
+      "tattoos":"","piercings":"","birthmarks":"","uniqueFeatures":"",
+      "immutableTraits":[],"presence":"","fullDescription":"","anchor":""
+    },
+    "clothing":{"summary":"","layerCount":0,"layers":[]},
+    "currentState":{"pose":"","proximity":"","leftHand":"","rightHand":"","emotion":"","intent":"","injury":""},
+    "emotionalState":"","intent":"","pose":"","proximity":"","hands":"",
+    "visualAnchor":"","identitySummary":"","clothingSummary":"",
+    "goals":[],"relationships":[],"leverage":[],"pockets":[],"stableFacts":[],"continuity":{}
+  }],
+  "worldState": {
+    "recentEnvironmentalChanges":[],"activeHazards":[],
+    "rumors":[{"rumor":"","source":"","credibility":0,"pct":"0%","color":""}],
+    "secrets":[{"secret":"","visibleHint":"","knownBy":[]}],
+    "loadedSigns":[{"thing":"","plantedBy":"","payoffWhen":"","state":"LOADED","payoffHint":""}]
+  },
+  "storyState": {
+    "goals":[{"who":"","goal":"","status":"ACTIVE","note":""}],
+    "conflicts":[{"a":"","b":"","label":"","severity":1}],
+    "threadLoom":[{
+      "title":"","status":"active","urgency":0,"priority":"medium",
+      "progress":0,"pct":"0%","color":"","label":"","summary":"",
+      "nextPressure":"","participants":[]
+    }],
+    "stakes":[{"who":"","win":"","lose":""}],
+    "countdowns":[{"title":"","left":0,"unit":"","pct":"0%","color":""}],
+    "spotlightQueue":[{"name":"","turnsSince":0,"need":"okay","reason":""}],
+    "autonomyQueue":[{"who":"","action":"","unlessInterruptedBy":""}]
+  },
+  "continuityFirewall": {
+    "establishedFacts":[],"antiRetconAnchors":[],"offscreenState":[],
+    "pendingConsequences":[{"cause":"","pending":"","urgency":5,"status":"PENDING"}],
+    "bannedNext":[{"text":"","reason":"","scope":"turn","source":"compiler"}],
+    "impossibleNext":[],
+    "risks":[{"severity":"medium","issue":"","evidence":"","recommendation":""}],
+    "terms":[{"party":"","term":"","status":"UNKNOWN","binding":false}]
+  },
+  "tools": {
+    "actionResolver": {
+      "userAction":"","worldResponse":"","risk":"","blockers":[]
+    },
+    "dialogueState": {
+      "openThread":"","socialMask":"","levers":[],"taboos":[]
+    },
+    "directorStyle": {
+      "primary":"","mask":"","push":"","voiceCues":[]
+    },
+    "closenessState": {
+      "emotional":"","physical":"","consentSignals":[],"boundaries":[]
+    },
+    "imagePrompt": {
+      "aspect":"","shot":"","medium":"","subject":"","positive":"",
+      "negative":"","full":"","hint":""
+    }
+  },
+  "auditLog": [{
+    "system":"compiler","marker":"","result":"","repaired":false,"notes":""
+  }]
+}
+
+For disabled optional modules: meters=[], scene=null, worldState=null, the
+corresponding tools member=null, and auditLog=[]. Empty optional arrays inside an
+enabled object are valid. Do not emit example rows when there is no evidence.`;
+function buildStockModulePromptBlock(key, overrides = {}) {
+  const module = getEffectiveModuleCatalog({ stockModuleOverrides: overrides }).find((candidate) => candidate.key === key);
+  if (!module) return "";
+  return [
+    `- ${module.key} (${module.label}): ${module.compilerInstruction}`,
+    `  Schema: ${module.schemaSummary}`
+  ].join("\n");
+}
+function buildStockModuleContractDocument(overrides = {}) {
+  return getEffectiveModuleCatalog({ stockModuleOverrides: overrides }).map((module) => [
+    `# ${module.label} (${module.key})`,
+    `Group: ${module.group}`,
+    `Description: ${module.description}`,
+    `Schema: ${module.schemaSummary}`,
+    `Compiler instruction: ${module.compilerInstruction}`,
+    `Injection behavior: ${module.injectionBehavior}`,
+    `Render behavior: ${module.renderBehavior}`,
+    "",
+    buildStockModulePromptBlock(module.key, overrides)
+  ].join("\n")).join("\n\n");
+}
+function buildStateCompilerPrompt(enabledModules, customModules = [], overrides = {}) {
+  const enabled = getEffectiveModuleCatalog({ stockModuleOverrides: overrides }).filter((module) => enabledModules.includes(module.key)).map((module) => {
+    return buildStockModulePromptBlock(module.key, overrides);
+  }).join("\n");
+  const enabledCustom = customModules.filter((m) => m.enabled).map((m) => {
+    const fields = Object.fromEntries(m.schemaFields.map((field) => {
+      if (field.type === "number") return [field.key, field.defaultValue ?? field.min ?? 0];
+      if (field.type === "boolean") return [field.key, field.defaultValue ?? false];
+      if (field.type === "enum") return [field.key, field.defaultValue ?? field.enumOptions[0] ?? ""];
+      if (field.type === "gauge") {
+        return [field.key, {
+          value: field.defaultValue ?? field.min ?? 0,
+          pct: "0%",
+          band: "unknown",
+          color: "var(--loomos-muted)",
+          trend: "unknown",
+          note: ""
+        }];
+      }
+      if (field.type === "chips" || field.type === "list") return [field.key, []];
+      return [field.key, field.defaultValue ?? ""];
+    }));
+    return [
+      `- customModuleData[moduleId=${m.id}] (${m.label}): ${m.compilerInstruction}`,
+      `  maxItems=${m.maxItems}; outputMode=${m.outputMode}; fields=${JSON.stringify(fields)}`,
+      "  Output data only. Never output HTML, CSS, scripts, or template markup."
+    ].join("\n");
+  }).join("\n");
+  const trackingText = enabled + (enabledCustom ? "\n\nEnabled custom tracking modules:\n" + enabledCustom : "");
+  let customContract = "";
+  let customShape = "";
+  if (customModules.some((m) => m.enabled)) {
+    customContract = `
+- customModuleData: Array of compiled custom modules. For each enabled custom module, append an entry with the exact moduleId, label, a turn summary, a fields object using only its declared schema field keys, and an items array (up to its maxItems limit) containing title, text, importance (low/medium/high/critical), and optional color.`;
+    customShape = `,
+  "customModuleData": [
+    {
+      "moduleId": "custom_module_id",
+      "label": "Custom Module Label",
+      "summary": "Turn summary",
+      "fields": {},
+      "items": [
+        {
+          "title": "Item title",
+          "text": "Item text description",
+          "importance": "medium",
+          "color": "#ff0000"
+        }
+      ]
+    }
+  ]`;
+  }
+  const coreContractWithCustom = CORE_CONTRACT + customContract;
+  const appearanceRules = enabledModules.includes("appearance") ? `
+- For each named adult character, populate grounded appearance fields when transcript or seed evidence exists.
+- Treat appearance as persistent identity state. Carry it forward unchanged unless the transcript explicitly changes it.
+- Track hair, eyes, height, weight description, build, bodyType, frame, proportions, silhouette, shoulders, chest, bust, waist, hips, limbs, hands, skin, face, marks, scars, tattoos, piercings, posture, movement, voice, unique features, and immutableTraits when known.
+- Use neutral, non-explicit physical language. Never infer exact measurements, cup sizes, weight numbers, hidden anatomy, or other unsupported details.
+- Use empty strings and arrays for unknown appearance fields. Never reset established appearance each turn.` : `
+- Appearance tracking is disabled. Preserve an empty appearance object and do not invent new physical traits.`;
+  const closingBraceIdx = STATE_SHAPE_GUIDE.lastIndexOf("}");
+  const shapeGuideWithCustom = STATE_SHAPE_GUIDE.substring(0, closingBraceIdx) + customShape + "\n}";
+  return `You are LoomOS, a strict story-state compiler.
+
+Analyze only the supplied identity, previous state seed, and transcript.
+Do not continue the story. Do not roleplay. Do not address the user.
+Return exactly one JSON object with no Markdown fences or commentary.
+
+Enabled tracking modules:
+${trackingText}
+
+${coreContractWithCustom}
+
+${shapeGuideWithCustom}
+
+Rules:
+- Ground every claim in the transcript or previous seed.
+- The previous seed is continuity context, never proof that the target swipe already has state.
+- Compare the seed with the newest transcript evidence and produce real delta fields.
+- Carry stable facts forward unless the transcript explicitly changes them.
+- Never invent changes to location, identity, clothing, injuries, ownership, relationships, or offscreen state.
+- Use empty arrays and compact empty strings when evidence is absent.
+- Respect all array limits. Keep prose compact and operational.
+- Precompute pct, label/band, color, and trend fields wherever the contract asks for them.
+- Meters diagnose current state only. They never command escalation.
+- Keep character tracking non-explicit. When age is unspecified, treat characters as adults and never output minors.
+- Do not reveal hidden chain-of-thought. Secrets are reader-visible dramatic state only.
+- activeModules must contain only enabled module keys.
+- For custom modules, output structured data only. The user-authored renderer owns HTML and CSS.
+- Respect each custom schema field key, type, enum options, required flag, numeric range, and maxItems.
+- Empty schema defaults are valid when the transcript has no evidence.
+- Use numeric ranges exactly as named: percentages 0-100, threat/observer pressure 0-10, urgency 0-5, conflict severity 1-3.
+
+Character depth rules:
+${appearanceRules}
+- Clothing persists until transcript explicitly shows change. Track layers (outer/upper/lower/feet/accessory). Mark clothing.changed=true when clothing updates.
+- Update currentState (pose, proximity, leftHand, rightHand, emotion, intent, physicalTell, injury) from latest transcript actions and descriptions.
+- Relationships: use axis labels (Trust, Fear, Attraction, Rivalry, Loyalty, Debt). Value -100 (hostile) to 100 (devoted). Include evidence for changes.
+- Spot trends (up/down/steady) on relationship values.
+- Set changed=true and add changeNote whenever a character's location, clothing, inventory, pose, emotional state, awareness, relationship, or intent changes from the previous turn.
+- Uncertainty: log claims that are not yet fully confirmed with confidence 0-10 and appropriate label.
+- Crowd/background groups: summarize compactly with qty. Do not over-individualize.
+- Never output explicit anatomical details. Focus on grounded, useful continuity.
+- When age is unspecified, assume adult. Never output minors.
+- Spotlight queue: track turnsSince each named character last had narrative focus. Use need: active/soon/okay/quiet/background.
+- Character-level castMatrix[].goals are always compact strings. Structured goals with who/goal/status/note fields belong only in storyState.goals.
+`;
+}
+
 // src/shared/customTemplates.ts
 var STARTER_CUSTOM_HTML = `<div class="cmod-card">
   <div class="cmod-title">{{label}}</div>
@@ -5231,6 +5548,69 @@ function clampProse(text, maxLength = 140) {
     </span>
   `;
 }
+function renderAppearanceProfile(appearance) {
+  const allFields = [
+    ["Species", appearance.species],
+    ["Age band", appearance.ageBand],
+    ["Apparent age", appearance.apparentAge],
+    ["Gender presentation", appearance.genderPresentation],
+    ["Height", appearance.height],
+    ["Weight", appearance.weight],
+    ["Build", appearance.build],
+    ["Body type", appearance.bodyType],
+    ["Frame", appearance.frame],
+    ["Proportions", appearance.proportions],
+    ["Silhouette", appearance.silhouette],
+    ["Body composition", appearance.bodyComposition],
+    ["Shoulders", appearance.shoulders],
+    ["Chest", appearance.chest],
+    ["Bust", appearance.bust],
+    ["Waist", appearance.waist],
+    ["Hips", appearance.hips],
+    ["Arms", appearance.arms],
+    ["Legs", appearance.legs],
+    ["Hands", appearance.hands],
+    ["Skin", appearance.skin],
+    ["Complexion", appearance.complexion],
+    ["Face", appearance.face],
+    ["Facial structure", appearance.facialStructure],
+    ["Hair", appearance.hair],
+    ["Eyes", appearance.eyes],
+    ["Eyebrows", appearance.eyebrows],
+    ["Nose", appearance.nose],
+    ["Lips", appearance.lips],
+    ["Ears", appearance.ears],
+    ["Facial hair", appearance.facialHair],
+    ["Posture", appearance.posture],
+    ["Movement", appearance.movement],
+    ["Voice", appearance.voice],
+    ["Distinguishing marks", appearance.distinguishingMarks],
+    ["Scars", appearance.scars],
+    ["Tattoos", appearance.tattoos],
+    ["Piercings", appearance.piercings],
+    ["Birthmarks", appearance.birthmarks],
+    ["Unique features", appearance.uniqueFeatures],
+    ["Presence", appearance.presence],
+    ["Full description", appearance.fullDescription],
+    ["Immutable anchor", appearance.anchor]
+  ];
+  const fields = allFields.filter(([, value]) => Boolean(value));
+  const immutableTraits = appearance.immutableTraits ?? [];
+  if (fields.length === 0 && immutableTraits.length === 0) return "";
+  return `
+    <details class="loomos-cast-extra">
+      <summary>Immutable Appearance</summary>
+      <div class="loomos-cast-extra-body">
+        ${fields.length > 0 ? `<dl class="loomos-facts loomos-appearance-facts">
+          ${fields.map(([label, value]) => `
+            <div><dt>${escapeHtml(label)}</dt><dd>${clampProse(String(value), 180)}</dd></div>
+          `).join("")}
+        </dl>` : ""}
+        ${immutableTraits.length > 0 ? `<div class="loomos-subhead">Immutable traits</div>${chips(immutableTraits)}` : ""}
+      </div>
+    </details>
+  `;
+}
 function section(key, title, summary, body, open = false) {
   return `
     <details class="loomos-section" data-section="${escapeHtml(key)}"${open ? " open" : ""}>
@@ -5313,6 +5693,7 @@ function renderCast(state, settings) {
   return section("cast", "Cast Matrix", `${state.castMatrix.length} tracked`, `
     <div class="loomos-list">
       ${state.castMatrix.length === 0 ? `<p class="loomos-muted">No cast evidence in this state.</p>` : state.castMatrix.map((member) => {
+    const appearanceHtml = visible(settings, "appearance") ? renderAppearanceProfile(member.appearance) : "";
     const hasExtra = member.pose || member.proximity || member.hands || member.visualAnchor || visible(settings, "clothing") && member.clothingSummary || member.goals.length > 0 || visible(settings, "relationships") && member.relationships.length > 0 || visible(settings, "inventory") && member.pockets.length > 0 || member.stableFacts.length > 0;
     return `
               <article class="loomos-card">
@@ -5330,6 +5711,7 @@ function renderCast(state, settings) {
                 </div>
                 <p><strong>Intent:</strong> ${clampProse(member.intent, 100)}</p>
                 <p><strong>Status:</strong> ${clampProse(member.status, 100)}</p>
+                ${appearanceHtml}
                 
                 ${hasExtra ? `
                   <details class="loomos-cast-extra">
@@ -5700,9 +6082,9 @@ function renderDashboard(state, settings, activeTab = "overview") {
   }
   if (activeTab === "cast") {
     const sections = [
-      visible(settings, "castCore") ? renderCast(state, settings) : ""
+      visible(settings, "castCore") || visible(settings, "appearance") ? renderCast(state, settings) : ""
     ].filter(Boolean);
-    return sections.length > 0 ? `<div class="loomos-dashboard">${sections.join("")}</div>` : `<div class="loomos-empty"><h3>Cast Core display is hidden</h3><p>Enable Cast Core display in settings.</p></div>`;
+    return sections.length > 0 ? `<div class="loomos-dashboard">${sections.join("")}</div>` : `<div class="loomos-empty"><h3>Cast modules are hidden</h3><p>Enable Cast Core or Immutable Appearance display in settings.</p></div>`;
   }
   if (activeTab === "world") {
     const sections = [
@@ -6492,6 +6874,87 @@ var LOOMOS_STYLES = `
     margin: 4px 0;
   }
 
+  .loomos-schema-studio {
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    grid-column: 1 / -1;
+    overflow: hidden;
+  }
+  .loomos-schema-studio > summary,
+  .loomos-schema-module > summary {
+    align-items: center;
+    cursor: pointer;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    list-style: none;
+    padding: 10px;
+  }
+  .loomos-schema-studio > summary::-webkit-details-marker,
+  .loomos-schema-module > summary::-webkit-details-marker {
+    display: none;
+  }
+  .loomos-schema-studio > summary small {
+    color: var(--loomos-muted);
+    font-size: 10px;
+  }
+  .loomos-schema-studio-body {
+    border-top: 1px solid var(--loomos-border);
+    display: grid;
+    gap: 10px;
+    padding: 10px;
+  }
+  .loomos-schema-module-list {
+    display: grid;
+    gap: 7px;
+  }
+  .loomos-schema-module {
+    background: var(--loomos-panel);
+    border: 1px solid var(--loomos-border);
+    border-radius: 7px;
+    overflow: hidden;
+  }
+  .loomos-schema-module > summary code {
+    color: var(--loomos-muted);
+    font-size: 10px;
+    margin-left: 4px;
+  }
+  .loomos-schema-module-body {
+    border-top: 1px solid var(--loomos-border);
+    display: grid;
+    gap: 10px;
+    padding: 9px;
+  }
+  .loomos-contract-code {
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 6px;
+    font: 10px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+    margin: 5px 0 0;
+    max-height: 240px;
+    overflow: auto;
+    padding: 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .loomos-contract-textarea {
+    font: 10px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+    min-height: 130px;
+    resize: vertical;
+    width: 100%;
+  }
+  .loomos-contract-textarea-full {
+    min-height: 280px;
+  }
+  .loomos-schema-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .loomos-appearance-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .loomos-cast-extra {
     border: 1px solid var(--loomos-border);
     border-radius: 8px;
@@ -6827,7 +7290,7 @@ var LOOMOS_STYLES = `
 
   @media (max-width: 620px) {
     .loomos-root { padding: 6px; }
-    .loomos-settings-grid, .loomos-two-column, .loomos-facts, .loomos-card-grid, .loomos-meter-grid { grid-template-columns: 1fr; }
+    .loomos-settings-grid, .loomos-two-column, .loomos-facts, .loomos-card-grid, .loomos-meter-grid, .loomos-appearance-facts { grid-template-columns: 1fr; }
     .loomos-status { max-width: 100%; }
     .loomos-button { flex: 1 1 auto; }
     .loomos-stat-grid { grid-template-columns: repeat(2, 1fr); }
@@ -7581,6 +8044,65 @@ function setup(ctx) {
       </div>
     `;
   }
+  function renderSchemaPromptStudio() {
+    const modules = getEffectiveModuleCatalog(settings);
+    return `
+      <details class="loomos-schema-studio" data-details="schema-prompt-studio">
+        <summary>
+          <span>Schema & Prompt Studio</span>
+          <small>${modules.length} stock module templates</small>
+        </summary>
+        <div class="loomos-schema-studio-body">
+          <p class="loomos-hint">These are the exact generation-facing contracts used by the compiler. Schema and compiler replacements affect prompting; the strict State V2 runtime validator remains locked for storage safety.</p>
+          <div class="loomos-bulk-actions">
+            <button type="button" class="loomos-button loomos-btn-sm" data-action="copy-schema-catalog">Copy All Module Contracts</button>
+          </div>
+          <div class="loomos-schema-module-list">
+            ${modules.map((module) => {
+      const stock = MODULE_CATALOG.find((candidate) => candidate.key === module.key);
+      const overridden = module.overridden;
+      const promptBlock = buildStockModulePromptBlock(module.key, settings.stockModuleOverrides);
+      return `
+                <details class="loomos-schema-module">
+                  <summary>
+                    <span>${escapeHtml(module.label)} <code>${escapeHtml(module.key)}</code></span>
+                    <span class="loomos-badge">${overridden ? "Customized" : "Stock"}</span>
+                  </summary>
+                  <div class="loomos-schema-module-body">
+                    <div>
+                      <span class="loomos-subhead">Effective generation schema</span>
+                      <pre class="loomos-contract-code">${escapeHtml(module.schemaSummary)}</pre>
+                    </div>
+                    ${module.schemaSummary !== stock.schemaSummary ? `
+                      <details class="loomos-cast-extra">
+                        <summary>Stock schema template</summary>
+                        <div class="loomos-cast-extra-body"><pre class="loomos-contract-code">${escapeHtml(stock.schemaSummary)}</pre></div>
+                      </details>
+                    ` : ""}
+                    <div>
+                      <span class="loomos-subhead">Effective compiler instruction</span>
+                      <pre class="loomos-contract-code">${escapeHtml(module.compilerInstruction)}</pre>
+                    </div>
+                    <details class="loomos-cast-extra">
+                      <summary>Exact module prompt block</summary>
+                      <div class="loomos-cast-extra-body"><pre class="loomos-contract-code">${escapeHtml(promptBlock)}</pre></div>
+                    </details>
+                    <div class="loomos-schema-actions">
+                      <button type="button" class="loomos-button loomos-btn-sm" data-stock-action="inspect" data-stock-key="${escapeHtml(module.key)}">Inspect Full Contract</button>
+                      <button type="button" class="loomos-button loomos-btn-sm" data-stock-action="edit" data-stock-key="${escapeHtml(module.key)}">Edit / Replace</button>
+                      <button type="button" class="loomos-button loomos-btn-sm" data-action="copy-module-prompt" data-schema-module="${escapeHtml(module.key)}">Copy Prompt Block</button>
+                      <button type="button" class="loomos-button loomos-btn-sm" data-action="copy-full-module-prompt" data-schema-module="${escapeHtml(module.key)}">Copy Full Generated Prompt</button>
+                      ${overridden ? `<button type="button" class="loomos-button loomos-button-danger loomos-btn-sm" data-stock-action="reset" data-stock-key="${escapeHtml(module.key)}">Reset</button>` : ""}
+                    </div>
+                  </div>
+                </details>
+              `;
+    }).join("")}
+          </div>
+        </div>
+      </details>
+    `;
+  }
   function hasOverride(key) {
     const ov = settings.stockModuleOverrides?.[key];
     return ov !== void 0 && Object.keys(ov).length > 0;
@@ -7791,13 +8313,14 @@ function setup(ctx) {
           <label class="loomos-field"><span>Generation timeout (seconds)</span><input class="loomos-input" type="number" min="30" max="300" step="10" data-setting="generationTimeoutSeconds" value="${settings.generationTimeoutSeconds}"></label>
           
           ${renderTokenDiagnostics()}
+          ${renderSchemaPromptStudio()}
           ${renderModuleMatrix()}
         </div>
       </details>`;
   }
   function diagnosticText() {
     const lines = [
-      `version: 0.1.5`,
+      `version: 0.1.6`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -8359,7 +8882,10 @@ function setup(ctx) {
       const entry = MODULE_CATALOG.find((m) => m.key === moduleKey);
       if (!entry) return;
       const ov = settings.stockModuleOverrides?.[moduleKey];
+      const effective = getEffectiveModuleCatalog(settings).find((m) => m.key === entry.key);
       const schemaStructure = MODULE_SCHEMA_STRUCTURES[moduleKey] || "No structure summary available.";
+      const modulePrompt = buildStockModulePromptBlock(entry.key, settings.stockModuleOverrides);
+      const fullPrompt = buildStateCompilerPrompt([entry.key], [], settings.stockModuleOverrides);
       const html = `
         <div class="loomos-root loomos-prompt-dialog" data-skin="${settings.skin}">
           <details class="loomos-cast-extra" open>
@@ -8367,12 +8893,12 @@ function setup(ctx) {
             <div class="loomos-cast-extra-body" style="display:grid;gap:4px;font-size:11px;">
               <p><strong>Key:</strong> <code>${escapeHtml(entry.key)}</code></p>
               <p><strong>Stock Label:</strong> ${escapeHtml(entry.label)}</p>
-              <p><strong>Effective Label:</strong> ${escapeHtml(ov?.label || entry.label)}</p>
-              <p><strong>Group:</strong> ${escapeHtml(ov?.group || entry.group)}</p>
+              <p><strong>Effective Label:</strong> ${escapeHtml(effective.label)}</p>
+              <p><strong>Stock Group:</strong> ${escapeHtml(entry.group)} / <strong>Effective Group:</strong> ${escapeHtml(effective.group)}</p>
               <p><strong>Core:</strong> ${entry.core ? "Yes (locked)" : "No"}</p>
               <p><strong>Default Track:</strong> ${BALANCED_MODULE_SETTINGS[entry.key].track} / <strong>Default Display:</strong> ${BALANCED_MODULE_SETTINGS[entry.key].display} / <strong>Default Inject:</strong> ${BALANCED_MODULE_SETTINGS[entry.key].inject}</p>
               <p><strong>Current Track:</strong> ${settings.moduleSettings[entry.key].track} / <strong>Current Display:</strong> ${settings.moduleSettings[entry.key].display} / <strong>Current Inject:</strong> ${settings.moduleSettings[entry.key].inject}</p>
-              <p><strong>Intensity:</strong> ${ov?.intensityLabel || entry.intensity}</p>
+              <p><strong>Intensity:</strong> ${escapeHtml(effective.intensityLabel)}</p>
               ${ov ? `<p><strong style="color:#d58a42;">Overridden fields:</strong> ${Object.keys(ov).join(", ")}</p>` : ""}
             </div>
           </details>
@@ -8382,16 +8908,45 @@ function setup(ctx) {
           </details>
           ${ov?.description ? `<details class="loomos-cast-extra"><summary>Override Description</summary><div class="loomos-cast-extra-body" style="font-size:11px;"><p>${escapeHtml(ov.description)}</p></div></details>` : ""}
           <details class="loomos-cast-extra">
-            <summary>Schema / Structure</summary>
+            <summary>Runtime State V2 Structure (locked)</summary>
             <div class="loomos-cast-extra-body" style="font-size:11px;">
-              <pre style="background:var(--loomos-bg);padding:8px;border-radius:6px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;max-width:100%;font-size:10px;line-height:1.45;">${escapeHtml(schemaStructure)}</pre>
+              <p class="loomos-hint">This path is enforced by Zod and cannot be changed from settings.</p>
+              <pre class="loomos-contract-code">${escapeHtml(schemaStructure)}</pre>
               <button type="button" class="loomos-button loomos-btn-sm" data-action="copy-schema" data-copy="${escapeHtml(schemaStructure)}" style="margin-top:6px;">Copy Structure</button>
             </div>
           </details>
           <details class="loomos-cast-extra">
+            <summary>Generation Schema Template</summary>
+            <div class="loomos-cast-extra-body" style="font-size:11px;">
+              <div class="loomos-subhead">Stock</div>
+              <pre class="loomos-contract-code">${escapeHtml(entry.schemaSummary)}</pre>
+              <div class="loomos-subhead">Effective</div>
+              <pre class="loomos-contract-code">${escapeHtml(effective.schemaSummary)}</pre>
+            </div>
+          </details>
+          <details class="loomos-cast-extra">
             <summary>Compiler Instruction</summary>
-            <div class="loomos-cast-extra-body" style="font-size:11px;"><p>${escapeHtml(entry.compilerInstruction)}</p>
-            ${ov?.compilerGuidanceAddendum ? `<p><strong>Override addendum:</strong> ${escapeHtml(ov.compilerGuidanceAddendum)}</p>` : ""}</div>
+            <div class="loomos-cast-extra-body" style="font-size:11px;">
+              <div class="loomos-subhead">Stock</div>
+              <pre class="loomos-contract-code">${escapeHtml(entry.compilerInstruction)}</pre>
+              <div class="loomos-subhead">Effective</div>
+              <pre class="loomos-contract-code">${escapeHtml(effective.compilerInstruction)}</pre>
+            </div>
+          </details>
+          <details class="loomos-cast-extra">
+            <summary>Exact Module Prompt Block</summary>
+            <div class="loomos-cast-extra-body" style="font-size:11px;">
+              <textarea class="loomos-input loomos-contract-textarea" id="inspect-module-prompt" readonly>${escapeHtml(modulePrompt)}</textarea>
+              <button type="button" class="loomos-button loomos-btn-sm" data-copy-contract="inspect-module-prompt">Copy Module Prompt</button>
+            </div>
+          </details>
+          <details class="loomos-cast-extra">
+            <summary>Full Generated Compiler Prompt</summary>
+            <div class="loomos-cast-extra-body" style="font-size:11px;">
+              <p class="loomos-hint">Includes the global compiler contract, full State V2 example, shared rules, and this module's effective schema and instruction.</p>
+              <textarea class="loomos-input loomos-contract-textarea loomos-contract-textarea-full" id="inspect-full-prompt" readonly>${escapeHtml(fullPrompt)}</textarea>
+              <button type="button" class="loomos-button loomos-btn-sm" data-copy-contract="inspect-full-prompt">Copy Full Prompt</button>
+            </div>
           </details>
           <details class="loomos-cast-extra">
             <summary>Injection Behavior</summary>
@@ -8408,7 +8963,7 @@ function setup(ctx) {
           </div>
         </div>
       `;
-      const im = ctx.ui.showModal({ title: `Inspect: ${ov?.label || entry.label}`, width: Math.min(700, window.innerWidth - 16), maxHeight: Math.min(700, window.innerHeight - 32) });
+      const im = ctx.ui.showModal({ title: `Inspect: ${effective.label}`, width: Math.min(760, window.innerWidth - 16), maxHeight: Math.min(760, window.innerHeight - 32) });
       im.root.className = "loomos-root";
       im.root.innerHTML = html;
       im.root.querySelector("[data-action='close-inspect']")?.addEventListener("click", () => im.dismiss());
@@ -8425,6 +8980,18 @@ function setup(ctx) {
           btn.textContent = "Copy failed";
         }
       });
+      im.root.querySelectorAll("[data-copy-contract]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const id = button.dataset.copyContract;
+          const value = id ? im.root.querySelector(`#${id}`)?.value ?? "" : "";
+          try {
+            await navigator.clipboard.writeText(value);
+            button.textContent = "Copied";
+          } catch {
+            button.textContent = "Copy failed";
+          }
+        });
+      });
       const dismiss = im.onDismiss(() => {
         dismiss();
       });
@@ -8438,13 +9005,16 @@ function setup(ctx) {
       em.root.className = "loomos-root";
       em.root.innerHTML = `
         <div class="loomos-prompt-dialog" data-skin="${settings.skin}">
+          <div class="loomos-note"><strong>Generation contract override:</strong> Replace the prompt-facing schema or compiler instruction here. The stored State V2 Zod schema remains locked, so replacements must still describe compatible output fields.</div>
           <label class="loomos-field"><span>Label override</span><input class="loomos-input" type="text" id="sm-label" value="${escapeHtml(ov?.label || "")}" placeholder="${escapeHtml(entry.label)}"></label>
           <label class="loomos-field"><span>Group override</span><input class="loomos-input" type="text" id="sm-group" value="${escapeHtml(ov?.group || "")}" placeholder="${escapeHtml(entry.group)}"></label>
           <label class="loomos-field"><span>Description override</span><input class="loomos-input" type="text" id="sm-desc" value="${escapeHtml(ov?.description || "")}" placeholder="${escapeHtml(entry.description)}"></label>
           <label class="loomos-field"><span>Icon/Emoji</span><input class="loomos-input" type="text" id="sm-icon" value="${escapeHtml(ov?.icon || "")}" placeholder="e.g. \u{1F3AD}" maxlength="20"></label>
           <label class="loomos-field"><span>Display order</span><input class="loomos-input" type="number" id="sm-order" value="${ov?.displayOrder ?? ""}" placeholder="Auto"></label>
           <label class="loomos-field"><span>Intensity label</span><input class="loomos-input" type="text" id="sm-intensity" value="${escapeHtml(ov?.intensityLabel || "")}" placeholder="${escapeHtml(entry.intensity)}"></label>
-          <label class="loomos-field"><span>Compiler guidance addendum</span><textarea class="loomos-input" id="sm-addendum" style="height:60px;" placeholder="Extra compiler instruction for this module">${escapeHtml(ov?.compilerGuidanceAddendum || "")}</textarea></label>
+          <label class="loomos-field"><span>Generation schema replacement</span><textarea class="loomos-input loomos-contract-textarea" id="sm-schema-override" placeholder="${escapeHtml(entry.schemaSummary)}">${escapeHtml(ov?.schemaSummaryOverride || "")}</textarea></label>
+          <label class="loomos-field"><span>Compiler instruction replacement</span><textarea class="loomos-input loomos-contract-textarea" id="sm-compiler-override" placeholder="${escapeHtml(entry.compilerInstruction)}">${escapeHtml(ov?.compilerInstructionOverride || "")}</textarea></label>
+          <label class="loomos-field"><span>Additional compiler guidance</span><textarea class="loomos-input" id="sm-addendum" style="height:80px;" placeholder="Appended after the effective compiler instruction">${escapeHtml(ov?.compilerGuidanceAddendum || "")}</textarea></label>
           <label class="loomos-field"><span>Injection priority (higher = injected first)</span><input class="loomos-input" type="number" id="sm-priority" value="${ov?.injectionPriority ?? ""}" placeholder="Auto"></label>
           <label class="loomos-field"><span>Render hint</span><input class="loomos-input" type="text" id="sm-render-hint" value="${escapeHtml(ov?.renderHint || "")}" placeholder="Custom render behavior hint"></label>
           <label class="loomos-check" style="margin-top:4px;"><input type="checkbox" id="sm-hidden"${checked(ov?.hiddenFromSettings === true)}><span>Hidden from settings</span></label>
@@ -8473,6 +9043,10 @@ function setup(ctx) {
         }
         const intensity = em.root.querySelector("#sm-intensity")?.value.trim();
         if (intensity) override.intensityLabel = intensity;
+        const schemaOverride = em.root.querySelector("#sm-schema-override")?.value.trim();
+        if (schemaOverride) override.schemaSummaryOverride = schemaOverride;
+        const compilerOverride = em.root.querySelector("#sm-compiler-override")?.value.trim();
+        if (compilerOverride) override.compilerInstructionOverride = compilerOverride;
         const addendum = em.root.querySelector("#sm-addendum")?.value.trim();
         if (addendum) override.compilerGuidanceAddendum = addendum;
         const priority = em.root.querySelector("#sm-priority")?.value;
@@ -9029,6 +9603,29 @@ ${draft.cssTemplate}`);
           status = "Debug report copied";
           renderAll();
         });
+      }
+      if (action === "copy-schema-catalog") {
+        const text = buildStockModuleContractDocument(settings.stockModuleOverrides);
+        void navigator.clipboard.writeText(text).then(() => {
+          status = "All stock module contracts copied";
+          renderAll();
+        }).catch(() => {
+          status = "Could not copy module contracts";
+          renderAll();
+        });
+      }
+      if (action === "copy-module-prompt" || action === "copy-full-module-prompt") {
+        const key = actionBtn.dataset.schemaModule;
+        if (key && MODULE_KEYS.includes(key)) {
+          const text = action === "copy-module-prompt" ? buildStockModulePromptBlock(key, settings.stockModuleOverrides) : buildStateCompilerPrompt([key], [], settings.stockModuleOverrides);
+          void navigator.clipboard.writeText(text).then(() => {
+            status = action === "copy-module-prompt" ? "Module prompt block copied" : "Full generated compiler prompt copied";
+            renderAll();
+          }).catch(() => {
+            status = "Could not copy compiler prompt";
+            renderAll();
+          });
+        }
       }
       if (action === "clear-search") {
         const searchInput = tab.root.querySelector("[data-module-search]");

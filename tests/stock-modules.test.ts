@@ -4,7 +4,11 @@ import test from "node:test";
 import {
   getEffectiveModuleCatalog,
 } from "../src/shared/modules";
-import { buildStateCompilerPrompt } from "../src/shared/prompts";
+import {
+  buildStateCompilerPrompt,
+  buildStockModuleContractDocument,
+  buildStockModulePromptBlock,
+} from "../src/shared/prompts";
 import { DEFAULT_SETTINGS, LoomOSSettingsSchema } from "../src/shared/schemas";
 import { createCustomModuleFromStock } from "../src/shared/customModuleFactory";
 
@@ -40,6 +44,37 @@ test("stock compiler guidance override reaches the compiler prompt", () => {
   assert.match(prompt, /Track the locked vault door/);
 });
 
+test("stock schema and compiler replacements become the effective generation contract", () => {
+  const overrides = {
+    appearance: {
+      schemaSummaryOverride: "castMatrix[].appearance{hair, eyes, immutableTraits[]}",
+      compilerInstructionOverride: "Track only transcript-confirmed immutable physical traits.",
+      compilerGuidanceAddendum: "Preserve the existing visual anchor.",
+    },
+  };
+  const effective = getEffectiveModuleCatalog({ stockModuleOverrides: overrides })
+    .find((module) => module.key === "appearance")!;
+  assert.equal(effective.schemaSummary, overrides.appearance.schemaSummaryOverride);
+  assert.match(effective.compilerInstruction, /Track only transcript-confirmed/);
+  assert.match(effective.compilerInstruction, /Preserve the existing visual anchor/);
+
+  const block = buildStockModulePromptBlock("appearance", overrides);
+  assert.match(block, /immutableTraits/);
+  assert.match(block, /Track only transcript-confirmed/);
+
+  const fullPrompt = buildStateCompilerPrompt(["castCore", "appearance"], [], overrides);
+  assert.match(fullPrompt, /Never infer exact measurements/);
+  assert.match(fullPrompt, /immutableTraits/);
+});
+
+test("stock module contract document exposes every current module template", () => {
+  const document = buildStockModuleContractDocument();
+  assert.match(document, /Immutable Appearance \(appearance\)/);
+  assert.match(document, /Generation schema|Schema:/);
+  assert.match(document, /Injection behavior:/);
+  assert.match(document, /Render behavior:/);
+});
+
 test("duplicate stock as custom creates a valid independent custom module", () => {
   const settings = LoomOSSettingsSchema.parse({
     stockModuleOverrides: {
@@ -65,6 +100,10 @@ test("frontend renders stock actions and editor/inspector handlers", async () =>
   }
   assert.match(source, /Copy Structure/);
   assert.match(source, /Save Override/);
+  assert.match(source, /Schema & Prompt Studio/);
+  assert.match(source, /Generation schema replacement/);
+  assert.match(source, /Compiler instruction replacement/);
+  assert.match(source, /Copy Full Generated Prompt/);
   assert.match(source, /stockModuleOverrides:\s*\{/);
   assert.match(source, /delete newOverrides\[moduleKey\]/);
   assert.match(source, /createCustomModuleFromStock/);

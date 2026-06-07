@@ -2,6 +2,26 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.6] - 2026-06-07
+
+### Added
+
+- Schema & Prompt Studio in Tracker Settings, with a collapsible entry for every stock module showing its current generation schema, effective compiler instruction, exact module prompt block, and copy controls for both the module block and full generated compiler prompt.
+- Safe stock generation-contract replacements for `schemaSummary` and `compilerInstruction`, alongside the existing additive guidance override. The strict State V2 Zod validator remains locked.
+- `appearance` as the nineteenth stock module, with dedicated Track / Display / Inject controls and an expanded immutable physical profile for each cast member.
+- Appearance fields for height, weight description, build, body type, frame, proportions, silhouette, body composition, shoulders, chest, bust, waist, hips, limbs, hands, complexion, facial details, hair, eyes, marks, scars, tattoos, piercings, birthmarks, unique features, posture, movement, voice, immutable traits, full description, and anchor.
+- Dedicated cast appearance rendering, appearance-aware compiler seeds, optional compact appearance injection, and provider-shape normalization.
+
+### Changed
+
+- Cast Core now focuses on identity, presence, intent, status, awareness, goals, stable facts, and uncertainty; the Appearance module owns persistent physical identity.
+- Old custom module presets are normalized with the new Appearance control automatically, so saved presets from earlier releases continue to load.
+- Stock module inspection now distinguishes the locked runtime structure from editable generation guidance and exposes the full effective compiler prompt.
+
+### Fixed
+
+- Test fixtures now return deep-cloned state, preventing one mutation-focused test from contaminating later schema assertions.
+
 ## [0.1.5] - 2026-06-07
 
 ### Added

@@ -315,6 +315,73 @@ function normalizeOptionalTextObject(value: unknown, fields: readonly string[]):
   }));
 }
 
+function normalizeAppearance(value: unknown): RecordValue {
+  const source = asRecord(value);
+  const mediumFields = new Set([
+    "proportions",
+    "distinguishingMarks",
+    "scars",
+    "tattoos",
+    "piercings",
+    "birthmarks",
+    "uniqueFeatures",
+    "fullDescription",
+    "anchor",
+  ]);
+  const fields = [
+    "species",
+    "ageBand",
+    "apparentAge",
+    "genderPresentation",
+    "height",
+    "weight",
+    "build",
+    "bodyType",
+    "frame",
+    "proportions",
+    "silhouette",
+    "bodyComposition",
+    "shoulders",
+    "chest",
+    "bust",
+    "waist",
+    "hips",
+    "arms",
+    "legs",
+    "hands",
+    "skin",
+    "complexion",
+    "face",
+    "facialStructure",
+    "hair",
+    "eyes",
+    "eyebrows",
+    "nose",
+    "lips",
+    "ears",
+    "facialHair",
+    "voice",
+    "movement",
+    "posture",
+    "distinguishingMarks",
+    "scars",
+    "tattoos",
+    "piercings",
+    "birthmarks",
+    "uniqueFeatures",
+    "presence",
+    "fullDescription",
+    "anchor",
+  ] as const;
+  return {
+    ...Object.fromEntries(fields.flatMap((field) => {
+      const normalized = text(source[field], mediumFields.has(field) ? 1600 : 500);
+      return normalized ? [[field, normalized]] : [];
+    })),
+    immutableTraits: stringArray(source.immutableTraits, 16, 500),
+  };
+}
+
 function normalizeClothing(value: unknown): RecordValue {
   const source = asRecord(value);
   const layers = arrayValue(source.layers)
@@ -470,24 +537,7 @@ function normalizeCastMember(value: unknown, index: number) {
     ...base,
     changed: booleanValue(source.changed, false),
     ...(changeNote ? { changeNote } : {}),
-    appearance: normalizeOptionalTextObject(source.appearance, [
-      "species",
-      "ageBand",
-      "genderPresentation",
-      "height",
-      "build",
-      "skin",
-      "face",
-      "facialStructure",
-      "hair",
-      "eyes",
-      "voice",
-      "movement",
-      "distinguishingMarks",
-      "presence",
-      "fullDescription",
-      "anchor",
-    ]),
+    appearance: normalizeAppearance(source.appearance),
     clothing: normalizeClothing(source.clothing),
     currentState: normalizeOptionalTextObject(source.currentState, [
       "injury",

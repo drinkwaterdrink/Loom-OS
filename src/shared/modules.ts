@@ -3,6 +3,7 @@ export const MODULE_KEYS = [
   "deltas",
   "meters",
   "castCore",
+  "appearance",
   "castVisuals",
   "clothing",
   "relationships",
@@ -69,11 +70,17 @@ export const MODULE_CATALOG: ReadonlyArray<ModuleCatalogEntry> = [
     injectionBehavior: "Not injected by default. Moderate value for scene awareness.",
     renderBehavior: "Overview tab — meter grid with bar visualization, trend icons, band labels." },
   { key: "castCore", label: "Cast Core", group: "Cast", core: true, intensity: "heavy",
-    description: "Presence, intent, status, awareness, goals, anchors, appearance, clothing, current state, uncertainty.",
-    schemaSummary: "id, name, kind, role, location, status, awareness, threat, spotlight, appearance{}, clothing{}, currentState{}, goals[], stableFacts[], continuity{}, changed, changeNote",
-    compilerInstruction: "Track all named characters appearing in the scene. Include appearance, clothing state, current pose/hands/proximity, emotional state, intent, relationships, pocket items, stable facts, and uncertainty. Mark changed=true and add changeNote when any field updates. Carry forward stable visual identity. Crowd/background groups summarized compactly.",
+    description: "Presence, identity, intent, status, awareness, goals, anchors, and uncertainty.",
+    schemaSummary: "id, name, kind, qty, role, location, status, awareness, threat, spotlight, emotionalState, intent, goals[], stableFacts[], continuity{}, changed, changeNote",
+    compilerInstruction: "Track all named characters appearing in the scene. Maintain identity, presence, role, location, status, awareness, intent, goals, stable facts, and uncertainty. Mark changed=true and add changeNote when tracked state updates. Crowd/background groups are summarized compactly.",
     injectionBehavior: "Injected as cast.Name: status; intent; goal for POV/main/high-spotlight characters. Up to 6 entries.",
     renderBehavior: "Cast tab — full character ledger with search, filters, expandable detail panels. Overview tab — compact cast cards." },
+  { key: "appearance", label: "Immutable Appearance", group: "Cast", core: false, intensity: "medium",
+    description: "Persistent physical identity: hair, eyes, height, weight, build, body shape, proportions, marks, and unique features.",
+    schemaSummary: "castMatrix[].appearance{species, ageBand, apparentAge, genderPresentation, height, weight, build, bodyType, frame, proportions, silhouette, bodyComposition, shoulders, chest, bust, waist, hips, arms, legs, hands, skin, complexion, face, facialStructure, hair, eyes, eyebrows, nose, lips, ears, facialHair, posture, movement, voice, distinguishingMarks, scars, tattoos, piercings, birthmarks, uniqueFeatures, immutableTraits[], presence, fullDescription, anchor}",
+    compilerInstruction: "Track grounded, persistent physical traits for adult named characters. Preserve established hair, eyes, height, weight description, build, body type, proportions, bust/waist/hips description, skin, face, marks, scars, tattoos, piercings, posture, movement, and unique features until transcript evidence changes them. Use neutral non-explicit language. Never infer exact measurements, cup sizes, weight numbers, or hidden anatomy when the transcript does not provide them. Use empty fields rather than inventing details.",
+    injectionBehavior: "When enabled, injects a compact immutable appearance anchor for important cast members. Budget-aware.",
+    renderBehavior: "Cast tab - dedicated expandable appearance profile with physical traits, proportions, identifying marks, and immutable anchors." },
   { key: "castVisuals", label: "Cast Visuals", group: "Cast", core: false, intensity: "light",
     description: "Pose, proximity, hands, visual anchor, and spotlight.",
     schemaSummary: "pose, proximity, hands, visualAnchor, spotlight{gauge}",
@@ -169,6 +176,7 @@ export const BALANCED_MODULE_SETTINGS: Record<ModuleKey, ModuleControl> = {
   deltas: control(true, true, true),
   meters: control(true, true, false),
   castCore: control(true, true, true),
+  appearance: control(true, true, false),
   castVisuals: control(true, true, false),
   clothing: control(true, true, false),
   relationships: control(true, true, true),
@@ -251,6 +259,8 @@ export interface StockModuleOverride {
   defaultDisplay?: boolean;
   defaultInject?: boolean;
   compilerGuidanceAddendum?: string;
+  compilerInstructionOverride?: string;
+  schemaSummaryOverride?: string;
   injectionPriority?: number;
   renderHint?: string;
   hiddenFromSettings?: boolean;
@@ -277,14 +287,17 @@ export function getEffectiveModuleCatalog(
   const overrides = settings?.stockModuleOverrides ?? {};
   return MODULE_CATALOG.map((module, index) => {
     const override = overrides[module.key];
+    const baseCompilerInstruction = override?.compilerInstructionOverride
+      ?? module.compilerInstruction;
     const compilerInstruction = override?.compilerGuidanceAddendum
-      ? `${module.compilerInstruction} [Override: ${override.compilerGuidanceAddendum}]`.trim()
-      : module.compilerInstruction;
+      ? `${baseCompilerInstruction} [Additional guidance: ${override.compilerGuidanceAddendum}]`.trim()
+      : baseCompilerInstruction;
     return {
       ...module,
       label: override?.label ?? module.label,
       description: override?.description ?? module.description,
       group: override?.group ?? module.group,
+      schemaSummary: override?.schemaSummaryOverride ?? module.schemaSummary,
       compilerInstruction,
       icon: override?.icon ?? "",
       displayOrder: override?.displayOrder ?? index * 10,
@@ -304,7 +317,8 @@ export const MODULE_SCHEMA_STRUCTURES: Record<ModuleKey, string> = {
   sceneKernel: "kernel.scene, kernel.location, kernel.timeframe, kernel.date, kernel.time, kernel.elapsed, kernel.weather, kernel.pov, kernel.tone, kernel.topic, kernel.theme, kernel.objective, kernel.summary, kernel.currentFocus, kernel.nextFocus, kernel.currentRisk, kernel.stopMode, kernel.stopWhy, kernel.constraints[]",
   deltas: "delta.headline, delta.changedModules[], delta.changes[{text, age, module, importance}], delta.carriedForward[], delta.newlyEstablished[]",
   meters: "meters[{id(tension|danger|socialHeat|coherence|hiddenInfo|omen), label, value 0-100, pct, band, color, trend(down|steady|up|unknown), note}]",
-  castCore: "castMatrix[{id, name, kind(pov|main|npc|crowd|background), qty, role, location, status, awareness(none|ambient|watching|alerted|hostile), threat{value 0-10, pct, band, color, note}, spotlight{value 0-100, pct, band, color, trend, note}, appearance{}, clothing{}, currentState{}, goals[], stableFacts[], pockets[], relationships[], leverage[], changed, changeNote, continuity{}}]",
+  castCore: "castMatrix[{id, name, kind(pov|main|npc|crowd|background), qty, role, location, status, awareness(none|ambient|watching|alerted|hostile), threat{value 0-10, pct, band, color, note}, spotlight{value 0-100, pct, band, color, trend, note}, emotionalState, intent, goals[], stableFacts[], changed, changeNote, continuity{}}]",
+  appearance: "castMatrix[].appearance{species, ageBand, apparentAge, genderPresentation, height, weight, build, bodyType, frame, proportions, silhouette, bodyComposition, shoulders, chest, bust, waist, hips, arms, legs, hands, skin, complexion, face, facialStructure, hair, eyes, eyebrows, nose, lips, ears, facialHair, posture, movement, voice, distinguishingMarks, scars, tattoos, piercings, birthmarks, uniqueFeatures, immutableTraits[], presence, fullDescription, anchor}",
   castVisuals: "castMatrix[].currentState{pose, proximity, leftHand, rightHand, emotion, intent, physicalTell, injury}, castMatrix[].spotlight, castMatrix[].visualAnchor",
   clothing: "castMatrix[].clothing{summary, silhouette, palette, fabric, fit, condition, notable, layerCount, layers[{slot(outer|upper|lower|feet|accessory|other), text, state, color}]}",
   relationships: "castMatrix[].relSummary, castMatrix[].relationships[{target, axis, value -100..100, pct, label, color, trend, evidence}]",

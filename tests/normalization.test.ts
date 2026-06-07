@@ -218,10 +218,10 @@ test("override compiler guidance reaches prompt", () => {
   const overrides = { castCore: { compilerGuidanceAddendum: "Focus on cloak details" } };
   const prompt = buildStateCompilerPrompt(["castCore"], [], overrides);
   assert.ok(prompt.includes("Focus on cloak details"));
-  assert.ok(prompt.includes("[Override:"));
+  assert.ok(prompt.includes("[Additional guidance:"));
 });
 
 test("empty overrides produce no override text in prompt", () => {
   const prompt = buildStateCompilerPrompt(["castCore"], [], undefined);
-  assert.ok(!prompt.includes("[Override:"));
+  assert.ok(!prompt.includes("[Additional guidance:"));
 });

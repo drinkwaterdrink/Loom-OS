@@ -26,6 +26,7 @@ export const compiledState: LoomOSCompiledState = {
     "deltas",
     "meters",
     "castCore",
+    "appearance",
     "castVisuals",
     "clothing",
     "relationships",
@@ -158,10 +159,19 @@ export const compiledState: LoomOSCompiledState = {
       species: "Human",
       ageBand: "Adult",
       height: "Average",
+      weight: "Light for her height",
       build: "Lean",
+      bodyType: "Slim with subtle curves",
+      frame: "Fine-boned",
+      proportions: "Long-legged with narrow shoulders and balanced hips",
+      bust: "Modest",
+      waist: "Defined",
+      hips: "Balanced",
       hair: "Dark, tied back",
       eyes: "Keen grey",
+      uniqueFeatures: "A faint crescent scar beneath the left eye",
       presence: "Quiet intensity",
+      immutableTraits: ["Dark tied-back hair", "Keen grey eyes"],
     },
     clothing: {
       summary: "Dark coat, gloves, soot on left sleeve",
@@ -324,8 +334,9 @@ export const compiledState: LoomOSCompiledState = {
 };
 
 export function makeState(overrides: Partial<LoomOSState> = {}): LoomOSState {
+  const base = structuredClone(compiledState);
   return {
-    ...compiledState,
+    ...base,
     schemaVersion: 2,
     identity,
     generatedAt: "2026-06-07T12:00:00.000Z",

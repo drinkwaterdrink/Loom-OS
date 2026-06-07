@@ -68,7 +68,18 @@ Exact JSON field contract (values below are type examples, not story facts):
     "status":"","awareness":"ambient","changed":false,
     "threat":{"value":0,"pct":"0%","band":"","color":"","note":""},
     "spotlight":{"value":0,"pct":"0%","band":"","color":"","trend":"unknown","note":""},
-    "appearance":{},
+    "appearance":{
+      "species":"","ageBand":"","apparentAge":"","genderPresentation":"",
+      "height":"","weight":"","build":"","bodyType":"","frame":"",
+      "proportions":"","silhouette":"","bodyComposition":"",
+      "shoulders":"","chest":"","bust":"","waist":"","hips":"",
+      "arms":"","legs":"","hands":"","skin":"","complexion":"",
+      "face":"","facialStructure":"","hair":"","eyes":"","eyebrows":"",
+      "nose":"","lips":"","ears":"","facialHair":"","voice":"",
+      "movement":"","posture":"","distinguishingMarks":"","scars":"",
+      "tattoos":"","piercings":"","birthmarks":"","uniqueFeatures":"",
+      "immutableTraits":[],"presence":"","fullDescription":"","anchor":""
+    },
     "clothing":{"summary":"","layerCount":0,"layers":[]},
     "currentState":{"pose":"","proximity":"","leftHand":"","rightHand":"","emotion":"","intent":"","injury":""},
     "emotionalState":"","intent":"","pose":"","proximity":"","hands":"",
@@ -129,6 +140,37 @@ For disabled optional modules: meters=[], scene=null, worldState=null, the
 corresponding tools member=null, and auditLog=[]. Empty optional arrays inside an
 enabled object are valid. Do not emit example rows when there is no evidence.`;
 
+export function buildStockModulePromptBlock(
+  key: ModuleKey,
+  overrides: StockModuleOverrides = {},
+): string {
+  const module = getEffectiveModuleCatalog({ stockModuleOverrides: overrides })
+    .find((candidate) => candidate.key === key);
+  if (!module) return "";
+  return [
+    `- ${module.key} (${module.label}): ${module.compilerInstruction}`,
+    `  Schema: ${module.schemaSummary}`,
+  ].join("\n");
+}
+
+export function buildStockModuleContractDocument(
+  overrides: StockModuleOverrides = {},
+): string {
+  return getEffectiveModuleCatalog({ stockModuleOverrides: overrides })
+    .map((module) => [
+      `# ${module.label} (${module.key})`,
+      `Group: ${module.group}`,
+      `Description: ${module.description}`,
+      `Schema: ${module.schemaSummary}`,
+      `Compiler instruction: ${module.compilerInstruction}`,
+      `Injection behavior: ${module.injectionBehavior}`,
+      `Render behavior: ${module.renderBehavior}`,
+      "",
+      buildStockModulePromptBlock(module.key, overrides),
+    ].join("\n"))
+    .join("\n\n");
+}
+
 export function buildStateCompilerPrompt(
   enabledModules: ModuleKey[],
   customModules: CustomModule[] = [],
@@ -137,10 +179,7 @@ export function buildStateCompilerPrompt(
   const enabled = getEffectiveModuleCatalog({ stockModuleOverrides: overrides })
     .filter((module) => enabledModules.includes(module.key))
     .map((module) => {
-      return [
-        `- ${module.key} (${module.label}): ${module.compilerInstruction}`,
-        `  Schema: ${module.schemaSummary}`,
-      ].join("\n");
+      return buildStockModulePromptBlock(module.key, overrides);
     })
     .join("\n");
 
@@ -200,6 +239,15 @@ export function buildStateCompilerPrompt(
   }
 
   const coreContractWithCustom = CORE_CONTRACT + customContract;
+  const appearanceRules = enabledModules.includes("appearance")
+    ? `
+- For each named adult character, populate grounded appearance fields when transcript or seed evidence exists.
+- Treat appearance as persistent identity state. Carry it forward unchanged unless the transcript explicitly changes it.
+- Track hair, eyes, height, weight description, build, bodyType, frame, proportions, silhouette, shoulders, chest, bust, waist, hips, limbs, hands, skin, face, marks, scars, tattoos, piercings, posture, movement, voice, unique features, and immutableTraits when known.
+- Use neutral, non-explicit physical language. Never infer exact measurements, cup sizes, weight numbers, hidden anatomy, or other unsupported details.
+- Use empty strings and arrays for unknown appearance fields. Never reset established appearance each turn.`
+    : `
+- Appearance tracking is disabled. Preserve an empty appearance object and do not invent new physical traits.`;
   
   // Insert customShape before the closing brace in STATE_SHAPE_GUIDE
   const closingBraceIdx = STATE_SHAPE_GUIDE.lastIndexOf("}");
@@ -237,8 +285,7 @@ Rules:
 - Use numeric ranges exactly as named: percentages 0-100, threat/observer pressure 0-10, urgency 0-5, conflict severity 1-3.
 
 Character depth rules:
-- For each named character, include appearance fields (species, ageBand, height, build, skin, hair, eyes, voice, presence) when transcript evidence exists. Use empty object {} otherwise.
-- Carry forward appearance from seed unless contradicted. Never reset appearance each turn.
+${appearanceRules}
 - Clothing persists until transcript explicitly shows change. Track layers (outer/upper/lower/feet/accessory). Mark clothing.changed=true when clothing updates.
 - Update currentState (pose, proximity, leftHand, rightHand, emotion, intent, physicalTell, injury) from latest transcript actions and descriptions.
 - Relationships: use axis labels (Trust, Fear, Attraction, Rivalry, Loyalty, Debt). Value -100 (hostile) to 100 (devoted). Include evidence for changes.

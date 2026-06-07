@@ -187,3 +187,28 @@ test("fallback compiled state is minimal and validates as exact State V2", () =>
   assert.equal(state.delta.headline, "Compiler output was invalid; saved minimal fallback state.");
   assert.equal(state.auditLog[0]?.result, "fallback_state_saved");
 });
+
+test("appearance normalization preserves deep immutable traits and repairs shorthand arrays", () => {
+  const input = malformedState();
+  input.castMatrix[0].appearance = {
+    hair: { description: "Silver curls" },
+    eyes: "Amber",
+    bodyType: "Curvy",
+    bust: "Full",
+    uniqueFeatures: { text: "Star-shaped birthmark at the collarbone" },
+    immutableTraits: [
+      { text: "Amber eyes" },
+      "Silver curls",
+    ],
+  };
+  const { state } = normalizeCompiledState(input, {
+    enabledModules: trackedModuleKeys(DEFAULT_SETTINGS),
+  });
+  const appearance = state.castMatrix[0]!.appearance;
+  assert.equal(appearance.hair, "Silver curls");
+  assert.equal(appearance.bodyType, "Curvy");
+  assert.equal(appearance.bust, "Full");
+  assert.equal(appearance.uniqueFeatures, "Star-shaped birthmark at the collarbone");
+  assert.deepEqual(appearance.immutableTraits, ["Amber eyes", "Silver curls"]);
+  assert.equal(LoomOSCompiledStateSchema.safeParse(state).success, true);
+});
