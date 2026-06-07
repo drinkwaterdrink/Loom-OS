@@ -1,6 +1,6 @@
 {
   "name": "loomos-command-deck",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,8 @@
     "preview": "node scripts/serve-preview.mjs",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts tests/*.test.mjs",
-    "validate": "npm run typecheck && npm run build && npm test && node scripts/scan-dist.mjs"
+    "version:check": "node scripts/check-version.mjs",
+    "validate": "npm run version:check && npm run typecheck && npm run build && npm test && node scripts/scan-dist.mjs"
   },
   "dependencies": {
     "zod": "^3.25.76"

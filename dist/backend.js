@@ -4045,6 +4045,103 @@ var coerce = {
 };
 var NEVER = INVALID;
 
+// src/shared/modules.ts
+var MODULE_KEYS = [
+  "sceneKernel",
+  "deltas",
+  "meters",
+  "castCore",
+  "castVisuals",
+  "clothing",
+  "relationships",
+  "inventory",
+  "worldSpace",
+  "storyThreads",
+  "continuity",
+  "secretsRumors",
+  "actionResolver",
+  "dialogueState",
+  "directorStyle",
+  "closenessState",
+  "imagePrompt",
+  "auditLog"
+];
+var CORE_TRACKING_MODULES = /* @__PURE__ */ new Set([
+  "sceneKernel",
+  "deltas",
+  "castCore",
+  "storyThreads",
+  "continuity"
+]);
+var MODULE_CATALOG = [
+  { key: "sceneKernel", label: "Scene Kernel", group: "Core", description: "Scene, time, tone, focus, objective, and constraints." },
+  { key: "deltas", label: "Turn Deltas", group: "Core", description: "Meaningful changes from the previous compiled state." },
+  { key: "meters", label: "Diagnostic Meters", group: "Scene", description: "Tension, danger, coherence, hidden information, and omen." },
+  { key: "castCore", label: "Cast Core", group: "Cast", description: "Presence, intent, status, awareness, goals, and anchors." },
+  { key: "castVisuals", label: "Cast Visuals", group: "Cast", description: "Pose, proximity, hands, visual anchor, and spotlight." },
+  { key: "clothing", label: "Clothing", group: "Cast", description: "Compact grounded clothing continuity." },
+  { key: "relationships", label: "Relationships", group: "Cast", description: "Relationship state, leverage, and social pressure." },
+  { key: "inventory", label: "Inventory", group: "World", description: "Pockets, ownership, condition, and important room items." },
+  { key: "worldSpace", label: "World & Space", group: "World", description: "Privacy, observers, light, blocking, exits, and hazards." },
+  { key: "storyThreads", label: "Story Threads", group: "Story", description: "Goals, conflicts, threads, stakes, countdowns, and autonomy." },
+  { key: "continuity", label: "Continuity Firewall", group: "Story", description: "Facts, anchors, consequences, impossible moves, and risks." },
+  { key: "secretsRumors", label: "Secrets & Rumors", group: "World", description: "Rumors, secrets, hints, and loaded signs." },
+  { key: "actionResolver", label: "Action Resolver", group: "Tools", description: "Current action, world response, blockers, and risk." },
+  { key: "dialogueState", label: "Dialogue State", group: "Tools", description: "Open thread, masks, levers, and taboos." },
+  { key: "directorStyle", label: "Director Style", group: "Tools", description: "Optional scene direction and voice cues." },
+  { key: "closenessState", label: "Closeness State", group: "Tools", description: "Non-explicit emotional and physical closeness." },
+  { key: "imagePrompt", label: "Image Prompt", group: "Tools", description: "Optional compact visual prompt assembly." },
+  { key: "auditLog", label: "Audit Log", group: "System", description: "Compact compiler and repair diagnostics." }
+];
+function control(track, display = track, inject = false) {
+  return { track, display, inject };
+}
+var BALANCED_MODULE_SETTINGS = {
+  sceneKernel: control(true, true, true),
+  deltas: control(true, true, true),
+  meters: control(true, true, false),
+  castCore: control(true, true, true),
+  castVisuals: control(true, true, false),
+  clothing: control(true, true, false),
+  relationships: control(true, true, true),
+  inventory: control(true, true, true),
+  worldSpace: control(true, true, true),
+  storyThreads: control(true, true, true),
+  continuity: control(true, true, true),
+  secretsRumors: control(true, true, false),
+  actionResolver: control(true, true, true),
+  dialogueState: control(false, false, false),
+  directorStyle: control(false, false, false),
+  closenessState: control(false, false, false),
+  imagePrompt: control(false, false, false),
+  auditLog: control(true, true, false)
+};
+function cloneControls(source) {
+  return Object.fromEntries(
+    MODULE_KEYS.map((key) => [key, { ...source[key] }])
+  );
+}
+function normalizeModuleSettings(input) {
+  const next = cloneControls(BALANCED_MODULE_SETTINGS);
+  for (const key of MODULE_KEYS) {
+    const candidate = input?.[key];
+    if (candidate) {
+      next[key] = {
+        track: typeof candidate.track === "boolean" ? candidate.track : next[key].track,
+        display: typeof candidate.display === "boolean" ? candidate.display : next[key].display,
+        inject: typeof candidate.inject === "boolean" ? candidate.inject : next[key].inject
+      };
+    }
+    if (CORE_TRACKING_MODULES.has(key)) {
+      next[key].track = true;
+    }
+  }
+  return next;
+}
+function trackedModuleKeys(settings) {
+  return MODULE_KEYS.filter((key) => settings.moduleSettings[key].track);
+}
+
 // src/shared/schemas.ts
 var LoomOSSkinSchema = external_exports.enum([
   "auto",
@@ -4061,26 +4158,72 @@ var AutoGenerationModeSchema = external_exports.enum([
   "every",
   "manual"
 ]);
-var PanelVisibilitySchema = external_exports.object({
-  kernel: external_exports.boolean().default(true),
-  castMatrix: external_exports.boolean().default(true),
-  threadLoom: external_exports.boolean().default(true),
-  continuityFirewall: external_exports.boolean().default(true)
+var ModulePresetSchema = external_exports.enum([
+  "lite",
+  "balanced",
+  "full",
+  "experimental",
+  "custom"
+]);
+var ModuleKeySchema = external_exports.enum(MODULE_KEYS);
+var ModuleControlSchema = external_exports.object({
+  track: external_exports.boolean(),
+  display: external_exports.boolean(),
+  inject: external_exports.boolean()
 }).strict();
-var LoomOSSettingsSchema = external_exports.object({
+var ModuleSettingsSchema = external_exports.object(
+  Object.fromEntries(
+    MODULE_KEYS.map((key) => [key, ModuleControlSchema])
+  )
+).strict();
+var RawSettingsSchema = external_exports.object({
+  schemaVersion: external_exports.literal(2).default(2),
   skin: LoomOSSkinSchema.default("auto"),
   autoGeneration: AutoGenerationModeSchema.default("manual"),
   injectionEnabled: external_exports.boolean().default(false),
-  injectionTokenBudget: external_exports.number().int().min(80).max(1200).default(320),
+  injectionTokenBudget: external_exports.number().int().min(80).max(1600).default(320),
+  compilerSeedTokenBudget: external_exports.number().int().min(200).max(2400).default(900),
   recentMessageLimit: external_exports.number().int().min(4).max(80).default(24),
+  generationTimeoutSeconds: external_exports.number().int().min(30).max(300).default(180),
   connectionId: external_exports.string().trim().max(200).default(""),
-  panels: PanelVisibilitySchema.default({
-    kernel: true,
-    castMatrix: true,
-    threadLoom: true,
-    continuityFirewall: true
-  })
+  modulePreset: ModulePresetSchema.default("balanced"),
+  moduleSettings: ModuleSettingsSchema.default(BALANCED_MODULE_SETTINGS)
 }).strict();
+function settingsInput(value) {
+  if (typeof value !== "object" || value === null) return value;
+  const source = value;
+  const legacyPanels = typeof source.panels === "object" && source.panels !== null ? source.panels : {};
+  const suppliedModules = typeof source.moduleSettings === "object" && source.moduleSettings !== null ? source.moduleSettings : void 0;
+  const moduleSettings = normalizeModuleSettings(suppliedModules);
+  const panelMap = {
+    kernel: "sceneKernel",
+    castMatrix: "castCore",
+    threadLoom: "storyThreads",
+    continuityFirewall: "continuity"
+  };
+  for (const [oldKey, newKey] of Object.entries(panelMap)) {
+    if (typeof legacyPanels[oldKey] === "boolean" && !suppliedModules?.[newKey]) {
+      moduleSettings[newKey].display = legacyPanels[oldKey];
+    }
+  }
+  for (const key of CORE_TRACKING_MODULES) {
+    moduleSettings[key].track = true;
+  }
+  return {
+    schemaVersion: 2,
+    skin: source.skin,
+    autoGeneration: source.autoGeneration,
+    injectionEnabled: source.injectionEnabled,
+    injectionTokenBudget: source.injectionTokenBudget,
+    compilerSeedTokenBudget: source.compilerSeedTokenBudget,
+    recentMessageLimit: source.recentMessageLimit,
+    generationTimeoutSeconds: source.generationTimeoutSeconds,
+    connectionId: source.connectionId,
+    modulePreset: source.modulePreset,
+    moduleSettings
+  };
+}
+var LoomOSSettingsSchema = external_exports.preprocess(settingsInput, RawSettingsSchema);
 var StateIdentitySchema = external_exports.object({
   chatId: external_exports.string().min(1).max(300),
   messageId: external_exports.string().min(1).max(300),
@@ -4088,32 +4231,192 @@ var StateIdentitySchema = external_exports.object({
 }).strict();
 var ShortText = external_exports.string().trim().max(500);
 var MediumText = external_exports.string().trim().max(1600);
+var TinyText = external_exports.string().trim().max(160);
+var PercentText = external_exports.string().trim().max(12);
+var ColorText = external_exports.string().trim().max(40);
+var TrendSchema = external_exports.enum(["down", "steady", "up", "unknown"]);
+var GaugeSchema = external_exports.object({
+  value: external_exports.number().min(0).max(100),
+  pct: PercentText,
+  band: TinyText,
+  color: ColorText,
+  trend: TrendSchema,
+  note: ShortText
+}).strict();
 var KernelSchema = external_exports.object({
   scene: ShortText,
   location: ShortText,
   timeframe: ShortText,
+  date: ShortText,
+  time: ShortText,
+  elapsed: ShortText,
+  weather: ShortText,
+  pov: ShortText,
   tone: ShortText,
+  topic: ShortText,
+  theme: ShortText,
   objective: MediumText,
   summary: MediumText,
+  currentFocus: MediumText,
+  nextFocus: MediumText,
+  currentRisk: MediumText,
+  stopMode: ShortText,
+  stopWhy: MediumText,
   constraints: external_exports.array(ShortText).max(12)
 }).strict();
-var CastMemberSchema = external_exports.object({
-  name: external_exports.string().trim().min(1).max(160),
-  role: ShortText,
-  status: ShortText,
+var DeltaSchema = external_exports.object({
+  headline: MediumText,
+  changedModules: external_exports.array(ModuleKeySchema).max(MODULE_KEYS.length),
+  changes: external_exports.array(external_exports.object({
+    text: MediumText,
+    age: ShortText,
+    module: ModuleKeySchema,
+    importance: external_exports.enum(["low", "medium", "high", "critical"])
+  }).strict()).max(6),
+  carriedForward: external_exports.array(MediumText).max(6),
+  newlyEstablished: external_exports.array(MediumText).max(6)
+}).strict();
+var MeterSchema = GaugeSchema.extend({
+  id: external_exports.enum(["tension", "danger", "socialHeat", "coherence", "hiddenInfo", "omen"]),
+  label: TinyText
+}).strict();
+var SceneItemSchema = external_exports.object({
+  name: TinyText,
+  owner: TinyText,
   location: ShortText,
+  condition: ShortText,
+  lastTouch: ShortText,
+  importance: external_exports.enum(["low", "medium", "high", "critical"])
+}).strict();
+var SceneSchema = external_exports.object({
+  privacy: external_exports.enum(["private", "semi-private", "public", "exposed"]),
+  observerCount: external_exports.number().int().nonnegative().max(1e4),
+  observerPressure: GaugeSchema.omit({ value: true }).extend({
+    value: external_exports.number().min(0).max(10)
+  }).strict(),
+  crowdNoise: ShortText,
+  crowdFlow: ShortText,
+  light: external_exports.object({
+    primary: ShortText,
+    secondary: ShortText,
+    quality: ShortText,
+    color: ColorText
+  }).strict(),
+  spatial: external_exports.array(MediumText).max(8),
+  access: external_exports.object({
+    exit: external_exports.enum(["FREE", "WATCHED", "BLOCKED"]),
+    lineOfSight: ShortText,
+    noiseMask: ShortText,
+    items: external_exports.array(ShortText).max(5),
+    people: external_exports.array(ShortText).max(5)
+  }).strict(),
+  carryover: external_exports.object({
+    body: external_exports.array(ShortText).max(5),
+    room: external_exports.array(ShortText).max(5),
+    social: external_exports.array(ShortText).max(5)
+  }).strict(),
+  items: external_exports.array(SceneItemSchema).max(10)
+}).strict();
+var PocketItemSchema = external_exports.object({
+  name: TinyText,
+  type: TinyText,
+  qty: external_exports.number().int().nonnegative().max(9999),
+  condition: ShortText,
+  known: external_exports.boolean()
+}).strict();
+var CastMemberSchema = external_exports.object({
+  id: external_exports.string().trim().min(1).max(160),
+  name: external_exports.string().trim().min(1).max(160),
+  kind: external_exports.enum(["pov", "main", "npc", "crowd", "background"]),
+  qty: external_exports.number().int().positive().max(1e4),
+  role: ShortText,
+  location: ShortText,
+  status: ShortText,
   emotionalState: ShortText,
-  goals: external_exports.array(ShortText).max(8),
-  relationships: external_exports.array(ShortText).max(10),
-  leverage: external_exports.array(ShortText).max(8)
+  intent: MediumText,
+  pose: ShortText,
+  proximity: ShortText,
+  hands: ShortText,
+  awareness: external_exports.enum(["none", "ambient", "watching", "alerted", "hostile"]),
+  threat: GaugeSchema.omit({ value: true, trend: true }).extend({
+    value: external_exports.number().min(0).max(10)
+  }).strict(),
+  spotlight: GaugeSchema,
+  visualAnchor: MediumText,
+  identitySummary: MediumText,
+  clothingSummary: MediumText,
+  goals: external_exports.array(ShortText).max(6),
+  relationships: external_exports.array(ShortText).max(8),
+  leverage: external_exports.array(ShortText).max(6),
+  pockets: external_exports.array(PocketItemSchema).max(6),
+  stableFacts: external_exports.array(ShortText).max(6)
+}).strict();
+var WorldStateSchema = external_exports.object({
+  recentEnvironmentalChanges: external_exports.array(MediumText).max(6),
+  activeHazards: external_exports.array(MediumText).max(6),
+  rumors: external_exports.array(external_exports.object({
+    rumor: MediumText,
+    source: ShortText,
+    credibility: external_exports.number().min(0).max(10),
+    pct: PercentText,
+    color: ColorText
+  }).strict()).max(8),
+  secrets: external_exports.array(external_exports.object({
+    secret: MediumText,
+    visibleHint: MediumText,
+    knownBy: external_exports.array(TinyText).max(6)
+  }).strict()).max(8),
+  loadedSigns: external_exports.array(external_exports.object({
+    thing: ShortText,
+    loadedBy: MediumText,
+    firesWhen: MediumText,
+    state: external_exports.enum(["LOADED", "HEATING", "FIRED", "DORMANT"])
+  }).strict()).max(8)
 }).strict();
 var StoryThreadSchema = external_exports.object({
   title: external_exports.string().trim().min(1).max(240),
   status: external_exports.enum(["dormant", "active", "escalating", "blocked", "resolved"]),
   urgency: external_exports.number().int().min(0).max(5),
+  priority: external_exports.enum(["low", "medium", "high", "critical"]),
+  progress: external_exports.number().min(0).max(10),
+  pct: PercentText,
+  color: ColorText,
+  label: TinyText,
   summary: MediumText,
   nextPressure: MediumText,
-  participants: external_exports.array(external_exports.string().trim().max(160)).max(12)
+  participants: external_exports.array(TinyText).max(12)
+}).strict();
+var StoryStateSchema = external_exports.object({
+  goals: external_exports.array(external_exports.object({
+    who: TinyText,
+    goal: MediumText,
+    status: external_exports.enum(["ACTIVE", "BLOCKED", "PROGRESSED", "RESOLVED"]),
+    note: MediumText
+  }).strict()).max(10),
+  conflicts: external_exports.array(external_exports.object({
+    a: TinyText,
+    b: TinyText,
+    label: ShortText,
+    severity: external_exports.number().int().min(1).max(3)
+  }).strict()).max(8),
+  threadLoom: external_exports.array(StoryThreadSchema).max(24),
+  stakes: external_exports.array(external_exports.object({
+    who: TinyText,
+    win: MediumText,
+    lose: MediumText
+  }).strict()).max(8),
+  countdowns: external_exports.array(external_exports.object({
+    title: ShortText,
+    left: external_exports.number().nonnegative(),
+    unit: TinyText,
+    pct: PercentText,
+    color: ColorText
+  }).strict()).max(8),
+  autonomyQueue: external_exports.array(external_exports.object({
+    who: TinyText,
+    action: MediumText,
+    unlessInterruptedBy: MediumText
+  }).strict()).max(8)
 }).strict();
 var ContinuityRiskSchema = external_exports.object({
   severity: external_exports.enum(["low", "medium", "high", "critical"]),
@@ -4121,10 +4424,126 @@ var ContinuityRiskSchema = external_exports.object({
   evidence: MediumText,
   recommendation: MediumText
 }).strict();
+var ContinuityFirewallSchema = external_exports.object({
+  establishedFacts: external_exports.array(MediumText).max(40),
+  antiRetconAnchors: external_exports.array(MediumText).max(30),
+  pendingConsequences: external_exports.array(MediumText).max(30),
+  offscreenState: external_exports.array(MediumText).max(24),
+  bannedNext: external_exports.array(external_exports.object({
+    text: MediumText,
+    persistent: external_exports.boolean()
+  }).strict()).max(12),
+  impossibleNext: external_exports.array(MediumText).max(12),
+  risks: external_exports.array(ContinuityRiskSchema).max(24)
+}).strict();
+var ToolsSchema = external_exports.object({
+  actionResolver: external_exports.object({
+    userAction: MediumText,
+    worldResponse: MediumText,
+    risk: MediumText,
+    blockers: external_exports.array(ShortText).max(6)
+  }).strict().nullable(),
+  dialogueState: external_exports.object({
+    openThread: MediumText,
+    socialMask: MediumText,
+    levers: external_exports.array(ShortText).max(6),
+    taboos: external_exports.array(ShortText).max(6)
+  }).strict().nullable(),
+  directorStyle: external_exports.object({
+    primary: ShortText,
+    mask: ShortText,
+    push: MediumText,
+    voiceCues: external_exports.array(ShortText).max(6)
+  }).strict().nullable(),
+  closenessState: external_exports.object({
+    emotional: ShortText,
+    physical: ShortText,
+    consentSignals: external_exports.array(ShortText).max(6),
+    boundaries: external_exports.array(ShortText).max(6)
+  }).strict().nullable(),
+  imagePrompt: external_exports.object({
+    aspect: TinyText,
+    shot: ShortText,
+    medium: ShortText,
+    subject: MediumText,
+    positive: MediumText,
+    negative: MediumText,
+    full: external_exports.string().trim().max(3e3),
+    hint: MediumText
+  }).strict().nullable()
+}).strict();
+var AuditEntrySchema = external_exports.object({
+  system: TinyText,
+  marker: TinyText,
+  result: ShortText,
+  repaired: external_exports.boolean(),
+  notes: MediumText
+}).strict();
 var LoomOSCompiledStateSchema = external_exports.object({
+  activeModules: external_exports.array(ModuleKeySchema).max(MODULE_KEYS.length),
   kernel: KernelSchema,
+  delta: DeltaSchema,
+  meters: external_exports.array(MeterSchema).max(6).default([]),
+  scene: SceneSchema.nullable().default(null),
   castMatrix: external_exports.array(CastMemberSchema).max(24),
-  threadLoom: external_exports.array(StoryThreadSchema).max(24),
+  worldState: WorldStateSchema.nullable().default(null),
+  storyState: StoryStateSchema,
+  continuityFirewall: ContinuityFirewallSchema,
+  tools: ToolsSchema.default({
+    actionResolver: null,
+    dialogueState: null,
+    directorStyle: null,
+    closenessState: null,
+    imagePrompt: null
+  }),
+  auditLog: external_exports.array(AuditEntrySchema).max(12).default([])
+}).strict();
+var LoomOSStateSchema = LoomOSCompiledStateSchema.extend({
+  schemaVersion: external_exports.literal(2),
+  identity: StateIdentitySchema,
+  generatedAt: external_exports.string().datetime(),
+  source: external_exports.object({
+    messageCount: external_exports.number().int().nonnegative(),
+    repaired: external_exports.boolean(),
+    seedIdentity: StateIdentitySchema.nullable(),
+    connectionId: external_exports.string().max(200)
+  }).strict()
+}).strict();
+var LegacyLoomOSStateSchema = external_exports.object({
+  schemaVersion: external_exports.literal(1),
+  identity: StateIdentitySchema,
+  generatedAt: external_exports.string().datetime(),
+  source: external_exports.object({
+    messageCount: external_exports.number().int().nonnegative(),
+    repaired: external_exports.boolean()
+  }).strict(),
+  kernel: external_exports.object({
+    scene: ShortText,
+    location: ShortText,
+    timeframe: ShortText,
+    tone: ShortText,
+    objective: MediumText,
+    summary: MediumText,
+    constraints: external_exports.array(ShortText).max(12)
+  }).strict(),
+  castMatrix: external_exports.array(external_exports.object({
+    name: external_exports.string().trim().min(1).max(160),
+    role: ShortText,
+    status: ShortText,
+    location: ShortText,
+    emotionalState: ShortText,
+    goals: external_exports.array(ShortText).max(8),
+    relationships: external_exports.array(ShortText).max(10),
+    leverage: external_exports.array(ShortText).max(8)
+  }).strict()).max(24),
+  threadLoom: external_exports.array(external_exports.object({
+    title: external_exports.string().trim().min(1).max(240),
+    status: external_exports.enum(["dormant", "active", "escalating", "blocked", "resolved"]),
+    urgency: external_exports.number().int().min(0).max(5),
+    summary: MediumText,
+    nextPressure: MediumText,
+    participants: external_exports.array(TinyText).max(12)
+  }).strict()).max(24),
   continuityFirewall: external_exports.object({
     establishedFacts: external_exports.array(MediumText).max(30),
     pendingConsequences: external_exports.array(MediumText).max(24),
@@ -4132,75 +4551,169 @@ var LoomOSCompiledStateSchema = external_exports.object({
     risks: external_exports.array(ContinuityRiskSchema).max(24)
   }).strict()
 }).strict();
-var LoomOSStateSchema = LoomOSCompiledStateSchema.extend({
-  schemaVersion: external_exports.literal(1),
-  identity: StateIdentitySchema,
-  generatedAt: external_exports.string().datetime(),
-  source: external_exports.object({
-    messageCount: external_exports.number().int().nonnegative(),
-    repaired: external_exports.boolean()
-  }).strict()
-}).strict();
 var DEFAULT_SETTINGS = LoomOSSettingsSchema.parse({});
 
 // src/shared/prompts.ts
-var STATE_COMPILER_PROMPT = `You are LoomOS, a strict story-state compiler.
+var CORE_CONTRACT = `
+Always return these top-level keys:
+- activeModules: enabled module keys actually represented
+- kernel: scene/location/time/tone/focus/objective/summary/risk/constraints
+- delta: headline, changedModules, up to 6 changes, carriedForward, newlyEstablished
+- castMatrix: compact cast records
+- storyState: goals, conflicts, threadLoom, stakes, countdowns, autonomyQueue
+- continuityFirewall: facts, anchors, consequences, offscreen state, banned/impossible next, risks
 
-Analyze only the supplied chat transcript. Do not continue the story, roleplay, address the user, or add commentary.
-Return exactly one JSON object and no Markdown fences.
+Return optional module containers only through their stable top-level locations:
+- meters: diagnostic meter array
+- scene: privacy, observers, light, spatial/access/carryover/items
+- worldState: environmental changes, hazards, rumors, secrets, loaded signs
+- tools: actionResolver, dialogueState, directorStyle, closenessState, imagePrompt
+- auditLog: compact compiler audit entries
 
-Required JSON shape:
+For disabled optional modules use [] or null as appropriate. Never omit required
+core objects. Every object and array must match the supplied contract names.`;
+var STATE_SHAPE_GUIDE = `
+Exact JSON field contract (values below are type examples, not story facts):
 {
+  "activeModules": ["sceneKernel"],
   "kernel": {
-    "scene": "string",
-    "location": "string",
-    "timeframe": "string",
-    "tone": "string",
-    "objective": "string",
-    "summary": "string",
-    "constraints": ["string"]
+    "scene": "", "location": "", "timeframe": "", "date": "", "time": "",
+    "elapsed": "", "weather": "", "pov": "", "tone": "", "topic": "",
+    "theme": "", "objective": "", "summary": "", "currentFocus": "",
+    "nextFocus": "", "currentRisk": "", "stopMode": "", "stopWhy": "",
+    "constraints": []
+  },
+  "delta": {
+    "headline": "", "changedModules": [],
+    "changes": [{"text":"","age":"","module":"deltas","importance":"medium"}],
+    "carriedForward": [], "newlyEstablished": []
+  },
+  "meters": [{
+    "id": "tension", "label": "Tension", "value": 0, "pct": "0%",
+    "band": "", "color": "", "trend": "unknown", "note": ""
+  }],
+  "scene": {
+    "privacy": "private", "observerCount": 0,
+    "observerPressure": {
+      "value": 0, "pct": "0%", "band": "", "color": "",
+      "trend": "unknown", "note": ""
+    },
+    "crowdNoise": "", "crowdFlow": "",
+    "light": {"primary":"","secondary":"","quality":"","color":""},
+    "spatial": [],
+    "access": {
+      "exit": "FREE", "lineOfSight": "", "noiseMask": "",
+      "items": [], "people": []
+    },
+    "carryover": {"body":[],"room":[],"social":[]},
+    "items": [{
+      "name":"","owner":"","location":"","condition":"","lastTouch":"",
+      "importance":"medium"
+    }]
   },
   "castMatrix": [{
-    "name": "string",
-    "role": "string",
-    "status": "string",
-    "location": "string",
-    "emotionalState": "string",
-    "goals": ["string"],
-    "relationships": ["string"],
-    "leverage": ["string"]
+    "id":"","name":"","kind":"npc","qty":1,"role":"","location":"",
+    "status":"","emotionalState":"","intent":"","pose":"","proximity":"",
+    "hands":"","awareness":"ambient",
+    "threat":{"value":0,"pct":"0%","band":"","color":"","note":""},
+    "spotlight":{
+      "value":0,"pct":"0%","band":"","color":"",
+      "trend":"unknown","note":""
+    },
+    "visualAnchor":"","identitySummary":"","clothingSummary":"",
+    "goals":[],"relationships":[],"leverage":[],"pockets":[],
+    "stableFacts":[]
   }],
-  "threadLoom": [{
-    "title": "string",
-    "status": "dormant|active|escalating|blocked|resolved",
-    "urgency": 0,
-    "summary": "string",
-    "nextPressure": "string",
-    "participants": ["string"]
-  }],
+  "worldState": {
+    "recentEnvironmentalChanges":[],"activeHazards":[],
+    "rumors":[{"rumor":"","source":"","credibility":0,"pct":"0%","color":""}],
+    "secrets":[{"secret":"","visibleHint":"","knownBy":[]}],
+    "loadedSigns":[{"thing":"","loadedBy":"","firesWhen":"","state":"DORMANT"}]
+  },
+  "storyState": {
+    "goals":[{"who":"","goal":"","status":"ACTIVE","note":""}],
+    "conflicts":[{"a":"","b":"","label":"","severity":1}],
+    "threadLoom":[{
+      "title":"","status":"active","urgency":0,"priority":"medium",
+      "progress":0,"pct":"0%","color":"","label":"","summary":"",
+      "nextPressure":"","participants":[]
+    }],
+    "stakes":[{"who":"","win":"","lose":""}],
+    "countdowns":[{"title":"","left":0,"unit":"","pct":"0%","color":""}],
+    "autonomyQueue":[{"who":"","action":"","unlessInterruptedBy":""}]
+  },
   "continuityFirewall": {
-    "establishedFacts": ["string"],
-    "pendingConsequences": ["string"],
-    "secrets": ["string"],
-    "risks": [{
-      "severity": "low|medium|high|critical",
-      "issue": "string",
-      "evidence": "string",
-      "recommendation": "string"
+    "establishedFacts":[],"antiRetconAnchors":[],"pendingConsequences":[],
+    "offscreenState":[],
+    "bannedNext":[{"text":"","persistent":false}],
+    "impossibleNext":[],
+    "risks":[{
+      "severity":"medium","issue":"","evidence":"","recommendation":""
     }]
-  }
+  },
+  "tools": {
+    "actionResolver": {
+      "userAction":"","worldResponse":"","risk":"","blockers":[]
+    },
+    "dialogueState": {
+      "openThread":"","socialMask":"","levers":[],"taboos":[]
+    },
+    "directorStyle": {
+      "primary":"","mask":"","push":"","voiceCues":[]
+    },
+    "closenessState": {
+      "emotional":"","physical":"","consentSignals":[],"boundaries":[]
+    },
+    "imagePrompt": {
+      "aspect":"","shot":"","medium":"","subject":"","positive":"",
+      "negative":"","full":"","hint":""
+    }
+  },
+  "auditLog": [{
+    "system":"compiler","marker":"","result":"","repaired":false,"notes":""
+  }]
 }
 
+For disabled optional modules: meters=[], scene=null, worldState=null, the
+corresponding tools member=null, and auditLog=[]. Empty optional arrays inside an
+enabled object are valid. Do not emit example rows when there is no evidence.`;
+function buildStateCompilerPrompt(enabledModules) {
+  const enabled = MODULE_CATALOG.filter((module) => enabledModules.includes(module.key)).map((module) => `- ${module.key}: ${module.description}`).join("\n");
+  return `You are LoomOS, a strict story-state compiler.
+
+Analyze only the supplied identity, previous state seed, and transcript.
+Do not continue the story. Do not roleplay. Do not address the user.
+Return exactly one JSON object with no Markdown fences or commentary.
+
+Enabled tracking modules:
+${enabled}
+
+${CORE_CONTRACT}
+
+${STATE_SHAPE_GUIDE}
+
 Rules:
-- Ground every claim in the transcript.
-- Use empty arrays when evidence is absent.
-- Keep prose compact and operational.
-- Treat secrets as reader-visible dramatic information, not hidden chain-of-thought.
-- A continuity risk is a contradiction, impossible spatial fact, dropped consequence, identity error, or timeline conflict.
-- urgency is an integer from 0 to 5.`;
-var STATE_REPAIR_PROMPT = `Repair a malformed LoomOS compiler result.
-Return exactly one corrected JSON object matching the required schema.
-Do not add Markdown, explanations, new story events, or unsupported facts.`;
+- Ground every claim in the transcript or previous seed.
+- The previous seed is continuity context, never proof that the target swipe already has state.
+- Compare the seed with the newest transcript evidence and produce real delta fields.
+- Carry stable facts forward unless the transcript explicitly changes them.
+- Never invent changes to location, identity, clothing, injuries, ownership, relationships, or offscreen state.
+- Use empty arrays and compact empty strings when evidence is absent.
+- Respect all array limits. Keep prose compact and operational.
+- Precompute pct, label/band, color, and trend fields wherever the contract asks for them.
+- Meters diagnose current state only. They never command escalation.
+- bannedNext entries are { "text": string, "persistent": boolean }; default persistent to false.
+- Keep character tracking non-explicit. When age is unspecified, treat characters as adults and never output minors.
+- Do not reveal hidden chain-of-thought. Secrets are reader-visible dramatic state only.
+- activeModules must contain only enabled module keys.
+- Use numeric ranges exactly as named: percentages 0-100, threat/observer pressure 0-10, urgency 0-5, conflict severity 1-3.
+`;
+}
+var STATE_REPAIR_PROMPT = `Repair a malformed LoomOS State V2 compiler result.
+Return exactly one corrected JSON object and no Markdown or explanation.
+Keep only supported fields, satisfy all required core objects, preserve grounded
+facts, obey array limits, and use null or empty arrays for disabled modules.
+Do not add new story events or unsupported facts.`;
 
 // src/backend/compiler.ts
 function extractJsonObject(raw) {
@@ -4216,73 +4729,84 @@ function validationError(raw) {
   try {
     const parsed = extractJsonObject(raw);
     const result = LoomOSCompiledStateSchema.safeParse(parsed);
-    if (result.success) {
-      return "Unknown validation failure.";
-    }
-    return result.error.issues.slice(0, 12).map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`).join("\n");
+    if (result.success) return "Unknown validation failure.";
+    return result.error.issues.slice(0, 16).map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`).join("\n");
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
 }
-function parseCompilerOutput(raw, identity, messageCount, repaired) {
+function parseCompilerOutput(raw, request, repaired) {
   const compiled = LoomOSCompiledStateSchema.parse(extractJsonObject(raw));
   return LoomOSStateSchema.parse({
     ...compiled,
-    schemaVersion: 1,
-    identity,
+    activeModules: request.enabledModules,
+    schemaVersion: 2,
+    identity: request.identity,
     generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
     source: {
-      messageCount,
-      repaired
+      messageCount: request.messageCount,
+      repaired,
+      seedIdentity: request.seedState?.identity ?? null,
+      connectionId: request.connectionId
     }
   });
 }
+function compilerUserMessage(request) {
+  return [
+    "TARGET IDENTITY:",
+    JSON.stringify(request.identity),
+    "",
+    "PREVIOUS STATE SEED (compiler context only; may be null):",
+    request.seedText || "null",
+    "",
+    "RECENT TRANSCRIPT:",
+    request.transcript
+  ].join("\n");
+}
 async function compileStateWithRepair(request) {
+  request.onPhase?.("building_prompt", 1, "Building the enabled-module compiler prompt.");
   const firstMessages = [
-    { role: "system", content: STATE_COMPILER_PROMPT },
-    {
-      role: "user",
-      content: `Compile state for this transcript:
-
-${request.transcript}`
-    }
+    { role: "system", content: buildStateCompilerPrompt(request.enabledModules) },
+    { role: "user", content: compilerUserMessage(request) }
   ];
-  const firstRaw = await request.generate(firstMessages, request.signal);
+  request.onPhase?.("requesting", 1, "Requesting structured state from the selected connection.");
+  const firstRaw = await request.generate(firstMessages, request.signal, 1);
+  request.onPhase?.("validating", 1, "Validating State V2 output.");
   try {
     return {
       ok: true,
-      state: parseCompilerOutput(
-        firstRaw,
-        request.identity,
-        request.messageCount,
-        false
-      ),
+      state: parseCompilerOutput(firstRaw, request, false),
       repaired: false
     };
   } catch {
+    request.onPhase?.("repairing", 2, "Output was invalid; running the single repair pass.");
     const repairMessages = [
-      { role: "system", content: STATE_REPAIR_PROMPT },
+      {
+        role: "system",
+        content: `${STATE_REPAIR_PROMPT}
+
+${buildStateCompilerPrompt(request.enabledModules)}`
+      },
       {
         role: "user",
         content: [
+          "Enabled modules:",
+          request.enabledModules.join(", "),
+          "",
           "Validation failures:",
           validationError(firstRaw),
           "",
           "Malformed output:",
-          firstRaw.slice(0, 24e3)
+          firstRaw.slice(0, 36e3)
         ].join("\n")
       }
     ];
-    const repairedRaw = await request.generate(repairMessages, request.signal);
+    const repairedRaw = await request.generate(repairMessages, request.signal, 2);
+    request.onPhase?.("validating", 2, "Validating repaired State V2 output.");
     try {
       return {
         ok: true,
-        state: parseCompilerOutput(
-          repairedRaw,
-          request.identity,
-          request.messageCount,
-          true
-        ),
+        state: parseCompilerOutput(repairedRaw, request, true),
         repaired: true
       };
     } catch {
@@ -4298,6 +4822,58 @@ ${request.transcript}`
   }
 }
 
+// src/backend/generation.ts
+function isRecord(value) {
+  return typeof value === "object" && value !== null;
+}
+function normalizeGenerationText(result) {
+  if (typeof result === "string" && result.trim()) return result;
+  if (!isRecord(result)) {
+    throw new Error("Lumiverse generation returned an unsupported response.");
+  }
+  for (const key of ["content", "text", "output", "response"]) {
+    const value = result[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  const message = result.message;
+  if (typeof message === "string" && message.trim()) return message;
+  if (isRecord(message) && typeof message.content === "string" && message.content.trim()) {
+    return message.content;
+  }
+  throw new Error("Lumiverse generation completed without textual content.");
+}
+async function runQuietGeneration(spindle2, request) {
+  const controller = new AbortController();
+  let timedOut = false;
+  const onAbort = () => controller.abort();
+  request.parentSignal.addEventListener("abort", onAbort, { once: true });
+  if (request.parentSignal.aborted) controller.abort();
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, request.timeoutMs);
+  try {
+    const result = await spindle2.generate.quiet({
+      type: "quiet",
+      messages: request.messages,
+      connection_id: request.connectionId || void 0,
+      reasoning: { source: "off" },
+      userId: request.userId,
+      signal: controller.signal
+    });
+    return normalizeGenerationText(result);
+  } catch (error) {
+    if (timedOut) {
+      const duration = request.timeoutMs >= 1e3 ? `${Math.round(request.timeoutMs / 1e3)} seconds` : `${request.timeoutMs} ms`;
+      throw new Error(`Generation timed out after ${duration}.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    request.parentSignal.removeEventListener("abort", onAbort);
+  }
+}
+
 // src/shared/compact.ts
 function clean(value, max = 260) {
   return value.replace(/\s+/g, " ").trim().slice(0, max);
@@ -4305,43 +4881,302 @@ function clean(value, max = 260) {
 function xmlEscape(value, max = 260) {
   return clean(value, max).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
-async function buildCompactInjection(state, tokenBudget, countTokens) {
+async function buildCompactInjection(state, settings, countTokens) {
   const open = "<loomos_state>";
   const close = "</loomos_state>";
-  const fragments = [
-    `scene: ${xmlEscape(state.kernel.scene)}`,
-    `location_time: ${xmlEscape(`${state.kernel.location}; ${state.kernel.timeframe}`)}`,
-    `objective: ${xmlEscape(state.kernel.objective)}`,
-    `continuity_constraints: ${state.kernel.constraints.slice(0, 5).map(xmlEscape).join(" | ")}`,
-    ...state.castMatrix.slice(0, 6).map(
-      (member) => `cast.${xmlEscape(member.name, 80)}: ${xmlEscape(member.status)}; goal=${xmlEscape(member.goals[0] ?? "unknown")}`
-    ),
-    ...state.threadLoom.filter((thread) => thread.status !== "resolved").slice(0, 6).map(
-      (thread) => `thread.${xmlEscape(thread.title, 100)}: ${thread.status}/${thread.urgency}; ${xmlEscape(thread.nextPressure)}`
-    ),
-    ...state.continuityFirewall.pendingConsequences.slice(0, 4).map(
+  const enabled = (key) => settings.moduleSettings[key].track && settings.moduleSettings[key].inject && state.activeModules.includes(key);
+  const fragments = [];
+  if (enabled("deltas")) {
+    fragments.push(`delta: ${xmlEscape(state.delta.headline)}`);
+    fragments.push(...state.delta.changes.slice(0, 4).map(
+      (change) => `change.${change.module}.${change.importance}: ${xmlEscape(change.text)}`
+    ));
+  }
+  if (enabled("sceneKernel")) {
+    fragments.push(
+      `scene: ${xmlEscape(state.kernel.scene)}; location=${xmlEscape(state.kernel.location)}; time=${xmlEscape(state.kernel.timeframe)}`,
+      `focus: ${xmlEscape(state.kernel.currentFocus || state.kernel.objective)}`
+    );
+  }
+  if (enabled("continuity")) {
+    fragments.push(...state.continuityFirewall.antiRetconAnchors.slice(0, 6).map(
+      (item) => `anchor: ${xmlEscape(item)}`
+    ));
+    fragments.push(...state.continuityFirewall.pendingConsequences.slice(0, 5).map(
       (item) => `pending: ${xmlEscape(item)}`
-    ),
-    ...state.continuityFirewall.risks.filter((risk) => risk.severity === "high" || risk.severity === "critical").slice(0, 4).map((risk) => `risk.${risk.severity}: ${xmlEscape(risk.issue)}`)
-  ].filter((fragment) => !fragment.endsWith(": "));
+    ));
+  }
+  if (enabled("actionResolver") && state.tools.actionResolver) {
+    const resolver = state.tools.actionResolver;
+    fragments.push(
+      `action: ${xmlEscape(resolver.userAction)}; response=${xmlEscape(resolver.worldResponse)}; risk=${xmlEscape(resolver.risk)}`
+    );
+  }
+  if (enabled("castCore")) {
+    fragments.push(...state.castMatrix.filter((member) => member.kind === "pov" || member.kind === "main" || member.spotlight.value >= 45).slice(0, 6).map(
+      (member) => `cast.${xmlEscape(member.name, 80)}: ${xmlEscape(member.status)}; intent=${xmlEscape(member.intent)}; goal=${xmlEscape(member.goals[0] ?? "")}`
+    ));
+  }
+  if (enabled("worldSpace") && state.scene) {
+    fragments.push(
+      `access: ${state.scene.access.exit}; sight=${xmlEscape(state.scene.access.lineOfSight)}; noise=${xmlEscape(state.scene.access.noiseMask)}`,
+      ...state.scene.spatial.slice(0, 4).map((item) => `space: ${xmlEscape(item)}`)
+    );
+  }
+  if (enabled("inventory")) {
+    fragments.push(...state.castMatrix.flatMap(
+      (member) => member.pockets.filter((item) => item.known).slice(0, 3).map(
+        (item) => `item.${xmlEscape(member.name, 60)}: ${xmlEscape(item.name)} x${item.qty}; ${xmlEscape(item.condition)}`
+      )
+    ).slice(0, 8));
+  }
+  if (enabled("storyThreads")) {
+    fragments.push(...state.storyState.threadLoom.filter((thread) => thread.status !== "resolved").sort((a, b) => b.urgency - a.urgency).slice(0, 6).map(
+      (thread) => `thread.${xmlEscape(thread.title, 100)}: ${thread.status}/${thread.urgency}; ${xmlEscape(thread.nextPressure)}`
+    ));
+    fragments.push(...state.storyState.stakes.slice(0, 3).map(
+      (stake) => `stakes.${xmlEscape(stake.who, 80)}: win=${xmlEscape(stake.win)}; lose=${xmlEscape(stake.lose)}`
+    ));
+  }
+  if (enabled("continuity")) {
+    fragments.push(...state.continuityFirewall.risks.filter((risk) => risk.severity === "high" || risk.severity === "critical").slice(0, 4).map((risk) => `risk.${risk.severity}: ${xmlEscape(risk.issue)}`));
+  }
   const selected = [];
-  for (const fragment of fragments) {
+  for (const fragment of fragments.filter((item) => !item.endsWith(": "))) {
     const candidate = `${open}
 ${[...selected, fragment].join("\n")}
 ${close}`;
-    if (await countTokens(candidate) <= tokenBudget) {
+    if (await countTokens(candidate) <= settings.injectionTokenBudget) {
       selected.push(fragment);
     }
   }
   if (selected.length === 0) {
-    const fallback = `${open}
-scene: ${xmlEscape(state.kernel.scene, Math.max(24, tokenBudget * 2))}
+    return `${open}
+scene: ${xmlEscape(state.kernel.scene, Math.max(24, settings.injectionTokenBudget * 2))}
 ${close}`;
-    return fallback;
   }
   return `${open}
 ${selected.join("\n")}
 ${close}`;
+}
+
+// src/shared/migrations.ts
+function migrateLegacyState(state) {
+  return LoomOSStateSchema.parse({
+    schemaVersion: 2,
+    identity: state.identity,
+    generatedAt: state.generatedAt,
+    source: {
+      messageCount: state.source.messageCount,
+      repaired: state.source.repaired,
+      seedIdentity: null,
+      connectionId: ""
+    },
+    activeModules: [
+      "sceneKernel",
+      "deltas",
+      "castCore",
+      "relationships",
+      "storyThreads",
+      "continuity"
+    ],
+    kernel: {
+      ...state.kernel,
+      date: "",
+      time: "",
+      elapsed: "",
+      weather: "",
+      pov: "",
+      topic: "",
+      theme: "",
+      currentFocus: state.kernel.objective,
+      nextFocus: "",
+      currentRisk: state.continuityFirewall.risks[0]?.issue ?? "",
+      stopMode: "",
+      stopWhy: ""
+    },
+    delta: {
+      headline: "Migrated from LoomOS State V1.",
+      changedModules: [],
+      changes: [],
+      carriedForward: state.continuityFirewall.establishedFacts.slice(0, 6),
+      newlyEstablished: []
+    },
+    meters: [],
+    scene: null,
+    castMatrix: state.castMatrix.map((member, index) => ({
+      id: `${member.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "cast"}-${index + 1}`,
+      name: member.name,
+      kind: "npc",
+      qty: 1,
+      role: member.role,
+      location: member.location,
+      status: member.status,
+      emotionalState: member.emotionalState,
+      intent: member.goals[0] ?? "",
+      pose: "",
+      proximity: "",
+      hands: "",
+      awareness: "ambient",
+      threat: {
+        value: 0,
+        pct: "0%",
+        band: "none",
+        color: "muted",
+        note: ""
+      },
+      spotlight: {
+        value: 50,
+        pct: "50%",
+        band: "present",
+        color: "accent",
+        trend: "unknown",
+        note: ""
+      },
+      visualAnchor: "",
+      identitySummary: `${member.role}; ${member.status}`,
+      clothingSummary: "",
+      goals: member.goals.slice(0, 6),
+      relationships: member.relationships.slice(0, 8),
+      leverage: member.leverage.slice(0, 6),
+      pockets: [],
+      stableFacts: []
+    })),
+    worldState: {
+      recentEnvironmentalChanges: [],
+      activeHazards: [],
+      rumors: [],
+      secrets: state.continuityFirewall.secrets.slice(0, 8).map((secret) => ({
+        secret,
+        visibleHint: "",
+        knownBy: []
+      })),
+      loadedSigns: []
+    },
+    storyState: {
+      goals: [],
+      conflicts: [],
+      threadLoom: state.threadLoom.map((thread) => ({
+        ...thread,
+        priority: thread.urgency >= 5 ? "critical" : thread.urgency >= 3 ? "high" : "medium",
+        progress: thread.status === "resolved" ? 10 : 0,
+        pct: thread.status === "resolved" ? "100%" : "0%",
+        color: thread.status === "resolved" ? "success" : "accent",
+        label: thread.status
+      })),
+      stakes: [],
+      countdowns: [],
+      autonomyQueue: []
+    },
+    continuityFirewall: {
+      establishedFacts: state.continuityFirewall.establishedFacts,
+      antiRetconAnchors: state.kernel.constraints,
+      pendingConsequences: state.continuityFirewall.pendingConsequences,
+      offscreenState: [],
+      bannedNext: [],
+      impossibleNext: [],
+      risks: state.continuityFirewall.risks
+    },
+    tools: {
+      actionResolver: null,
+      dialogueState: null,
+      directorStyle: null,
+      closenessState: null,
+      imagePrompt: null
+    },
+    auditLog: [{
+      system: "migration",
+      marker: "schemaVersion 1",
+      result: "Converted to schemaVersion 2",
+      repaired: false,
+      notes: "Original V1 fields were preserved in their closest V2 modules."
+    }]
+  });
+}
+function migrateStateToCurrent(value) {
+  const current = LoomOSStateSchema.safeParse(value);
+  if (current.success) return current.data;
+  const legacy = LegacyLoomOSStateSchema.safeParse(value);
+  if (legacy.success) return migrateLegacyState(legacy.data);
+  return null;
+}
+
+// src/shared/seed.ts
+function compactText(value, max = 240) {
+  return value.replace(/\s+/g, " ").trim().slice(0, max);
+}
+function trimJsonToBudget(value, tokenBudget) {
+  const serialized = JSON.stringify(value);
+  const maxChars = Math.max(800, tokenBudget * 4);
+  if (serialized.length <= maxChars) return serialized;
+  return JSON.stringify({
+    snapshotExcerpt: serialized.slice(0, maxChars - 120),
+    truncated: true
+  });
+}
+function buildStateSeedForCompiler(state, settings) {
+  const modules = settings.moduleSettings;
+  const seed = {
+    identity: state.identity,
+    generatedAt: state.generatedAt,
+    kernel: {
+      scene: compactText(state.kernel.scene),
+      location: compactText(state.kernel.location),
+      timeframe: compactText(state.kernel.timeframe),
+      date: compactText(state.kernel.date),
+      time: compactText(state.kernel.time),
+      elapsed: compactText(state.kernel.elapsed),
+      pov: compactText(state.kernel.pov),
+      tone: compactText(state.kernel.tone),
+      objective: compactText(state.kernel.objective),
+      currentFocus: compactText(state.kernel.currentFocus),
+      currentRisk: compactText(state.kernel.currentRisk),
+      constraints: state.kernel.constraints.slice(0, 8).map(compactText)
+    },
+    cast: state.castMatrix.slice(0, 10).map((member) => ({
+      id: member.id,
+      name: member.name,
+      kind: member.kind,
+      location: compactText(member.location),
+      status: compactText(member.status),
+      intent: compactText(member.intent),
+      clothing: modules.clothing.track ? compactText(member.clothingSummary) : void 0,
+      goals: member.goals.slice(0, 4).map(compactText),
+      relationships: modules.relationships.track ? member.relationships.slice(0, 4).map(compactText) : void 0,
+      pockets: modules.inventory.track ? member.pockets.slice(0, 4).map((item) => ({
+        name: item.name,
+        qty: item.qty,
+        condition: compactText(item.condition),
+        known: item.known
+      })) : void 0,
+      stableFacts: member.stableFacts.slice(0, 4).map(compactText)
+    })),
+    story: {
+      threads: state.storyState.threadLoom.filter((thread) => thread.status !== "resolved").slice(0, 8).map((thread) => ({
+        title: thread.title,
+        status: thread.status,
+        urgency: thread.urgency,
+        progress: thread.progress,
+        nextPressure: compactText(thread.nextPressure)
+      })),
+      countdowns: state.storyState.countdowns.slice(0, 4),
+      stakes: state.storyState.stakes.slice(0, 4)
+    },
+    continuity: {
+      facts: state.continuityFirewall.establishedFacts.slice(0, 12).map(compactText),
+      anchors: state.continuityFirewall.antiRetconAnchors.slice(0, 10).map(compactText),
+      pending: state.continuityFirewall.pendingConsequences.slice(0, 10).map(compactText),
+      offscreen: state.continuityFirewall.offscreenState.slice(0, 8).map(compactText),
+      persistentBans: state.continuityFirewall.bannedNext.filter((item) => item.persistent).slice(0, 6).map((item) => compactText(item.text))
+    },
+    world: modules.worldSpace.track && state.scene ? {
+      privacy: state.scene.privacy,
+      access: state.scene.access,
+      spatial: state.scene.spatial.slice(0, 6).map(compactText),
+      items: modules.inventory.track ? state.scene.items.slice(0, 6) : void 0
+    } : void 0
+  };
+  return trimJsonToBudget(seed, settings.compilerSeedTokenBudget);
 }
 
 // src/shared/storage.ts
@@ -4376,7 +5211,7 @@ var jobByIdentity = /* @__PURE__ */ new Map();
 var interceptorRegistered = false;
 var interceptorEnabled = spindle.permissions.has("interceptor");
 var disposed = false;
-function isRecord(value) {
+function isRecord2(value) {
   return typeof value === "object" && value !== null;
 }
 function errorMessage(error) {
@@ -4390,18 +5225,14 @@ function permissionSnapshot() {
   };
 }
 function send(payload, userId) {
-  if (!disposed) {
-    spindle.sendToFrontend(payload, userId);
-  }
+  if (!disposed) spindle.sendToFrontend(payload, userId);
 }
 function rememberUserChat(userId, chatId) {
   const previous = activeChatByUser.get(userId);
   if (previous && previous !== chatId) {
     const previousUsers = usersByChat.get(previous);
     previousUsers?.delete(userId);
-    if (previousUsers?.size === 0) {
-      usersByChat.delete(previous);
-    }
+    if (previousUsers?.size === 0) usersByChat.delete(previous);
   }
   if (!chatId) {
     activeChatByUser.delete(userId);
@@ -4426,6 +5257,12 @@ async function getSettings(userId) {
   });
   const parsed = LoomOSSettingsSchema.safeParse(raw);
   if (parsed.success) {
+    if (!isRecord2(raw) || raw.schemaVersion !== 2) {
+      await spindle.userStorage.setJson(SETTINGS_PATH, parsed.data, {
+        indent: 2,
+        userId
+      });
+    }
     return parsed.data;
   }
   spindle.log.warn("Invalid LoomOS settings found; defaults will be used.");
@@ -4433,30 +5270,21 @@ async function getSettings(userId) {
 }
 async function saveSettings(settings, userId) {
   const parsed = LoomOSSettingsSchema.parse(settings);
-  await spindle.userStorage.setJson(SETTINGS_PATH, parsed, {
-    indent: 2,
-    userId
-  });
+  await spindle.userStorage.setJson(SETTINGS_PATH, parsed, { indent: 2, userId });
   return parsed;
 }
 async function getMessages(chatId) {
   if (!spindle.permissions.has("chat_mutation")) {
-    throw new Error(
-      "PERMISSION_DENIED: chat_mutation is required to inspect chat history."
-    );
+    throw new Error("PERMISSION_DENIED: chat_mutation is required to read chat history.");
   }
   return spindle.chat.getMessages(chatId);
 }
 async function resolveIdentity(requested) {
   const messages = await getMessages(requested.chatId);
   const messageId = requested.messageId ?? messages.at(-1)?.id;
-  if (!messageId) {
-    throw new Error("This chat has no message to attach LoomOS state to.");
-  }
+  if (!messageId) throw new Error("This chat has no message to attach LoomOS state to.");
   const message = messages.find((candidate) => candidate.id === messageId);
-  if (!message) {
-    throw new Error("The requested message no longer exists in this chat.");
-  }
+  if (!message) throw new Error("The requested message no longer exists in this chat.");
   const swipeId = requested.swipeId ?? message.swipe_id;
   if (!Number.isInteger(swipeId) || swipeId < 0 || swipeId >= message.swipes.length) {
     throw new Error("The requested swipe no longer exists for this message.");
@@ -4468,28 +5296,28 @@ async function resolveIdentity(requested) {
   });
 }
 async function loadState(identity, userId) {
-  const raw = await spindle.userStorage.getJson(
-    stateStoragePath(identity),
-    { fallback: null, userId }
-  );
-  const parsed = LoomOSStateSchema.safeParse(raw);
-  if (!parsed.success) {
-    return null;
-  }
-  const storedIdentity = parsed.data.identity;
-  if (storedIdentity.chatId !== identity.chatId || storedIdentity.messageId !== identity.messageId || storedIdentity.swipeId !== identity.swipeId) {
+  const path = stateStoragePath(identity);
+  const raw = await spindle.userStorage.getJson(path, {
+    fallback: null,
+    userId
+  });
+  const state = migrateStateToCurrent(raw);
+  if (!state) return null;
+  if (state.identity.chatId !== identity.chatId || state.identity.messageId !== identity.messageId || state.identity.swipeId !== identity.swipeId) {
     spindle.log.warn("Ignored a LoomOS state file with mismatched identity.");
     return null;
   }
-  return parsed.data;
+  if (isRecord2(raw) && raw.schemaVersion === 1) {
+    await spindle.userStorage.setJson(path, state, { indent: 2, userId });
+  }
+  return state;
 }
 async function persistState(state, userId) {
   const parsed = LoomOSStateSchema.parse(state);
-  await spindle.userStorage.setJson(
-    stateStoragePath(parsed.identity),
-    parsed,
-    { indent: 2, userId }
-  );
+  await spindle.userStorage.setJson(stateStoragePath(parsed.identity), parsed, {
+    indent: 2,
+    userId
+  });
   return parsed;
 }
 async function deleteState(identity, userId) {
@@ -4499,11 +5327,8 @@ async function deleteState(identity, userId) {
   }
 }
 async function invalidateMessageStates(chatId, messageId, userId) {
-  const prefix = messageStatePrefix(chatId, messageId);
-  const paths = await spindle.userStorage.list(prefix, userId);
-  await Promise.all(paths.map(
-    (path) => spindle.userStorage.delete(path, userId)
-  ));
+  const paths = await spindle.userStorage.list(messageStatePrefix(chatId, messageId), userId);
+  await Promise.all(paths.map((path) => spindle.userStorage.delete(path, userId)));
 }
 async function sendExactState(userId, identity, requestId) {
   send({
@@ -4514,38 +5339,77 @@ async function sendExactState(userId, identity, requestId) {
   }, userId);
 }
 function transcriptContent(message, identity) {
-  if (message.id !== identity.messageId) {
-    return message.content;
-  }
+  if (message.id !== identity.messageId) return message.content;
   return message.swipes[identity.swipeId] ?? message.content;
 }
-async function buildTranscript(identity, settings) {
-  const messages = await getMessages(identity.chatId);
-  const targetIndex = messages.findIndex(
-    (message) => message.id === identity.messageId
-  );
-  if (targetIndex < 0) {
-    throw new Error("The target message disappeared before compilation.");
-  }
+async function buildTranscript(identity, settings, messages) {
+  const allMessages = messages ?? await getMessages(identity.chatId);
+  const targetIndex = allMessages.findIndex((message) => message.id === identity.messageId);
+  if (targetIndex < 0) throw new Error("The target message disappeared before compilation.");
   const start = Math.max(0, targetIndex + 1 - settings.recentMessageLimit);
-  const selected = messages.slice(start, targetIndex + 1);
+  const selected = allMessages.slice(start, targetIndex + 1);
   const transcript = selected.map((message) => {
-    const role = message.role.toUpperCase();
+    const role = message.is_user ? "USER" : "ASSISTANT";
     const name = message.name ? ` ${message.name}` : "";
     const content = transcriptContent(message, identity).slice(0, 12e3);
     return `[${message.index_in_chat} ${role}${name}]
 ${content}`;
   }).join("\n\n");
+  return { transcript, messageCount: selected.length, messages: allMessages };
+}
+async function loadCompilationSeed(identity, userId, settings, messages, exactState) {
+  if (exactState) {
+    return {
+      state: exactState,
+      text: buildStateSeedForCompiler(exactState, settings)
+    };
+  }
+  const targetIndex = messages.findIndex((message) => message.id === identity.messageId);
+  for (let index = targetIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message) continue;
+    const previousIdentity = StateIdentitySchema.parse({
+      chatId: identity.chatId,
+      messageId: message.id,
+      swipeId: message.swipe_id
+    });
+    const previous = await loadState(previousIdentity, userId);
+    if (previous) {
+      return {
+        state: previous,
+        text: buildStateSeedForCompiler(previous, settings)
+      };
+    }
+  }
+  return { state: null, text: "null" };
+}
+function connectionSummary(connection) {
   return {
-    transcript,
-    messageCount: selected.length
+    id: connection.id,
+    name: connection.name,
+    provider: connection.provider,
+    model: connection.model,
+    isDefault: connection.is_default,
+    ready: connection.has_api_key
   };
 }
-function generationContent(result) {
-  if (isRecord(result) && typeof result.content === "string") {
-    return result.content;
+async function listConnections(userId) {
+  if (!spindle.permissions.has("generation")) return [];
+  try {
+    return (await spindle.connections.list(userId)).map(connectionSummary);
+  } catch (error) {
+    spindle.log.warn(`LoomOS could not list connections: ${errorMessage(error)}`);
+    return [];
   }
-  throw new Error("Lumiverse generation returned no textual content.");
+}
+function chooseConnection(connections, requestedId) {
+  if (requestedId) {
+    const selected = connections.find((connection) => connection.id === requestedId);
+    if (!selected) throw new Error("The selected LoomOS connection no longer exists.");
+    if (!selected.ready) throw new Error(`Connection "${selected.name}" has no API key configured.`);
+    return selected;
+  }
+  return connections.find((connection) => connection.isDefault && connection.ready) ?? connections.find((connection) => connection.ready) ?? null;
 }
 function requestJobKey(userId, requestId) {
   return `${userId}:${requestId}`;
@@ -4558,62 +5422,87 @@ function abortJob(jobKey) {
 }
 async function generateState(requestId, requested, userId) {
   if (!spindle.permissions.has("generation")) {
-    throw new Error(
-      "PERMISSION_DENIED: generation is required to compile LoomOS state."
-    );
+    throw new Error("PERMISSION_DENIED: generation is required to compile LoomOS state.");
   }
+  const startedAt = Date.now();
   const identity = await resolveIdentity(requested);
   const settings = await getSettings(userId);
   const existingState = await loadState(identity, userId);
-  const { transcript, messageCount } = await buildTranscript(identity, settings);
+  const transcriptResult = await buildTranscript(identity, settings);
+  const connections = await listConnections(userId);
+  const connection = chooseConnection(connections, settings.connectionId);
+  if (!connection) {
+    throw new Error("No ready Lumiverse LLM connection is available. Configure a connection, then retry.");
+  }
   const controller = new AbortController();
   const jobKey = requestJobKey(userId, requestId);
   const identityKey = identityJobKey(userId, identity);
   const previousJob = jobByIdentity.get(identityKey);
-  if (previousJob) {
-    abortJob(previousJob);
-  }
+  if (previousJob) abortJob(previousJob);
   jobs.set(jobKey, { controller, identityKey });
   jobByIdentity.set(identityKey, jobKey);
+  const progress = (phase, attempt, message) => {
+    send({
+      type: "generation_status",
+      requestId,
+      status: "progress",
+      identity,
+      message,
+      report: {
+        phase,
+        attempt,
+        elapsedMs: Date.now() - startedAt,
+        connectionId: connection.id,
+        message
+      }
+    }, userId);
+  };
   send({
     type: "generation_status",
     requestId,
     status: "started",
-    identity
+    identity,
+    message: `Preparing ${connection.name} (${connection.model || connection.provider}).`,
+    report: {
+      phase: "resolving",
+      attempt: 1,
+      elapsedMs: 0,
+      connectionId: connection.id,
+      message: "Resolved exact message and swipe."
+    }
   }, userId);
   try {
+    progress("loading_seed", 1, "Loading continuity seed from this or the nearest prior message.");
+    const seed = await loadCompilationSeed(
+      identity,
+      userId,
+      settings,
+      transcriptResult.messages,
+      existingState
+    );
+    const enabledModules = trackedModuleKeys(settings);
     const compiled = await compileStateWithRepair({
       identity,
-      transcript,
-      messageCount,
+      transcript: transcriptResult.transcript,
+      messageCount: transcriptResult.messageCount,
       existingState,
+      seedState: seed.state,
+      seedText: seed.text,
+      enabledModules,
+      connectionId: connection.id,
       signal: controller.signal,
-      generate: async (messages, signal) => {
-        const result = await spindle.generate.quiet({
-          type: "quiet",
-          messages,
-          connection_id: settings.connectionId || void 0,
-          parameters: {
-            temperature: 0.1,
-            max_tokens: 1800
-          },
-          reasoning: { source: "off" },
-          userId,
-          signal
-        });
-        return generationContent(result);
-      }
+      onPhase: progress,
+      generate: async (messages, signal) => runQuietGeneration(spindle, {
+        messages,
+        connectionId: connection.id,
+        userId,
+        timeoutMs: settings.generationTimeoutSeconds * 1e3,
+        parentSignal: signal
+      })
     });
-    if (controller.signal.aborted) {
-      throw new DOMException("Generation cancelled.", "AbortError");
-    }
+    if (controller.signal.aborted) throw new DOMException("Generation cancelled.", "AbortError");
     if (!compiled.ok) {
-      send({
-        type: "state",
-        requestId,
-        identity,
-        state: compiled.state
-      }, userId);
+      send({ type: "state", requestId, identity, state: compiled.state }, userId);
       send({
         type: "generation_status",
         requestId,
@@ -4623,6 +5512,7 @@ async function generateState(requestId, requested, userId) {
       }, userId);
       return;
     }
+    progress("saving", compiled.repaired ? 2 : 1, "Saving validated exact-swipe state.");
     const state = await persistState(compiled.state, userId);
     send({ type: "state", requestId, identity, state }, userId);
     send({
@@ -4630,7 +5520,14 @@ async function generateState(requestId, requested, userId) {
       requestId,
       status: "completed",
       identity,
-      message: compiled.repaired ? "State compiled after one repair pass." : "State compiled."
+      message: compiled.repaired ? "State compiled after one repair pass." : "State compiled and saved.",
+      report: {
+        phase: "saving",
+        attempt: compiled.repaired ? 2 : 1,
+        elapsedMs: Date.now() - startedAt,
+        connectionId: connection.id,
+        message: "Validated state saved."
+      }
     }, userId);
   } catch (error) {
     if (controller.signal.aborted || error instanceof Error && error.name === "AbortError") {
@@ -4643,24 +5540,22 @@ async function generateState(requestId, requested, userId) {
       }, userId);
       return;
     }
+    const message = errorMessage(error);
+    spindle.log.error(`LoomOS generation failed (${connection.id}): ${message}`);
     send({
       type: "generation_status",
       requestId,
       status: "failed",
       identity,
-      message: errorMessage(error)
+      message
     }, userId);
   } finally {
-    if (jobs.get(jobKey)?.controller === controller) {
-      jobs.delete(jobKey);
-    }
-    if (jobByIdentity.get(identityKey) === jobKey) {
-      jobByIdentity.delete(identityKey);
-    }
+    if (jobs.get(jobKey)?.controller === controller) jobs.delete(jobKey);
+    if (jobByIdentity.get(identityKey) === jobKey) jobByIdentity.delete(identityKey);
   }
 }
 function parseFrontendRequest(payload) {
-  if (!isRecord(payload) || typeof payload.type !== "string") {
+  if (!isRecord2(payload) || typeof payload.type !== "string") {
     throw new Error("Invalid LoomOS frontend request.");
   }
   return payload;
@@ -4679,6 +5574,7 @@ async function handleFrontendRequest(payload, userId) {
           type: "bootstrap",
           settings,
           permissions: permissionSnapshot(),
+          connections: await listConnections(userId),
           identity,
           state: identity ? await loadState(identity, userId) : null
         }, userId);
@@ -4688,11 +5584,7 @@ async function handleFrontendRequest(payload, userId) {
         rememberUserChat(userId, null);
         return;
       case "get_settings":
-        send({
-          type: "settings",
-          requestId,
-          settings: await getSettings(userId)
-        }, userId);
+        send({ type: "settings", requestId, settings: await getSettings(userId) }, userId);
         return;
       case "save_settings":
         send({
@@ -4700,6 +5592,9 @@ async function handleFrontendRequest(payload, userId) {
           requestId,
           settings: await saveSettings(request.settings, userId)
         }, userId);
+        return;
+      case "get_connections":
+        send({ type: "connections", requestId, connections: await listConnections(userId) }, userId);
         return;
       case "get_state": {
         const identity = await resolveIdentity(request.identity);
@@ -4712,59 +5607,41 @@ async function handleFrontendRequest(payload, userId) {
         if (resolvedIdentity.chatId !== request.state.identity.chatId || resolvedIdentity.messageId !== request.state.identity.messageId || resolvedIdentity.swipeId !== request.state.identity.swipeId) {
           throw new Error("State identity does not match the live message swipe.");
         }
-        const state = await persistState(
-          LoomOSStateSchema.parse(request.state),
-          userId
-        );
-        send({
-          type: "state",
-          requestId,
-          identity: state.identity,
-          state
-        }, userId);
+        const state = await persistState(request.state, userId);
+        send({ type: "state", requestId, identity: state.identity, state }, userId);
         return;
       }
       case "delete_state": {
         const identity = await resolveIdentity(request.identity);
         await deleteState(identity, userId);
-        send({
-          type: "state",
-          requestId,
-          identity,
-          state: null
-        }, userId);
+        send({ type: "state", requestId, identity, state: null }, userId);
         return;
       }
       case "generate_state":
-        void generateState(request.requestId, request.identity, userId);
+        void generateState(request.requestId, request.identity, userId).catch((error) => {
+          send({
+            type: "generation_status",
+            requestId: request.requestId,
+            status: "failed",
+            message: errorMessage(error)
+          }, userId);
+        });
         return;
       case "cancel_generation":
         abortJob(requestJobKey(userId, request.requestId));
         return;
       case "refresh_permissions":
-        send({
-          type: "permissions",
-          requestId,
-          permissions: permissionSnapshot()
-        }, userId);
+        send({ type: "permissions", requestId, permissions: permissionSnapshot() }, userId);
         return;
     }
   } catch (error) {
-    send({
-      type: "error",
-      requestId,
-      message: errorMessage(error)
-    }, userId);
+    send({ type: "error", requestId, message: errorMessage(error) }, userId);
   }
 }
 function eventMessage(payload) {
-  if (!isRecord(payload) || !isRecord(payload.message)) {
-    return null;
-  }
+  if (!isRecord2(payload) || !isRecord2(payload.message)) return null;
   const message = payload.message;
-  if (typeof message.id !== "string" || typeof message.chat_id !== "string" || typeof message.swipe_id !== "number" || !Array.isArray(message.swipes)) {
-    return null;
-  }
+  if (typeof message.id !== "string" || typeof message.chat_id !== "string" || typeof message.swipe_id !== "number" || !Array.isArray(message.swipes)) return null;
   return message;
 }
 async function handleMessageEdited(payload, eventUserId) {
@@ -4790,12 +5667,11 @@ async function handleMessageSwiped(payload, eventUserId) {
     if (payload.action === "deleted") {
       await invalidateMessageStates(payload.chatId, payload.message.id, userId);
     } else if (payload.action === "updated" || payload.action === "added") {
-      const affectedIdentity = StateIdentitySchema.parse({
+      await deleteState(StateIdentitySchema.parse({
         chatId: payload.chatId,
         messageId: payload.message.id,
         swipeId: payload.swipeId
-      });
-      await deleteState(affectedIdentity, userId);
+      }), userId);
     }
     await sendExactState(userId, activeIdentity);
   }
@@ -4812,9 +5688,7 @@ async function handleSwipeEdited(payload, eventUserId) {
   }
 }
 async function handleMessageDeleted(payload, eventUserId) {
-  if (!isRecord(payload) || typeof payload.chatId !== "string" || typeof payload.messageId !== "string") {
-    return;
-  }
+  if (!isRecord2(payload) || typeof payload.chatId !== "string" || typeof payload.messageId !== "string") return;
   for (const userId of eventUsers(payload.chatId, eventUserId)) {
     await invalidateMessageStates(payload.chatId, payload.messageId, userId);
   }
@@ -4832,68 +5706,49 @@ async function handleMessageSent(payload, eventUserId) {
     const settings = await getSettings(userId);
     const shouldGenerate = settings.autoGeneration === "every" || settings.autoGeneration === "assistant" && !message.is_user;
     if (shouldGenerate && spindle.permissions.has("generation")) {
-      const requestId = `auto:${message.id}:${message.swipe_id}:${Date.now()}`;
-      void generateState(requestId, identity, userId);
+      void generateState(
+        `auto:${message.id}:${message.swipe_id}:${Date.now()}`,
+        identity,
+        userId
+      ).catch((error) => {
+        spindle.log.warn(`LoomOS automatic generation skipped: ${errorMessage(error)}`);
+      });
     }
   }
 }
 function tryRegisterInterceptor() {
-  if (interceptorRegistered || !spindle.permissions.has("interceptor")) {
-    return;
-  }
+  if (interceptorRegistered || !spindle.permissions.has("interceptor")) return;
   interceptorRegistered = true;
   interceptorEnabled = true;
   spindle.registerInterceptor(async (messages, context) => {
-    if (!interceptorEnabled || !isRecord(context)) {
-      return messages;
-    }
-    if (context.generationType === "quiet" || typeof context.chatId !== "string") {
-      return messages;
-    }
-    if (!spindle.permissions.has("chat_mutation")) {
-      return messages;
-    }
+    if (!interceptorEnabled || disposed || !isRecord2(context)) return messages;
+    if (context.generationType === "quiet" || typeof context.chatId !== "string") return messages;
+    if (!spindle.permissions.has("chat_mutation")) return messages;
     const chatId = context.chatId;
     const chatUsers = usersByChat.get(chatId);
-    if (!chatUsers || chatUsers.size !== 1) {
-      return messages;
-    }
+    if (!chatUsers || chatUsers.size !== 1) return messages;
     const userId = [...chatUsers][0];
     try {
       const settings = await getSettings(userId);
-      if (!settings.injectionEnabled) {
-        return messages;
-      }
+      if (!settings.injectionEnabled) return messages;
       const storedMessages = await getMessages(chatId);
       const latest = storedMessages.at(-1);
-      if (!latest) {
-        return messages;
-      }
+      if (!latest) return messages;
       const identity = StateIdentitySchema.parse({
         chatId,
         messageId: latest.id,
         swipeId: latest.swipe_id
       });
       const state = await loadState(identity, userId);
-      if (!state) {
-        return messages;
-      }
-      const compact = await buildCompactInjection(
-        state,
-        settings.injectionTokenBudget,
-        async (text) => {
-          try {
-            const result = await spindle.tokens.countText(text, { userId });
-            return result.total_tokens;
-          } catch {
-            return Math.ceil(text.length / 4);
-          }
+      if (!state) return messages;
+      const compact = await buildCompactInjection(state, settings, async (text) => {
+        try {
+          return (await spindle.tokens.countText(text, { userId })).total_tokens;
+        } catch {
+          return Math.ceil(text.length / 4);
         }
-      );
-      const injected = {
-        role: "system",
-        content: compact
-      };
+      });
+      const injected = { role: "system", content: compact };
       return {
         messages: [injected, ...messages],
         breakdown: [{ messageIndex: 0, name: "LoomOS Story State" }]
@@ -4907,9 +5762,8 @@ function tryRegisterInterceptor() {
 function disposeBackend() {
   if (disposed) return;
   disposed = true;
-  for (const { controller } of jobs.values()) {
-    controller.abort();
-  }
+  interceptorEnabled = false;
+  for (const { controller } of jobs.values()) controller.abort();
   jobs.clear();
   jobByIdentity.clear();
   for (const dispose of disposers.splice(0).reverse()) {
@@ -4940,30 +5794,22 @@ disposers.push(spindle.on("SWIPE_EDITED", (payload, userId) => {
   void handleSwipeEdited(payload, userId);
 }));
 disposers.push(spindle.permissions.onDenied(({ permission, operation }) => {
-  spindle.log.warn(
-    `LoomOS permission denied: ${permission} for ${operation}.`
-  );
+  spindle.log.warn(`LoomOS permission denied: ${permission} for ${operation}.`);
 }));
 disposers.push(spindle.permissions.onChanged(({ permission, granted }) => {
   if (permission === "generation" && !granted) {
-    for (const { controller } of jobs.values()) {
-      controller.abort();
-    }
+    for (const { controller } of jobs.values()) controller.abort();
   }
   if (permission === "interceptor") {
     interceptorEnabled = granted;
-    if (granted) {
-      tryRegisterInterceptor();
-    }
+    if (granted) tryRegisterInterceptor();
   }
   for (const userId of activeChatByUser.keys()) {
     send({ type: "permissions", permissions: permissionSnapshot() }, userId);
   }
 }));
 disposers.push(spindle.on("SPINDLE_EXTENSION_UNLOADED", (payload) => {
-  if (isRecord(payload) && payload.extensionId === EXTENSION_ID) {
-    disposeBackend();
-  }
+  if (isRecord2(payload) && payload.extensionId === EXTENSION_ID) disposeBackend();
 }));
 tryRegisterInterceptor();
 spindle.log.info("LoomOS Command Deck backend loaded.");

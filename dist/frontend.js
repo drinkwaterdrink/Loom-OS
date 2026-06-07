@@ -4,6 +4,123 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// src/shared/modules.ts
+var MODULE_KEYS = [
+  "sceneKernel",
+  "deltas",
+  "meters",
+  "castCore",
+  "castVisuals",
+  "clothing",
+  "relationships",
+  "inventory",
+  "worldSpace",
+  "storyThreads",
+  "continuity",
+  "secretsRumors",
+  "actionResolver",
+  "dialogueState",
+  "directorStyle",
+  "closenessState",
+  "imagePrompt",
+  "auditLog"
+];
+var CORE_TRACKING_MODULES = /* @__PURE__ */ new Set([
+  "sceneKernel",
+  "deltas",
+  "castCore",
+  "storyThreads",
+  "continuity"
+]);
+var MODULE_CATALOG = [
+  { key: "sceneKernel", label: "Scene Kernel", group: "Core", description: "Scene, time, tone, focus, objective, and constraints." },
+  { key: "deltas", label: "Turn Deltas", group: "Core", description: "Meaningful changes from the previous compiled state." },
+  { key: "meters", label: "Diagnostic Meters", group: "Scene", description: "Tension, danger, coherence, hidden information, and omen." },
+  { key: "castCore", label: "Cast Core", group: "Cast", description: "Presence, intent, status, awareness, goals, and anchors." },
+  { key: "castVisuals", label: "Cast Visuals", group: "Cast", description: "Pose, proximity, hands, visual anchor, and spotlight." },
+  { key: "clothing", label: "Clothing", group: "Cast", description: "Compact grounded clothing continuity." },
+  { key: "relationships", label: "Relationships", group: "Cast", description: "Relationship state, leverage, and social pressure." },
+  { key: "inventory", label: "Inventory", group: "World", description: "Pockets, ownership, condition, and important room items." },
+  { key: "worldSpace", label: "World & Space", group: "World", description: "Privacy, observers, light, blocking, exits, and hazards." },
+  { key: "storyThreads", label: "Story Threads", group: "Story", description: "Goals, conflicts, threads, stakes, countdowns, and autonomy." },
+  { key: "continuity", label: "Continuity Firewall", group: "Story", description: "Facts, anchors, consequences, impossible moves, and risks." },
+  { key: "secretsRumors", label: "Secrets & Rumors", group: "World", description: "Rumors, secrets, hints, and loaded signs." },
+  { key: "actionResolver", label: "Action Resolver", group: "Tools", description: "Current action, world response, blockers, and risk." },
+  { key: "dialogueState", label: "Dialogue State", group: "Tools", description: "Open thread, masks, levers, and taboos." },
+  { key: "directorStyle", label: "Director Style", group: "Tools", description: "Optional scene direction and voice cues." },
+  { key: "closenessState", label: "Closeness State", group: "Tools", description: "Non-explicit emotional and physical closeness." },
+  { key: "imagePrompt", label: "Image Prompt", group: "Tools", description: "Optional compact visual prompt assembly." },
+  { key: "auditLog", label: "Audit Log", group: "System", description: "Compact compiler and repair diagnostics." }
+];
+function control(track, display = track, inject = false) {
+  return { track, display, inject };
+}
+var BALANCED_MODULE_SETTINGS = {
+  sceneKernel: control(true, true, true),
+  deltas: control(true, true, true),
+  meters: control(true, true, false),
+  castCore: control(true, true, true),
+  castVisuals: control(true, true, false),
+  clothing: control(true, true, false),
+  relationships: control(true, true, true),
+  inventory: control(true, true, true),
+  worldSpace: control(true, true, true),
+  storyThreads: control(true, true, true),
+  continuity: control(true, true, true),
+  secretsRumors: control(true, true, false),
+  actionResolver: control(true, true, true),
+  dialogueState: control(false, false, false),
+  directorStyle: control(false, false, false),
+  closenessState: control(false, false, false),
+  imagePrompt: control(false, false, false),
+  auditLog: control(true, true, false)
+};
+function cloneControls(source) {
+  return Object.fromEntries(
+    MODULE_KEYS.map((key) => [key, { ...source[key] }])
+  );
+}
+function moduleSettingsForPreset(preset) {
+  const next = cloneControls(BALANCED_MODULE_SETTINGS);
+  if (preset === "balanced") return next;
+  if (preset === "lite") {
+    for (const key of MODULE_KEYS) {
+      const isCore = CORE_TRACKING_MODULES.has(key);
+      next[key] = control(isCore, isCore, isCore);
+    }
+    next.actionResolver = control(true, true, true);
+    return next;
+  }
+  for (const key of MODULE_KEYS) {
+    const experimental = [
+      "dialogueState",
+      "directorStyle",
+      "closenessState",
+      "imagePrompt"
+    ].includes(key);
+    const track = preset === "experimental" || !experimental;
+    next[key] = control(track, track, track && key !== "auditLog");
+  }
+  return next;
+}
+function normalizeModuleSettings(input) {
+  const next = cloneControls(BALANCED_MODULE_SETTINGS);
+  for (const key of MODULE_KEYS) {
+    const candidate = input?.[key];
+    if (candidate) {
+      next[key] = {
+        track: typeof candidate.track === "boolean" ? candidate.track : next[key].track,
+        display: typeof candidate.display === "boolean" ? candidate.display : next[key].display,
+        inject: typeof candidate.inject === "boolean" ? candidate.inject : next[key].inject
+      };
+    }
+    if (CORE_TRACKING_MODULES.has(key)) {
+      next[key].track = true;
+    }
+  }
+  return next;
+}
+
 // node_modules/zod/v3/external.js
 var external_exports = {};
 __export(external_exports, {
@@ -4061,26 +4178,72 @@ var AutoGenerationModeSchema = external_exports.enum([
   "every",
   "manual"
 ]);
-var PanelVisibilitySchema = external_exports.object({
-  kernel: external_exports.boolean().default(true),
-  castMatrix: external_exports.boolean().default(true),
-  threadLoom: external_exports.boolean().default(true),
-  continuityFirewall: external_exports.boolean().default(true)
+var ModulePresetSchema = external_exports.enum([
+  "lite",
+  "balanced",
+  "full",
+  "experimental",
+  "custom"
+]);
+var ModuleKeySchema = external_exports.enum(MODULE_KEYS);
+var ModuleControlSchema = external_exports.object({
+  track: external_exports.boolean(),
+  display: external_exports.boolean(),
+  inject: external_exports.boolean()
 }).strict();
-var LoomOSSettingsSchema = external_exports.object({
+var ModuleSettingsSchema = external_exports.object(
+  Object.fromEntries(
+    MODULE_KEYS.map((key) => [key, ModuleControlSchema])
+  )
+).strict();
+var RawSettingsSchema = external_exports.object({
+  schemaVersion: external_exports.literal(2).default(2),
   skin: LoomOSSkinSchema.default("auto"),
   autoGeneration: AutoGenerationModeSchema.default("manual"),
   injectionEnabled: external_exports.boolean().default(false),
-  injectionTokenBudget: external_exports.number().int().min(80).max(1200).default(320),
+  injectionTokenBudget: external_exports.number().int().min(80).max(1600).default(320),
+  compilerSeedTokenBudget: external_exports.number().int().min(200).max(2400).default(900),
   recentMessageLimit: external_exports.number().int().min(4).max(80).default(24),
+  generationTimeoutSeconds: external_exports.number().int().min(30).max(300).default(180),
   connectionId: external_exports.string().trim().max(200).default(""),
-  panels: PanelVisibilitySchema.default({
-    kernel: true,
-    castMatrix: true,
-    threadLoom: true,
-    continuityFirewall: true
-  })
+  modulePreset: ModulePresetSchema.default("balanced"),
+  moduleSettings: ModuleSettingsSchema.default(BALANCED_MODULE_SETTINGS)
 }).strict();
+function settingsInput(value) {
+  if (typeof value !== "object" || value === null) return value;
+  const source = value;
+  const legacyPanels = typeof source.panels === "object" && source.panels !== null ? source.panels : {};
+  const suppliedModules = typeof source.moduleSettings === "object" && source.moduleSettings !== null ? source.moduleSettings : void 0;
+  const moduleSettings = normalizeModuleSettings(suppliedModules);
+  const panelMap = {
+    kernel: "sceneKernel",
+    castMatrix: "castCore",
+    threadLoom: "storyThreads",
+    continuityFirewall: "continuity"
+  };
+  for (const [oldKey, newKey] of Object.entries(panelMap)) {
+    if (typeof legacyPanels[oldKey] === "boolean" && !suppliedModules?.[newKey]) {
+      moduleSettings[newKey].display = legacyPanels[oldKey];
+    }
+  }
+  for (const key of CORE_TRACKING_MODULES) {
+    moduleSettings[key].track = true;
+  }
+  return {
+    schemaVersion: 2,
+    skin: source.skin,
+    autoGeneration: source.autoGeneration,
+    injectionEnabled: source.injectionEnabled,
+    injectionTokenBudget: source.injectionTokenBudget,
+    compilerSeedTokenBudget: source.compilerSeedTokenBudget,
+    recentMessageLimit: source.recentMessageLimit,
+    generationTimeoutSeconds: source.generationTimeoutSeconds,
+    connectionId: source.connectionId,
+    modulePreset: source.modulePreset,
+    moduleSettings
+  };
+}
+var LoomOSSettingsSchema = external_exports.preprocess(settingsInput, RawSettingsSchema);
 var StateIdentitySchema = external_exports.object({
   chatId: external_exports.string().min(1).max(300),
   messageId: external_exports.string().min(1).max(300),
@@ -4088,32 +4251,192 @@ var StateIdentitySchema = external_exports.object({
 }).strict();
 var ShortText = external_exports.string().trim().max(500);
 var MediumText = external_exports.string().trim().max(1600);
+var TinyText = external_exports.string().trim().max(160);
+var PercentText = external_exports.string().trim().max(12);
+var ColorText = external_exports.string().trim().max(40);
+var TrendSchema = external_exports.enum(["down", "steady", "up", "unknown"]);
+var GaugeSchema = external_exports.object({
+  value: external_exports.number().min(0).max(100),
+  pct: PercentText,
+  band: TinyText,
+  color: ColorText,
+  trend: TrendSchema,
+  note: ShortText
+}).strict();
 var KernelSchema = external_exports.object({
   scene: ShortText,
   location: ShortText,
   timeframe: ShortText,
+  date: ShortText,
+  time: ShortText,
+  elapsed: ShortText,
+  weather: ShortText,
+  pov: ShortText,
   tone: ShortText,
+  topic: ShortText,
+  theme: ShortText,
   objective: MediumText,
   summary: MediumText,
+  currentFocus: MediumText,
+  nextFocus: MediumText,
+  currentRisk: MediumText,
+  stopMode: ShortText,
+  stopWhy: MediumText,
   constraints: external_exports.array(ShortText).max(12)
 }).strict();
-var CastMemberSchema = external_exports.object({
-  name: external_exports.string().trim().min(1).max(160),
-  role: ShortText,
-  status: ShortText,
+var DeltaSchema = external_exports.object({
+  headline: MediumText,
+  changedModules: external_exports.array(ModuleKeySchema).max(MODULE_KEYS.length),
+  changes: external_exports.array(external_exports.object({
+    text: MediumText,
+    age: ShortText,
+    module: ModuleKeySchema,
+    importance: external_exports.enum(["low", "medium", "high", "critical"])
+  }).strict()).max(6),
+  carriedForward: external_exports.array(MediumText).max(6),
+  newlyEstablished: external_exports.array(MediumText).max(6)
+}).strict();
+var MeterSchema = GaugeSchema.extend({
+  id: external_exports.enum(["tension", "danger", "socialHeat", "coherence", "hiddenInfo", "omen"]),
+  label: TinyText
+}).strict();
+var SceneItemSchema = external_exports.object({
+  name: TinyText,
+  owner: TinyText,
   location: ShortText,
+  condition: ShortText,
+  lastTouch: ShortText,
+  importance: external_exports.enum(["low", "medium", "high", "critical"])
+}).strict();
+var SceneSchema = external_exports.object({
+  privacy: external_exports.enum(["private", "semi-private", "public", "exposed"]),
+  observerCount: external_exports.number().int().nonnegative().max(1e4),
+  observerPressure: GaugeSchema.omit({ value: true }).extend({
+    value: external_exports.number().min(0).max(10)
+  }).strict(),
+  crowdNoise: ShortText,
+  crowdFlow: ShortText,
+  light: external_exports.object({
+    primary: ShortText,
+    secondary: ShortText,
+    quality: ShortText,
+    color: ColorText
+  }).strict(),
+  spatial: external_exports.array(MediumText).max(8),
+  access: external_exports.object({
+    exit: external_exports.enum(["FREE", "WATCHED", "BLOCKED"]),
+    lineOfSight: ShortText,
+    noiseMask: ShortText,
+    items: external_exports.array(ShortText).max(5),
+    people: external_exports.array(ShortText).max(5)
+  }).strict(),
+  carryover: external_exports.object({
+    body: external_exports.array(ShortText).max(5),
+    room: external_exports.array(ShortText).max(5),
+    social: external_exports.array(ShortText).max(5)
+  }).strict(),
+  items: external_exports.array(SceneItemSchema).max(10)
+}).strict();
+var PocketItemSchema = external_exports.object({
+  name: TinyText,
+  type: TinyText,
+  qty: external_exports.number().int().nonnegative().max(9999),
+  condition: ShortText,
+  known: external_exports.boolean()
+}).strict();
+var CastMemberSchema = external_exports.object({
+  id: external_exports.string().trim().min(1).max(160),
+  name: external_exports.string().trim().min(1).max(160),
+  kind: external_exports.enum(["pov", "main", "npc", "crowd", "background"]),
+  qty: external_exports.number().int().positive().max(1e4),
+  role: ShortText,
+  location: ShortText,
+  status: ShortText,
   emotionalState: ShortText,
-  goals: external_exports.array(ShortText).max(8),
-  relationships: external_exports.array(ShortText).max(10),
-  leverage: external_exports.array(ShortText).max(8)
+  intent: MediumText,
+  pose: ShortText,
+  proximity: ShortText,
+  hands: ShortText,
+  awareness: external_exports.enum(["none", "ambient", "watching", "alerted", "hostile"]),
+  threat: GaugeSchema.omit({ value: true, trend: true }).extend({
+    value: external_exports.number().min(0).max(10)
+  }).strict(),
+  spotlight: GaugeSchema,
+  visualAnchor: MediumText,
+  identitySummary: MediumText,
+  clothingSummary: MediumText,
+  goals: external_exports.array(ShortText).max(6),
+  relationships: external_exports.array(ShortText).max(8),
+  leverage: external_exports.array(ShortText).max(6),
+  pockets: external_exports.array(PocketItemSchema).max(6),
+  stableFacts: external_exports.array(ShortText).max(6)
+}).strict();
+var WorldStateSchema = external_exports.object({
+  recentEnvironmentalChanges: external_exports.array(MediumText).max(6),
+  activeHazards: external_exports.array(MediumText).max(6),
+  rumors: external_exports.array(external_exports.object({
+    rumor: MediumText,
+    source: ShortText,
+    credibility: external_exports.number().min(0).max(10),
+    pct: PercentText,
+    color: ColorText
+  }).strict()).max(8),
+  secrets: external_exports.array(external_exports.object({
+    secret: MediumText,
+    visibleHint: MediumText,
+    knownBy: external_exports.array(TinyText).max(6)
+  }).strict()).max(8),
+  loadedSigns: external_exports.array(external_exports.object({
+    thing: ShortText,
+    loadedBy: MediumText,
+    firesWhen: MediumText,
+    state: external_exports.enum(["LOADED", "HEATING", "FIRED", "DORMANT"])
+  }).strict()).max(8)
 }).strict();
 var StoryThreadSchema = external_exports.object({
   title: external_exports.string().trim().min(1).max(240),
   status: external_exports.enum(["dormant", "active", "escalating", "blocked", "resolved"]),
   urgency: external_exports.number().int().min(0).max(5),
+  priority: external_exports.enum(["low", "medium", "high", "critical"]),
+  progress: external_exports.number().min(0).max(10),
+  pct: PercentText,
+  color: ColorText,
+  label: TinyText,
   summary: MediumText,
   nextPressure: MediumText,
-  participants: external_exports.array(external_exports.string().trim().max(160)).max(12)
+  participants: external_exports.array(TinyText).max(12)
+}).strict();
+var StoryStateSchema = external_exports.object({
+  goals: external_exports.array(external_exports.object({
+    who: TinyText,
+    goal: MediumText,
+    status: external_exports.enum(["ACTIVE", "BLOCKED", "PROGRESSED", "RESOLVED"]),
+    note: MediumText
+  }).strict()).max(10),
+  conflicts: external_exports.array(external_exports.object({
+    a: TinyText,
+    b: TinyText,
+    label: ShortText,
+    severity: external_exports.number().int().min(1).max(3)
+  }).strict()).max(8),
+  threadLoom: external_exports.array(StoryThreadSchema).max(24),
+  stakes: external_exports.array(external_exports.object({
+    who: TinyText,
+    win: MediumText,
+    lose: MediumText
+  }).strict()).max(8),
+  countdowns: external_exports.array(external_exports.object({
+    title: ShortText,
+    left: external_exports.number().nonnegative(),
+    unit: TinyText,
+    pct: PercentText,
+    color: ColorText
+  }).strict()).max(8),
+  autonomyQueue: external_exports.array(external_exports.object({
+    who: TinyText,
+    action: MediumText,
+    unlessInterruptedBy: MediumText
+  }).strict()).max(8)
 }).strict();
 var ContinuityRiskSchema = external_exports.object({
   severity: external_exports.enum(["low", "medium", "high", "critical"]),
@@ -4121,10 +4444,126 @@ var ContinuityRiskSchema = external_exports.object({
   evidence: MediumText,
   recommendation: MediumText
 }).strict();
+var ContinuityFirewallSchema = external_exports.object({
+  establishedFacts: external_exports.array(MediumText).max(40),
+  antiRetconAnchors: external_exports.array(MediumText).max(30),
+  pendingConsequences: external_exports.array(MediumText).max(30),
+  offscreenState: external_exports.array(MediumText).max(24),
+  bannedNext: external_exports.array(external_exports.object({
+    text: MediumText,
+    persistent: external_exports.boolean()
+  }).strict()).max(12),
+  impossibleNext: external_exports.array(MediumText).max(12),
+  risks: external_exports.array(ContinuityRiskSchema).max(24)
+}).strict();
+var ToolsSchema = external_exports.object({
+  actionResolver: external_exports.object({
+    userAction: MediumText,
+    worldResponse: MediumText,
+    risk: MediumText,
+    blockers: external_exports.array(ShortText).max(6)
+  }).strict().nullable(),
+  dialogueState: external_exports.object({
+    openThread: MediumText,
+    socialMask: MediumText,
+    levers: external_exports.array(ShortText).max(6),
+    taboos: external_exports.array(ShortText).max(6)
+  }).strict().nullable(),
+  directorStyle: external_exports.object({
+    primary: ShortText,
+    mask: ShortText,
+    push: MediumText,
+    voiceCues: external_exports.array(ShortText).max(6)
+  }).strict().nullable(),
+  closenessState: external_exports.object({
+    emotional: ShortText,
+    physical: ShortText,
+    consentSignals: external_exports.array(ShortText).max(6),
+    boundaries: external_exports.array(ShortText).max(6)
+  }).strict().nullable(),
+  imagePrompt: external_exports.object({
+    aspect: TinyText,
+    shot: ShortText,
+    medium: ShortText,
+    subject: MediumText,
+    positive: MediumText,
+    negative: MediumText,
+    full: external_exports.string().trim().max(3e3),
+    hint: MediumText
+  }).strict().nullable()
+}).strict();
+var AuditEntrySchema = external_exports.object({
+  system: TinyText,
+  marker: TinyText,
+  result: ShortText,
+  repaired: external_exports.boolean(),
+  notes: MediumText
+}).strict();
 var LoomOSCompiledStateSchema = external_exports.object({
+  activeModules: external_exports.array(ModuleKeySchema).max(MODULE_KEYS.length),
   kernel: KernelSchema,
+  delta: DeltaSchema,
+  meters: external_exports.array(MeterSchema).max(6).default([]),
+  scene: SceneSchema.nullable().default(null),
   castMatrix: external_exports.array(CastMemberSchema).max(24),
-  threadLoom: external_exports.array(StoryThreadSchema).max(24),
+  worldState: WorldStateSchema.nullable().default(null),
+  storyState: StoryStateSchema,
+  continuityFirewall: ContinuityFirewallSchema,
+  tools: ToolsSchema.default({
+    actionResolver: null,
+    dialogueState: null,
+    directorStyle: null,
+    closenessState: null,
+    imagePrompt: null
+  }),
+  auditLog: external_exports.array(AuditEntrySchema).max(12).default([])
+}).strict();
+var LoomOSStateSchema = LoomOSCompiledStateSchema.extend({
+  schemaVersion: external_exports.literal(2),
+  identity: StateIdentitySchema,
+  generatedAt: external_exports.string().datetime(),
+  source: external_exports.object({
+    messageCount: external_exports.number().int().nonnegative(),
+    repaired: external_exports.boolean(),
+    seedIdentity: StateIdentitySchema.nullable(),
+    connectionId: external_exports.string().max(200)
+  }).strict()
+}).strict();
+var LegacyLoomOSStateSchema = external_exports.object({
+  schemaVersion: external_exports.literal(1),
+  identity: StateIdentitySchema,
+  generatedAt: external_exports.string().datetime(),
+  source: external_exports.object({
+    messageCount: external_exports.number().int().nonnegative(),
+    repaired: external_exports.boolean()
+  }).strict(),
+  kernel: external_exports.object({
+    scene: ShortText,
+    location: ShortText,
+    timeframe: ShortText,
+    tone: ShortText,
+    objective: MediumText,
+    summary: MediumText,
+    constraints: external_exports.array(ShortText).max(12)
+  }).strict(),
+  castMatrix: external_exports.array(external_exports.object({
+    name: external_exports.string().trim().min(1).max(160),
+    role: ShortText,
+    status: ShortText,
+    location: ShortText,
+    emotionalState: ShortText,
+    goals: external_exports.array(ShortText).max(8),
+    relationships: external_exports.array(ShortText).max(10),
+    leverage: external_exports.array(ShortText).max(8)
+  }).strict()).max(24),
+  threadLoom: external_exports.array(external_exports.object({
+    title: external_exports.string().trim().min(1).max(240),
+    status: external_exports.enum(["dormant", "active", "escalating", "blocked", "resolved"]),
+    urgency: external_exports.number().int().min(0).max(5),
+    summary: MediumText,
+    nextPressure: MediumText,
+    participants: external_exports.array(TinyText).max(12)
+  }).strict()).max(24),
   continuityFirewall: external_exports.object({
     establishedFacts: external_exports.array(MediumText).max(30),
     pendingConsequences: external_exports.array(MediumText).max(24),
@@ -4132,22 +4571,448 @@ var LoomOSCompiledStateSchema = external_exports.object({
     risks: external_exports.array(ContinuityRiskSchema).max(24)
   }).strict()
 }).strict();
-var LoomOSStateSchema = LoomOSCompiledStateSchema.extend({
-  schemaVersion: external_exports.literal(1),
-  identity: StateIdentitySchema,
-  generatedAt: external_exports.string().datetime(),
-  source: external_exports.object({
-    messageCount: external_exports.number().int().nonnegative(),
-    repaired: external_exports.boolean()
-  }).strict()
-}).strict();
 var DEFAULT_SETTINGS = LoomOSSettingsSchema.parse({});
 
+// src/frontend/render.ts
+function escapeHtml(value) {
+  return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+}
+function visible(settings, key) {
+  return settings.moduleSettings[key].display;
+}
+function chips(items, empty = "None recorded") {
+  if (items.length === 0) return `<span class="loomos-muted">${escapeHtml(empty)}</span>`;
+  return `<div class="loomos-chip-row">${items.map(
+    (item) => `<span class="loomos-chip">${escapeHtml(item)}</span>`
+  ).join("")}</div>`;
+}
+function section(key, title, summary, body, open = false) {
+  return `
+    <details class="loomos-section" data-section="${escapeHtml(key)}"${open ? " open" : ""}>
+      <summary>
+        <span>${escapeHtml(title)}</span>
+        <small>${escapeHtml(summary)}</small>
+      </summary>
+      <div class="loomos-section-body">${body}</div>
+    </details>`;
+}
+function renderKernel(state) {
+  const kernel = state.kernel;
+  return section("kernel", "Kernel", kernel.scene || "Current scene", `
+    <div class="loomos-hero">
+      <span class="loomos-kicker">Current focus</span>
+      <strong>${escapeHtml(kernel.currentFocus || kernel.objective)}</strong>
+      <p>${escapeHtml(kernel.summary)}</p>
+    </div>
+    <dl class="loomos-facts">
+      <div><dt>Location</dt><dd>${escapeHtml(kernel.location)}</dd></div>
+      <div><dt>Time</dt><dd>${escapeHtml(kernel.timeframe || `${kernel.date} ${kernel.time}`)}</dd></div>
+      <div><dt>POV</dt><dd>${escapeHtml(kernel.pov)}</dd></div>
+      <div><dt>Tone</dt><dd>${escapeHtml(kernel.tone)}</dd></div>
+      <div><dt>Objective</dt><dd>${escapeHtml(kernel.objective)}</dd></div>
+      <div><dt>Risk</dt><dd>${escapeHtml(kernel.currentRisk)}</dd></div>
+      <div><dt>Next focus</dt><dd>${escapeHtml(kernel.nextFocus)}</dd></div>
+      <div><dt>Stop mode</dt><dd>${escapeHtml(kernel.stopMode)}</dd></div>
+    </dl>
+    <div class="loomos-subhead">Constraints</div>
+    ${chips(kernel.constraints)}
+  `, true);
+}
+function renderDelta(state) {
+  const delta = state.delta;
+  return section("delta", "Delta", delta.headline || "No major change", `
+    <div class="loomos-callout">${escapeHtml(delta.headline)}</div>
+    <div class="loomos-list">
+      ${delta.changes.length === 0 ? `<p class="loomos-muted">No meaningful changes recorded.</p>` : delta.changes.map((change) => `
+          <article class="loomos-row loomos-importance-${change.importance}">
+            <div class="loomos-row-title">
+              <strong>${escapeHtml(change.text)}</strong>
+              <span>${escapeHtml(change.module)}</span>
+            </div>
+            <small>${escapeHtml(change.age)} | ${escapeHtml(change.importance)}</small>
+          </article>
+        `).join("")}
+    </div>
+    <div class="loomos-two-column">
+      <div><div class="loomos-subhead">Newly established</div>${chips(delta.newlyEstablished)}</div>
+      <div><div class="loomos-subhead">Carried forward</div>${chips(delta.carriedForward)}</div>
+    </div>
+  `, true);
+}
+function renderMeters(state) {
+  return section("meters", "Meters", `${state.meters.length} diagnostics`, `
+    <div class="loomos-meter-grid">
+      ${state.meters.length === 0 ? `<p class="loomos-muted">No meter evidence in this state.</p>` : state.meters.map((meter) => `
+          <article class="loomos-meter">
+            <div class="loomos-row-title">
+              <strong>${escapeHtml(meter.label)}</strong>
+              <span>${escapeHtml(meter.pct)} | ${escapeHtml(meter.trend)}</span>
+            </div>
+            <div class="loomos-meter-track"><i style="width:${Math.max(0, Math.min(100, meter.value))}%"></i></div>
+            <small>${escapeHtml(meter.band)} | ${escapeHtml(meter.note)}</small>
+          </article>
+        `).join("")}
+    </div>
+  `);
+}
+function renderCast(state, settings) {
+  return section("cast", "Cast Matrix", `${state.castMatrix.length} tracked`, `
+    <div class="loomos-card-grid">
+      ${state.castMatrix.length === 0 ? `<p class="loomos-muted">No cast evidence in this state.</p>` : state.castMatrix.map((member) => `
+          <article class="loomos-card">
+            <div class="loomos-card-heading">
+              <div>
+                <span class="loomos-kicker">${escapeHtml(member.kind)}</span>
+                <strong>${escapeHtml(member.name)}${member.qty > 1 ? ` x${member.qty}` : ""}</strong>
+              </div>
+              <span class="loomos-badge">${escapeHtml(member.awareness)}</span>
+            </div>
+            <p>${escapeHtml(member.status)}</p>
+            <dl class="loomos-facts loomos-facts-tight">
+              <div><dt>Location</dt><dd>${escapeHtml(member.location)}</dd></div>
+              <div><dt>Intent</dt><dd>${escapeHtml(member.intent)}</dd></div>
+              <div><dt>Emotion</dt><dd>${escapeHtml(member.emotionalState)}</dd></div>
+              <div><dt>Threat</dt><dd>${escapeHtml(member.threat.pct)} | ${escapeHtml(member.threat.band)}</dd></div>
+              ${visible(settings, "castVisuals") ? `<div><dt>Pose</dt><dd>${escapeHtml(member.pose)}</dd></div>
+                   <div><dt>Proximity</dt><dd>${escapeHtml(member.proximity)}</dd></div>
+                   <div><dt>Hands</dt><dd>${escapeHtml(member.hands)}</dd></div>
+                   <div><dt>Spotlight</dt><dd>${escapeHtml(member.spotlight.pct)} | ${escapeHtml(member.spotlight.trend)}</dd></div>` : ""}
+            </dl>
+            ${visible(settings, "castVisuals") && member.visualAnchor ? `<div class="loomos-note">${escapeHtml(member.visualAnchor)}</div>` : ""}
+            ${visible(settings, "clothing") && member.clothingSummary ? `<div class="loomos-subhead">Clothing</div><p>${escapeHtml(member.clothingSummary)}</p>` : ""}
+            <div class="loomos-subhead">Goals</div>${chips(member.goals)}
+            ${visible(settings, "relationships") ? `<div class="loomos-subhead">Relationships</div>${chips(member.relationships)}` : ""}
+            ${visible(settings, "inventory") ? `<div class="loomos-subhead">Inventory</div>${chips(member.pockets.map(
+    (item) => `${item.name} x${item.qty}${item.known ? "" : " (unknown)"}`
+  ))}` : ""}
+          </article>
+        `).join("")}
+    </div>
+  `, true);
+}
+function renderWorld(state, settings) {
+  const scene = state.scene;
+  const world = state.worldState;
+  const itemCount = scene?.items.length ?? 0;
+  return section("world", "World & Space", `${itemCount} scene items`, `
+    ${scene ? `<dl class="loomos-facts">
+          <div><dt>Privacy</dt><dd>${escapeHtml(scene.privacy)}</dd></div>
+          <div><dt>Observers</dt><dd>${scene.observerCount} | ${escapeHtml(scene.observerPressure.band)}</dd></div>
+          <div><dt>Crowd</dt><dd>${escapeHtml(scene.crowdNoise)} / ${escapeHtml(scene.crowdFlow)}</dd></div>
+          <div><dt>Light</dt><dd>${escapeHtml(scene.light.primary)} | ${escapeHtml(scene.light.quality)}</dd></div>
+          <div><dt>Exit</dt><dd>${escapeHtml(scene.access.exit)}</dd></div>
+          <div><dt>Sightline</dt><dd>${escapeHtml(scene.access.lineOfSight)}</dd></div>
+        </dl>
+        <div class="loomos-subhead">Spatial facts</div>${chips(scene.spatial)}
+        <div class="loomos-subhead">Carryover</div>${chips([
+    ...scene.carryover.body,
+    ...scene.carryover.room,
+    ...scene.carryover.social
+  ])}
+        ${visible(settings, "inventory") ? `<div class="loomos-subhead">Scene items</div>${chips(scene.items.map(
+    (item) => `${item.name}: ${item.location}; ${item.condition}`
+  ))}` : ""}` : `<p class="loomos-muted">World and space tracking was not active for this snapshot.</p>`}
+    ${world ? `<div class="loomos-two-column">
+          <div><div class="loomos-subhead">Environmental changes</div>${chips(world.recentEnvironmentalChanges)}</div>
+          <div><div class="loomos-subhead">Hazards</div>${chips(world.activeHazards)}</div>
+        </div>
+        ${visible(settings, "secretsRumors") ? `<div class="loomos-two-column">
+              <div><div class="loomos-subhead">Rumors</div>${chips(world.rumors.map(
+    (item) => `${item.rumor} (${item.credibility}/10)`
+  ))}</div>
+              <div><div class="loomos-subhead">Loaded signs</div>${chips(world.loadedSigns.map(
+    (item) => `${item.thing}: ${item.state}`
+  ))}</div>
+            </div>` : ""}` : ""}
+  `);
+}
+function renderStory(state) {
+  const story = state.storyState;
+  const live = story.threadLoom.filter((thread) => thread.status !== "resolved");
+  return section("story", "Thread Loom", `${live.length} live threads`, `
+    <div class="loomos-list">
+      ${story.threadLoom.length === 0 ? `<p class="loomos-muted">No story threads recorded.</p>` : story.threadLoom.map((thread) => `
+          <article class="loomos-row loomos-priority-${thread.priority}">
+            <div class="loomos-row-title">
+              <strong>${escapeHtml(thread.title)}</strong>
+              <span>${escapeHtml(thread.status)} | ${thread.urgency}/5</span>
+            </div>
+            <p>${escapeHtml(thread.summary)}</p>
+            <div class="loomos-meter-track"><i style="width:${Math.max(0, Math.min(100, thread.progress * 10))}%"></i></div>
+            <small>Next pressure: ${escapeHtml(thread.nextPressure)}</small>
+          </article>
+        `).join("")}
+    </div>
+    <div class="loomos-two-column">
+      <div><div class="loomos-subhead">Goals</div>${chips(story.goals.map(
+    (goal) => `${goal.who}: ${goal.goal} [${goal.status}]`
+  ))}</div>
+      <div><div class="loomos-subhead">Stakes</div>${chips(story.stakes.map(
+    (stake) => `${stake.who}: ${stake.win} / ${stake.lose}`
+  ))}</div>
+      <div><div class="loomos-subhead">Countdowns</div>${chips(story.countdowns.map(
+    (item) => `${item.title}: ${item.left} ${item.unit}`
+  ))}</div>
+      <div><div class="loomos-subhead">Autonomy queue</div>${chips(story.autonomyQueue.map(
+    (item) => `${item.who}: ${item.action}`
+  ))}</div>
+    </div>
+  `, true);
+}
+function renderContinuity(state) {
+  const firewall = state.continuityFirewall;
+  return section("continuity", "Continuity Firewall", `${firewall.risks.length} risks`, `
+    <div class="loomos-stat-grid">
+      <div><strong>${firewall.establishedFacts.length}</strong><span>facts</span></div>
+      <div><strong>${firewall.antiRetconAnchors.length}</strong><span>anchors</span></div>
+      <div><strong>${firewall.pendingConsequences.length}</strong><span>pending</span></div>
+      <div><strong>${firewall.offscreenState.length}</strong><span>offscreen</span></div>
+    </div>
+    <div class="loomos-list">
+      ${firewall.risks.length === 0 ? `<p class="loomos-muted">No continuity conflicts detected.</p>` : firewall.risks.map((risk) => `
+          <article class="loomos-row loomos-severity-${risk.severity}">
+            <div class="loomos-row-title">
+              <strong>${escapeHtml(risk.issue)}</strong>
+              <span>${escapeHtml(risk.severity)}</span>
+            </div>
+            <p>${escapeHtml(risk.evidence)}</p>
+            <small>Guardrail: ${escapeHtml(risk.recommendation)}</small>
+          </article>
+        `).join("")}
+    </div>
+    <div class="loomos-two-column">
+      <div><div class="loomos-subhead">Anti-retcon anchors</div>${chips(firewall.antiRetconAnchors)}</div>
+      <div><div class="loomos-subhead">Pending consequences</div>${chips(firewall.pendingConsequences)}</div>
+      <div><div class="loomos-subhead">Banned next</div>${chips(firewall.bannedNext.map(
+    (item) => `${item.text}${item.persistent ? " (persistent)" : ""}`
+  ))}</div>
+      <div><div class="loomos-subhead">Impossible next</div>${chips(firewall.impossibleNext)}</div>
+    </div>
+  `, true);
+}
+function renderTools(state, settings) {
+  const tools = state.tools;
+  const blocks = [];
+  if (visible(settings, "actionResolver") && tools.actionResolver) {
+    blocks.push(`<article class="loomos-card">
+      <span class="loomos-kicker">Action Resolver</span>
+      <strong>${escapeHtml(tools.actionResolver.userAction)}</strong>
+      <p>${escapeHtml(tools.actionResolver.worldResponse)}</p>
+      <small>Risk: ${escapeHtml(tools.actionResolver.risk)}</small>
+      ${chips(tools.actionResolver.blockers)}
+    </article>`);
+  }
+  if (visible(settings, "dialogueState") && tools.dialogueState) {
+    blocks.push(`<article class="loomos-card">
+      <span class="loomos-kicker">Dialogue</span>
+      <strong>${escapeHtml(tools.dialogueState.openThread)}</strong>
+      <p>${escapeHtml(tools.dialogueState.socialMask)}</p>
+      ${chips(tools.dialogueState.levers)}
+    </article>`);
+  }
+  if (visible(settings, "directorStyle") && tools.directorStyle) {
+    blocks.push(`<article class="loomos-card">
+      <span class="loomos-kicker">Director Style</span>
+      <strong>${escapeHtml(tools.directorStyle.primary)}</strong>
+      <p>${escapeHtml(tools.directorStyle.push)}</p>
+      ${chips(tools.directorStyle.voiceCues)}
+    </article>`);
+  }
+  if (visible(settings, "closenessState") && tools.closenessState) {
+    blocks.push(`<article class="loomos-card">
+      <span class="loomos-kicker">Closeness</span>
+      <strong>${escapeHtml(tools.closenessState.emotional)}</strong>
+      <p>${escapeHtml(tools.closenessState.physical)}</p>
+      ${chips(tools.closenessState.boundaries)}
+    </article>`);
+  }
+  if (visible(settings, "imagePrompt") && tools.imagePrompt) {
+    blocks.push(`<article class="loomos-card">
+      <span class="loomos-kicker">Image Prompt</span>
+      <strong>${escapeHtml(tools.imagePrompt.shot)} | ${escapeHtml(tools.imagePrompt.medium)}</strong>
+      <p>${escapeHtml(tools.imagePrompt.subject)}</p>
+      <small>${escapeHtml(tools.imagePrompt.hint)}</small>
+    </article>`);
+  }
+  return blocks.length === 0 ? "" : section("tools", "Tools", `${blocks.length} active`, `<div class="loomos-card-grid">${blocks.join("")}</div>`);
+}
+function renderAudit(state) {
+  return section("audit", "Audit", `${state.auditLog.length} entries`, `
+    <div class="loomos-list">
+      ${state.auditLog.map((entry) => `
+        <article class="loomos-row">
+          <div class="loomos-row-title">
+            <strong>${escapeHtml(entry.system)}</strong>
+            <span>${escapeHtml(entry.marker)}</span>
+          </div>
+          <p>${escapeHtml(entry.result)}</p>
+          <small>${entry.repaired ? "Repaired | " : ""}${escapeHtml(entry.notes)}</small>
+        </article>
+      `).join("") || `<p class="loomos-muted">No audit entries.</p>`}
+    </div>
+  `);
+}
+function renderDashboard(state, settings) {
+  const sections = [
+    visible(settings, "sceneKernel") ? renderKernel(state) : "",
+    visible(settings, "deltas") ? renderDelta(state) : "",
+    visible(settings, "meters") ? renderMeters(state) : "",
+    visible(settings, "castCore") ? renderCast(state, settings) : "",
+    visible(settings, "worldSpace") || visible(settings, "secretsRumors") ? renderWorld(state, settings) : "",
+    visible(settings, "storyThreads") ? renderStory(state) : "",
+    visible(settings, "continuity") ? renderContinuity(state) : "",
+    renderTools(state, settings),
+    visible(settings, "auditLog") ? renderAudit(state) : ""
+  ].filter(Boolean);
+  return sections.length > 0 ? `<div class="loomos-dashboard">${sections.join("")}</div>` : `<div class="loomos-empty"><h3>All display modules are hidden</h3><p>Enable Display for one or more modules in the drawer settings. Stored state has not been deleted.</p></div>`;
+}
+
+// src/frontend/styles.ts
+var LOOMOS_STYLES = `
+  .loomos-root {
+    --loomos-bg: var(--lumiverse-fill-subtle, #17181d);
+    --loomos-panel: var(--lumiverse-fill, #202127);
+    --loomos-ink: var(--lumiverse-text, #f5f5f5);
+    --loomos-muted: var(--lumiverse-text-muted, #aaa);
+    --loomos-accent: var(--lumiverse-accent, #7c6cff);
+    --loomos-border: var(--lumiverse-border, #3a3b43);
+    box-sizing: border-box;
+    color: var(--loomos-ink);
+    display: grid;
+    font-size: 13px;
+    gap: 10px;
+    line-height: 1.45;
+    padding: 10px;
+  }
+  .loomos-root *, .loomos-root *::before, .loomos-root *::after { box-sizing: border-box; }
+  .loomos-root[data-skin="dark_academia"] { --loomos-bg:#17130f;--loomos-panel:#241d16;--loomos-ink:#ead9b7;--loomos-muted:#af9c78;--loomos-accent:#ba8b43;--loomos-border:#493a28; }
+  .loomos-root[data-skin="cyberpunk"] { --loomos-bg:#090b18;--loomos-panel:#10152a;--loomos-ink:#e9faff;--loomos-muted:#8ea5c8;--loomos-accent:#25f2d0;--loomos-border:#304369; }
+  .loomos-root[data-skin="fantasy"] { --loomos-bg:#111b17;--loomos-panel:#192821;--loomos-ink:#ecf1d0;--loomos-muted:#a9b995;--loomos-accent:#d4ad57;--loomos-border:#3f594b; }
+  .loomos-root[data-skin="horror"] { --loomos-bg:#130b0c;--loomos-panel:#211012;--loomos-ink:#f0d8d8;--loomos-muted:#b68e91;--loomos-accent:#d24c52;--loomos-border:#51252a; }
+  .loomos-root[data-skin="noir"] { --loomos-bg:#0d0d0d;--loomos-panel:#181818;--loomos-ink:#f0f0f0;--loomos-muted:#a4a4a4;--loomos-accent:#d7d7d7;--loomos-border:#3a3a3a; }
+  .loomos-root[data-skin="minimal"] { --loomos-bg:#f5f5f4;--loomos-panel:#fff;--loomos-ink:#18181b;--loomos-muted:#71717a;--loomos-accent:#27272a;--loomos-border:#dededb; }
+  .loomos-shell, .loomos-section {
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 12px;
+  }
+  .loomos-shell { padding: 10px; }
+  .loomos-header, .loomos-toolbar, .loomos-row-title, .loomos-card-heading {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+  }
+  .loomos-title { display: grid; gap: 1px; min-width: 0; }
+  .loomos-title strong { font-size: 15px; }
+  .loomos-title span, .loomos-muted, .loomos-row small, .loomos-card small { color: var(--loomos-muted); }
+  .loomos-status, .loomos-badge {
+    border: 1px solid var(--loomos-border);
+    border-radius: 999px;
+    color: var(--loomos-muted);
+    font-size: 10px;
+    padding: 3px 7px;
+  }
+  .loomos-status { max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .loomos-toolbar { flex-wrap: wrap; justify-content: flex-start; margin-top: 10px; }
+  .loomos-button, .loomos-select, .loomos-input {
+    background: var(--loomos-panel);
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    color: var(--loomos-ink);
+    min-height: 34px;
+    padding: 6px 9px;
+  }
+  .loomos-button { cursor: pointer; font-weight: 700; }
+  .loomos-button:hover, .loomos-button:focus-visible, .loomos-select:focus-visible, .loomos-input:focus-visible {
+    border-color: var(--loomos-accent);
+    outline: 2px solid color-mix(in srgb, var(--loomos-accent) 35%, transparent);
+    outline-offset: 1px;
+  }
+  .loomos-button-primary { background: var(--loomos-accent); color: var(--lumiverse-accent-fg, #fff); }
+  .loomos-button-danger { color: #e56b70; }
+  .loomos-button:disabled, .loomos-input:disabled { cursor: not-allowed; opacity: .48; }
+  .loomos-settings > summary, .loomos-section > summary {
+    cursor: pointer;
+    font-weight: 800;
+    list-style: none;
+  }
+  .loomos-settings > summary { padding: 2px; }
+  .loomos-section > summary {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    padding: 10px;
+  }
+  .loomos-section > summary small { color: var(--loomos-muted); font-weight: 500; max-width: 62%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .loomos-section[open] > summary { border-bottom: 1px solid var(--loomos-border); }
+  .loomos-section-body { background: var(--loomos-panel); border-radius: 0 0 11px 11px; padding: 10px; }
+  .loomos-dashboard { display: grid; gap: 9px; }
+  .loomos-settings-grid, .loomos-two-column, .loomos-facts {
+    display: grid;
+    gap: 9px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .loomos-settings-grid { margin-top: 10px; }
+  .loomos-field { display: grid; gap: 4px; min-width: 0; }
+  .loomos-field > span, .loomos-subhead { color: var(--loomos-muted); font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .loomos-check { align-items: center; display: flex; gap: 7px; min-height: 34px; }
+  .loomos-kicker { color: var(--loomos-accent); display: block; font-size: 9px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+  .loomos-hero { display: grid; gap: 3px; }
+  .loomos-hero strong { font-size: 15px; }
+  .loomos-hero p, .loomos-card p, .loomos-row p { margin: 5px 0; }
+  .loomos-facts { margin: 9px 0; }
+  .loomos-facts div { border-top: 1px solid var(--loomos-border); min-width: 0; padding-top: 5px; }
+  .loomos-facts dt { color: var(--loomos-muted); font-size: 9px; text-transform: uppercase; }
+  .loomos-facts dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+  .loomos-facts-tight { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .loomos-chip-row { display: flex; flex-wrap: wrap; gap: 5px; margin: 5px 0 8px; }
+  .loomos-chip { border: 1px solid var(--loomos-border); border-radius: 999px; color: var(--loomos-muted); font-size: 10px; padding: 2px 6px; }
+  .loomos-callout, .loomos-note { border-left: 3px solid var(--loomos-accent); margin-bottom: 8px; padding: 7px 9px; }
+  .loomos-list { display: grid; gap: 7px; }
+  .loomos-row { border-left: 2px solid var(--loomos-border); padding-left: 8px; }
+  .loomos-row-title { align-items: flex-start; }
+  .loomos-row-title strong { overflow-wrap: anywhere; }
+  .loomos-row-title span { color: var(--loomos-muted); font-size: 9px; text-transform: uppercase; }
+  .loomos-severity-high, .loomos-priority-high, .loomos-importance-high { border-left-color: #d58a42; }
+  .loomos-severity-critical, .loomos-priority-critical, .loomos-importance-critical { border-left-color: #df5259; }
+  .loomos-card-grid, .loomos-meter-grid { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .loomos-card, .loomos-meter { background: color-mix(in srgb, var(--loomos-bg) 65%, transparent); border: 1px solid var(--loomos-border); border-radius: 9px; padding: 9px; }
+  .loomos-card-heading { align-items: flex-start; }
+  .loomos-card-heading strong { display: block; }
+  .loomos-meter-track { background: var(--loomos-border); border-radius: 999px; height: 5px; margin: 6px 0; overflow: hidden; }
+  .loomos-meter-track i { background: var(--loomos-accent); display: block; height: 100%; }
+  .loomos-stat-grid { display: grid; gap: 6px; grid-template-columns: repeat(4, 1fr); margin-bottom: 9px; }
+  .loomos-stat-grid div { border: 1px solid var(--loomos-border); border-radius: 8px; display: grid; padding: 6px; text-align: center; }
+  .loomos-stat-grid span { color: var(--loomos-muted); font-size: 9px; text-transform: uppercase; }
+  .loomos-empty { padding: 24px 12px; text-align: center; }
+  .loomos-empty h3 { margin: 0 0 5px; }
+  .loomos-empty p { color: var(--loomos-muted); margin: 0 auto 12px; max-width: 440px; }
+  .loomos-module-wrap { border: 1px solid var(--loomos-border); border-radius: 9px; grid-column: 1 / -1; overflow: hidden; }
+  .loomos-module-head, .loomos-module-row { align-items: center; display: grid; gap: 6px; grid-template-columns: minmax(145px, 1fr) repeat(3, 54px); padding: 7px 8px; }
+  .loomos-module-head { background: var(--loomos-bg); color: var(--loomos-muted); font-size: 9px; font-weight: 900; text-align: center; text-transform: uppercase; }
+  .loomos-module-head span:first-child { text-align: left; }
+  .loomos-module-row { border-top: 1px solid var(--loomos-border); }
+  .loomos-module-row label:first-child { min-width: 0; }
+  .loomos-module-row strong, .loomos-module-row small { display: block; }
+  .loomos-module-row small { color: var(--loomos-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .loomos-module-row input { justify-self: center; }
+  .loomos-hint { color: var(--loomos-muted); font-size: 11px; grid-column: 1 / -1; margin: 0; }
+  .loomos-diagnostic { color: var(--loomos-muted); font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; }
+  @media (max-width: 620px) {
+    .loomos-root { padding: 6px; }
+    .loomos-settings-grid, .loomos-two-column, .loomos-facts, .loomos-card-grid, .loomos-meter-grid { grid-template-columns: 1fr; }
+    .loomos-status { max-width: 46%; }
+    .loomos-button { flex: 1 1 auto; }
+    .loomos-stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .loomos-module-head, .loomos-module-row { grid-template-columns: minmax(118px, 1fr) repeat(3, 44px); padding-inline: 6px; }
+    .loomos-module-row small { display: none; }
+  }
+`;
+
 // src/frontend.ts
-var ICON = `
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <path fill="currentColor" d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v16H7a2 2 0 0 0-2 2V5.5A1 1 0 0 0 4 4.5Zm3-.5a1 1 0 0 0-1 1v11.17c.31-.11.65-.17 1-.17h11V4H7Zm2 3h6v2H9V7Zm0 4h6v2H9v-2Z"/>
-  </svg>`;
+var ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v16H7a2 2 0 0 0-2 2V5.5A1 1 0 0 0 4 4.5Zm3-.5a1 1 0 0 0-1 1v11.17c.31-.11.65-.17 1-.17h11V4H7Zm2 3h6v2H9V7Zm0 4h6v2H9v-2Z"/></svg>`;
 var EMPTY_PERMISSIONS = {
   generation: false,
   interceptor: false,
@@ -4156,11 +5021,17 @@ var EMPTY_PERMISSIONS = {
 function isRecord(value) {
   return typeof value === "object" && value !== null;
 }
-function escapeHtml(value) {
-  return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
-}
 function requestId(prefix) {
   return `${prefix}:${crypto.randomUUID()}`;
+}
+function selected(value, current) {
+  return value === current ? " selected" : "";
+}
+function checked(value) {
+  return value ? " checked" : "";
+}
+function disabled(value) {
+  return value ? " disabled" : "";
 }
 function skinLabel(value) {
   return {
@@ -4173,280 +5044,32 @@ function skinLabel(value) {
     minimal: "Minimal"
   }[value];
 }
-function selected(value, current) {
-  return value === current ? " selected" : "";
-}
-function checked(value) {
-  return value ? " checked" : "";
-}
-function disabled(value) {
-  return value ? " disabled" : "";
-}
-function severityClass(severity) {
-  return `loomos-severity-${severity}`;
-}
-function renderKernel(state) {
-  return `
-    <section class="loomos-panel">
-      <div class="loomos-panel-heading">
-        <span class="loomos-kicker">Kernel</span>
-        <strong>${escapeHtml(state.kernel.scene || "Current scene")}</strong>
-      </div>
-      <p>${escapeHtml(state.kernel.summary)}</p>
-      <dl class="loomos-facts">
-        <div><dt>Location</dt><dd>${escapeHtml(state.kernel.location)}</dd></div>
-        <div><dt>Time</dt><dd>${escapeHtml(state.kernel.timeframe)}</dd></div>
-        <div><dt>Tone</dt><dd>${escapeHtml(state.kernel.tone)}</dd></div>
-        <div><dt>Objective</dt><dd>${escapeHtml(state.kernel.objective)}</dd></div>
-      </dl>
-      ${state.kernel.constraints.length > 0 ? `<div class="loomos-chip-row">${state.kernel.constraints.map(
-    (item) => `<span class="loomos-chip">${escapeHtml(item)}</span>`
-  ).join("")}</div>` : ""}
-    </section>`;
-}
-function renderCast(state) {
-  return `
-    <section class="loomos-panel">
-      <div class="loomos-panel-heading">
-        <span class="loomos-kicker">Cast Matrix</span>
-        <strong>${state.castMatrix.length} tracked</strong>
-      </div>
-      <div class="loomos-list">
-        ${state.castMatrix.length === 0 ? `<p class="loomos-muted">No cast evidence in this state.</p>` : state.castMatrix.map((member) => `
-            <article class="loomos-row">
-              <div class="loomos-row-title">
-                <strong>${escapeHtml(member.name)}</strong>
-                <span>${escapeHtml(member.location)}</span>
-              </div>
-              <p>${escapeHtml(member.status)}</p>
-              <small>${escapeHtml(member.emotionalState)} \xB7 ${escapeHtml(member.goals[0] ?? "No active goal")}</small>
-            </article>
-          `).join("")}
-      </div>
-    </section>`;
-}
-function renderThreads(state) {
-  return `
-    <section class="loomos-panel">
-      <div class="loomos-panel-heading">
-        <span class="loomos-kicker">Thread Loom</span>
-        <strong>${state.threadLoom.filter((thread) => thread.status !== "resolved").length} live</strong>
-      </div>
-      <div class="loomos-list">
-        ${state.threadLoom.length === 0 ? `<p class="loomos-muted">No active story threads detected.</p>` : state.threadLoom.map((thread) => `
-            <article class="loomos-row">
-              <div class="loomos-row-title">
-                <strong>${escapeHtml(thread.title)}</strong>
-                <span>${escapeHtml(thread.status)} \xB7 ${thread.urgency}/5</span>
-              </div>
-              <p>${escapeHtml(thread.summary)}</p>
-              <small>Pressure: ${escapeHtml(thread.nextPressure)}</small>
-            </article>
-          `).join("")}
-      </div>
-    </section>`;
-}
-function renderFirewall(state) {
-  const firewall = state.continuityFirewall;
-  return `
-    <section class="loomos-panel">
-      <div class="loomos-panel-heading">
-        <span class="loomos-kicker">Continuity Firewall</span>
-        <strong>${firewall.risks.length} risks</strong>
-      </div>
-      <div class="loomos-list">
-        ${firewall.risks.length === 0 ? `<p class="loomos-muted">No continuity conflicts detected.</p>` : firewall.risks.map((risk) => `
-            <article class="loomos-row ${severityClass(risk.severity)}">
-              <div class="loomos-row-title">
-                <strong>${escapeHtml(risk.issue)}</strong>
-                <span>${escapeHtml(risk.severity)}</span>
-              </div>
-              <p>${escapeHtml(risk.evidence)}</p>
-              <small>Guardrail: ${escapeHtml(risk.recommendation)}</small>
-            </article>
-          `).join("")}
-      </div>
-      <div class="loomos-mini-grid">
-        <div><strong>${firewall.establishedFacts.length}</strong><span>facts</span></div>
-        <div><strong>${firewall.pendingConsequences.length}</strong><span>pending</span></div>
-        <div><strong>${firewall.secrets.length}</strong><span>secrets</span></div>
-      </div>
-    </section>`;
-}
-function setupStyles(ctx) {
-  return ctx.dom.addStyle(`
-    .loomos-root {
-      --loomos-bg: var(--lumiverse-fill-subtle);
-      --loomos-panel: var(--lumiverse-fill);
-      --loomos-ink: var(--lumiverse-text);
-      --loomos-muted: var(--lumiverse-text-muted);
-      --loomos-accent: var(--lumiverse-accent);
-      --loomos-border: var(--lumiverse-border);
-      color: var(--loomos-ink);
-      display: grid;
-      gap: 10px;
-      padding: 10px;
-      font-size: 13px;
-      line-height: 1.45;
-    }
-    .loomos-root[data-skin="dark_academia"] {
-      --loomos-bg: #17130f;
-      --loomos-panel: #241d16;
-      --loomos-ink: #ead9b7;
-      --loomos-muted: #af9c78;
-      --loomos-accent: #ba8b43;
-      --loomos-border: #493a28;
-    }
-    .loomos-root[data-skin="cyberpunk"] {
-      --loomos-bg: #090b18;
-      --loomos-panel: #10152a;
-      --loomos-ink: #e9faff;
-      --loomos-muted: #8ea5c8;
-      --loomos-accent: #25f2d0;
-      --loomos-border: #304369;
-    }
-    .loomos-root[data-skin="fantasy"] {
-      --loomos-bg: #111b17;
-      --loomos-panel: #192821;
-      --loomos-ink: #ecf1d0;
-      --loomos-muted: #a9b995;
-      --loomos-accent: #d4ad57;
-      --loomos-border: #3f594b;
-    }
-    .loomos-root[data-skin="horror"] {
-      --loomos-bg: #130b0c;
-      --loomos-panel: #211012;
-      --loomos-ink: #f0d8d8;
-      --loomos-muted: #b68e91;
-      --loomos-accent: #d24c52;
-      --loomos-border: #51252a;
-    }
-    .loomos-root[data-skin="noir"] {
-      --loomos-bg: #0d0d0d;
-      --loomos-panel: #181818;
-      --loomos-ink: #f0f0f0;
-      --loomos-muted: #a4a4a4;
-      --loomos-accent: #d7d7d7;
-      --loomos-border: #3a3a3a;
-    }
-    .loomos-root[data-skin="minimal"] {
-      --loomos-bg: #f5f5f4;
-      --loomos-panel: #ffffff;
-      --loomos-ink: #18181b;
-      --loomos-muted: #71717a;
-      --loomos-accent: #27272a;
-      --loomos-border: #dededb;
-    }
-    .loomos-shell {
-      background: var(--loomos-bg);
-      border: 1px solid var(--loomos-border);
-      border-radius: 12px;
-      padding: 10px;
-    }
-    .loomos-header, .loomos-toolbar, .loomos-panel-heading, .loomos-row-title {
-      align-items: center;
-      display: flex;
-      gap: 8px;
-      justify-content: space-between;
-    }
-    .loomos-title { display: grid; gap: 2px; }
-    .loomos-title strong { font-size: 15px; letter-spacing: .02em; }
-    .loomos-title span, .loomos-muted, .loomos-row small { color: var(--loomos-muted); }
-    .loomos-status {
-      border: 1px solid var(--loomos-border);
-      border-radius: 999px;
-      color: var(--loomos-muted);
-      font-size: 11px;
-      max-width: 55%;
-      overflow: hidden;
-      padding: 3px 7px;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .loomos-toolbar { flex-wrap: wrap; justify-content: flex-start; margin-top: 10px; }
-    .loomos-button, .loomos-select, .loomos-input {
-      background: var(--loomos-panel);
-      border: 1px solid var(--loomos-border);
-      border-radius: 8px;
-      color: var(--loomos-ink);
-      min-height: 34px;
-      padding: 6px 9px;
-    }
-    .loomos-button { cursor: pointer; font-weight: 650; }
-    .loomos-button:hover, .loomos-button:focus-visible { border-color: var(--loomos-accent); outline: none; }
-    .loomos-button-primary { background: var(--loomos-accent); color: var(--lumiverse-accent-fg, #fff); }
-    .loomos-button-danger { color: #df6469; }
-    .loomos-button:disabled { cursor: not-allowed; opacity: .48; }
-    .loomos-grid { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .loomos-panel {
-      background: var(--loomos-panel);
-      border: 1px solid var(--loomos-border);
-      border-radius: 10px;
-      min-width: 0;
-      padding: 10px;
-    }
-    .loomos-panel p { margin: 7px 0; }
-    .loomos-panel-heading { align-items: flex-start; }
-    .loomos-panel-heading strong { font-size: 12px; text-align: right; }
-    .loomos-kicker {
-      color: var(--loomos-accent);
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: .11em;
-      text-transform: uppercase;
-    }
-    .loomos-facts { display: grid; gap: 5px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 8px 0 0; }
-    .loomos-facts div { border-top: 1px solid var(--loomos-border); padding-top: 5px; }
-    .loomos-facts dt { color: var(--loomos-muted); font-size: 10px; text-transform: uppercase; }
-    .loomos-facts dd { margin: 2px 0 0; overflow-wrap: anywhere; }
-    .loomos-chip-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
-    .loomos-chip { border: 1px solid var(--loomos-border); border-radius: 999px; color: var(--loomos-muted); font-size: 10px; padding: 2px 6px; }
-    .loomos-list { display: grid; gap: 7px; margin-top: 8px; }
-    .loomos-row { border-left: 2px solid var(--loomos-border); padding-left: 8px; }
-    .loomos-row-title { align-items: flex-start; }
-    .loomos-row-title strong { overflow-wrap: anywhere; }
-    .loomos-row-title span { color: var(--loomos-muted); font-size: 10px; text-transform: uppercase; }
-    .loomos-severity-high { border-left-color: #d58a42; }
-    .loomos-severity-critical { border-left-color: #df5259; }
-    .loomos-mini-grid { display: grid; gap: 6px; grid-template-columns: repeat(3, 1fr); margin-top: 9px; }
-    .loomos-mini-grid div { border: 1px solid var(--loomos-border); border-radius: 8px; display: grid; padding: 6px; text-align: center; }
-    .loomos-mini-grid span { color: var(--loomos-muted); font-size: 10px; text-transform: uppercase; }
-    .loomos-empty { padding: 22px 12px; text-align: center; }
-    .loomos-empty h3 { margin: 0 0 5px; }
-    .loomos-empty p { color: var(--loomos-muted); margin: 0 auto 12px; max-width: 360px; }
-    .loomos-settings summary { cursor: pointer; font-weight: 700; }
-    .loomos-settings-grid { display: grid; gap: 9px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 10px; }
-    .loomos-field { display: grid; gap: 4px; min-width: 0; }
-    .loomos-field > span { color: var(--loomos-muted); font-size: 11px; }
-    .loomos-check { align-items: center; display: flex; gap: 7px; min-height: 34px; }
-    .loomos-panel-toggles { display: flex; flex-wrap: wrap; gap: 8px; grid-column: 1 / -1; }
-    .loomos-warning { border-color: #9d783d; color: #d9ae65; }
-    @media (max-width: 620px) {
-      .loomos-root { padding: 6px; }
-      .loomos-grid, .loomos-settings-grid { grid-template-columns: 1fr; }
-      .loomos-facts { grid-template-columns: 1fr; }
-      .loomos-status { max-width: 48%; }
-      .loomos-button { flex: 1 1 auto; }
-    }
-  `);
+function presetLabel(value) {
+  return value[0].toUpperCase() + value.slice(1);
 }
 function setup(ctx) {
   const cleanups = [];
-  const removeStyle = setupStyles(ctx);
+  const removeStyle = ctx.dom.addStyle(LOOMOS_STYLES);
   let disposed = false;
   let settings = DEFAULT_SETTINGS;
   let permissions = EMPTY_PERMISSIONS;
+  let connections = [];
   let activeIdentity = null;
   let state = null;
   let status = "Starting";
+  let pipeline = null;
   let activeGenerationRequestId = null;
+  let generationStartedAt = 0;
+  let elapsedTimer = null;
   let messageActionCleanup = null;
+  let modal = null;
+  let modalListenerCleanup = null;
   const tab = ctx.ui.registerDrawerTab({
     id: "command-deck",
     title: "LoomOS Command Deck",
     shortName: "LoomOS",
     headerTitle: "LoomOS",
-    description: "Story state, cast, threads, and continuity",
+    description: "Modular story state, deltas, cast, world, and continuity",
     keywords: ["story", "continuity", "tracker", "state", "roleplay"],
     iconSvg: ICON
   });
@@ -4454,69 +5077,66 @@ function setup(ctx) {
   const inputAction = ctx.ui.registerInputBarAction({
     id: "open-command-deck",
     label: "Open LoomOS",
-    subtitle: "Inspect story state",
+    subtitle: "View exact-swipe story state",
     iconSvg: ICON
   });
   function send(request) {
-    if (!disposed) {
-      ctx.sendToBackend(request);
-    }
+    if (!disposed) ctx.sendToBackend(request);
   }
   function currentRequest() {
     const active = ctx.getActiveChat();
-    if (!active.chatId) {
-      return null;
-    }
+    if (!active.chatId) return null;
     const messageId = ctx.messages.getLatestMessageId() ?? void 0;
-    if (!messageId) {
-      return { chatId: active.chatId };
-    }
-    if (activeIdentity && activeIdentity.chatId === active.chatId && activeIdentity.messageId === messageId) {
-      return activeIdentity;
-    }
+    if (!messageId) return { chatId: active.chatId };
+    if (activeIdentity && activeIdentity.chatId === active.chatId && activeIdentity.messageId === messageId) return activeIdentity;
     return { chatId: active.chatId, messageId };
+  }
+  function exactLabel() {
+    return activeIdentity ? `${activeIdentity.messageId.slice(0, 8)} | swipe ${activeIdentity.swipeId}` : "No active message";
   }
   function hasExactStateForLatest() {
     const latest = ctx.messages.getLatestMessageId();
     return Boolean(
-      latest && state && activeIdentity && state.identity.messageId === latest && activeIdentity.messageId === latest
+      latest && state && activeIdentity && state.identity.messageId === latest && state.identity.swipeId === activeIdentity.swipeId
     );
+  }
+  function stopElapsedTimer() {
+    if (elapsedTimer) clearInterval(elapsedTimer);
+    elapsedTimer = null;
+  }
+  function startElapsedTimer() {
+    stopElapsedTimer();
+    generationStartedAt = Date.now();
+    elapsedTimer = setInterval(() => {
+      if (!activeGenerationRequestId) {
+        stopElapsedTimer();
+        return;
+      }
+      renderAll();
+    }, 1e3);
+  }
+  function elapsedLabel() {
+    if (!activeGenerationRequestId || generationStartedAt === 0) return status;
+    return `${status} | ${Math.floor((Date.now() - generationStartedAt) / 1e3)}s`;
   }
   function widgetHtml() {
     const hasState = hasExactStateForLatest();
     const busy = activeGenerationRequestId !== null;
-    const generateLabel = busy ? "Compiling..." : hasState ? "Refresh LoomOS" : "Generate LoomOS";
+    const generateLabel = busy ? "Compiling..." : hasState ? "Refresh" : "Generate";
     return `
       <style>
-        :root { color-scheme: light dark; }
-        * { box-sizing: border-box; }
-        body { margin: 0; padding: 5px 0; font: 12px/1.25 system-ui, sans-serif; color: var(--lumiverse-text); }
-        .bar { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; }
-        button {
-          background: var(--lumiverse-fill-subtle);
-          border: 1px solid var(--lumiverse-border);
-          border-radius: 7px;
-          color: var(--lumiverse-text);
-          cursor: pointer;
-          min-height: 30px;
-          padding: 5px 8px;
-        }
-        button.primary { border-color: var(--lumiverse-accent); }
-        button:disabled { cursor: not-allowed; opacity: .5; }
-        .state { color: var(--lumiverse-text-dim); font-size: 10px; }
+        :root{color-scheme:light dark}*{box-sizing:border-box}body{margin:0;padding:5px 0;font:12px/1.25 system-ui,sans-serif;color:var(--lumiverse-text)}
+        .bar{align-items:center;display:flex;flex-wrap:wrap;gap:6px}button{background:var(--lumiverse-fill-subtle);border:1px solid var(--lumiverse-border);border-radius:7px;color:var(--lumiverse-text);cursor:pointer;min-height:30px;padding:5px 8px}
+        button.primary{border-color:var(--lumiverse-accent)}button:disabled{cursor:not-allowed;opacity:.5}.state{color:var(--lumiverse-text-dim);font-size:10px}
       </style>
       <div class="bar">
-        <button id="open" type="button">Open Deck</button>
+        <button id="open" type="button">Open LoomOS</button>
         <button id="generate" class="primary" type="button"${disabled(!permissions.generation || !permissions.chatMutation || busy)}>${escapeHtml(generateLabel)}</button>
         <span class="state">${hasState ? "Exact swipe state loaded" : "No state for this swipe"}</span>
       </div>
       <script>
-        document.getElementById("open").addEventListener("click", () => {
-          window.spindleSandbox.postMessage({ type: "open" });
-        });
-        document.getElementById("generate").addEventListener("click", () => {
-          window.spindleSandbox.postMessage({ type: "generate" });
-        });
+        document.getElementById("open").addEventListener("click",()=>window.spindleSandbox.postMessage({type:"open"}));
+        document.getElementById("generate").addEventListener("click",()=>window.spindleSandbox.postMessage({type:"generate"}));
       <\/script>`;
   }
   function refreshMessageAction() {
@@ -4532,171 +5152,245 @@ function setup(ctx) {
       maxHeight: 80
     }, (payload) => {
       if (!isRecord(payload) || typeof payload.type !== "string") return;
-      if (payload.type === "open") {
-        tab.activate();
-      } else if (payload.type === "generate") {
-        startGeneration();
-      }
+      if (payload.type === "open") openViewer();
+      if (payload.type === "generate") startGeneration();
     });
+  }
+  function renderModuleMatrix() {
+    return `
+      <div class="loomos-module-wrap">
+        <div class="loomos-module-head"><span>Module</span><span>Track</span><span>Display</span><span>Inject</span></div>
+        ${MODULE_CATALOG.map((module) => {
+      const control2 = settings.moduleSettings[module.key];
+      const core = CORE_TRACKING_MODULES.has(module.key);
+      return `<div class="loomos-module-row" data-module-row="${module.key}" data-search="${escapeHtml(`${module.label} ${module.group} ${module.description}`.toLowerCase())}">
+            <label><strong>${escapeHtml(module.label)}</strong><small>${escapeHtml(module.description)}</small></label>
+            <input type="checkbox" aria-label="Track ${escapeHtml(module.label)}" data-module="${module.key}" data-axis="track"${checked(control2.track)}${disabled(core)} title="${core ? "Core tracking is always enabled" : "Include in compiler output"}">
+            <input type="checkbox" aria-label="Display ${escapeHtml(module.label)}" data-module="${module.key}" data-axis="display"${checked(control2.display)} title="Show or hide without deleting stored data">
+            <input type="checkbox" aria-label="Inject ${escapeHtml(module.label)}" data-module="${module.key}" data-axis="inject"${checked(control2.inject)} title="Allow compact prompt injection">
+          </div>`;
+    }).join("")}
+      </div>`;
   }
   function renderSettings() {
     return `
       <details class="loomos-shell loomos-settings">
-        <summary>Settings</summary>
+        <summary>Tracker Settings</summary>
         <div class="loomos-settings-grid">
-          <label class="loomos-field">
-            <span>Skin</span>
-            <select class="loomos-select" data-setting="skin">
-              ${["auto", "dark_academia", "cyberpunk", "fantasy", "horror", "noir", "minimal"].map(
+          <label class="loomos-field"><span>Skin</span><select class="loomos-select" data-setting="skin">
+            ${["auto", "dark_academia", "cyberpunk", "fantasy", "horror", "noir", "minimal"].map(
       (skin) => `<option value="${skin}"${selected(skin, settings.skin)}>${skinLabel(skin)}</option>`
     ).join("")}
-            </select>
-          </label>
-          <label class="loomos-field">
-            <span>Auto generation</span>
-            <select class="loomos-select" data-setting="autoGeneration">
-              <option value="manual"${selected("manual", settings.autoGeneration)}>Manual</option>
-              <option value="assistant"${selected("assistant", settings.autoGeneration)}>Assistant messages</option>
-              <option value="every"${selected("every", settings.autoGeneration)}>Every message</option>
-              <option value="off"${selected("off", settings.autoGeneration)}>Off</option>
-            </select>
-          </label>
-          <label class="loomos-check">
-            <input type="checkbox" data-setting="injectionEnabled"${checked(settings.injectionEnabled)}>
-            <span>Inject compact state</span>
-          </label>
-          <label class="loomos-field">
-            <span>Injection token budget</span>
-            <input class="loomos-input" type="number" min="80" max="1200" step="20" data-setting="injectionTokenBudget" value="${settings.injectionTokenBudget}">
-          </label>
-          <label class="loomos-field">
-            <span>Recent messages</span>
-            <input class="loomos-input" type="number" min="4" max="80" data-setting="recentMessageLimit" value="${settings.recentMessageLimit}">
-          </label>
-          <label class="loomos-field">
-            <span>Connection ID (optional)</span>
-            <input class="loomos-input" type="text" maxlength="200" data-setting="connectionId" value="${escapeHtml(settings.connectionId)}" placeholder="Use active connection">
-          </label>
-          <div class="loomos-panel-toggles">
-            <label class="loomos-check"><input type="checkbox" data-panel="kernel"${checked(settings.panels.kernel)}>Kernel</label>
-            <label class="loomos-check"><input type="checkbox" data-panel="castMatrix"${checked(settings.panels.castMatrix)}>Cast</label>
-            <label class="loomos-check"><input type="checkbox" data-panel="threadLoom"${checked(settings.panels.threadLoom)}>Threads</label>
-            <label class="loomos-check"><input type="checkbox" data-panel="continuityFirewall"${checked(settings.panels.continuityFirewall)}>Firewall</label>
-          </div>
+          </select></label>
+          <label class="loomos-field"><span>Module preset</span><select class="loomos-select" data-setting="modulePreset">
+            ${["lite", "balanced", "full", "experimental", "custom"].map(
+      (preset) => `<option value="${preset}"${selected(preset, settings.modulePreset)}>${presetLabel(preset)}</option>`
+    ).join("")}
+          </select></label>
+          <label class="loomos-field"><span>Generation connection</span><select class="loomos-select" data-setting="connectionId">
+            <option value="">Automatic ready connection</option>
+            ${connections.map(
+      (connection) => `<option value="${escapeHtml(connection.id)}"${selected(connection.id, settings.connectionId)}${disabled(!connection.ready)}>${escapeHtml(connection.name)} | ${escapeHtml(connection.model || connection.provider)}${connection.isDefault ? " (default)" : ""}${connection.ready ? "" : " (not ready)"}</option>`
+    ).join("")}
+          </select></label>
+          <label class="loomos-field"><span>Auto generation</span><select class="loomos-select" data-setting="autoGeneration">
+            <option value="manual"${selected("manual", settings.autoGeneration)}>Manual</option>
+            <option value="assistant"${selected("assistant", settings.autoGeneration)}>Assistant messages</option>
+            <option value="every"${selected("every", settings.autoGeneration)}>Every message</option>
+            <option value="off"${selected("off", settings.autoGeneration)}>Off</option>
+          </select></label>
+          <label class="loomos-check"><input type="checkbox" data-setting="injectionEnabled"${checked(settings.injectionEnabled)}><span>Inject compact state</span></label>
+          <label class="loomos-field"><span>Injection token budget</span><input class="loomos-input" type="number" min="80" max="1600" step="20" data-setting="injectionTokenBudget" value="${settings.injectionTokenBudget}"></label>
+          <label class="loomos-field"><span>Recent messages</span><input class="loomos-input" type="number" min="4" max="80" data-setting="recentMessageLimit" value="${settings.recentMessageLimit}"></label>
+          <label class="loomos-field"><span>Seed token budget</span><input class="loomos-input" type="number" min="200" max="2400" step="50" data-setting="compilerSeedTokenBudget" value="${settings.compilerSeedTokenBudget}"></label>
+          <label class="loomos-field"><span>Generation timeout (seconds)</span><input class="loomos-input" type="number" min="30" max="300" step="10" data-setting="generationTimeoutSeconds" value="${settings.generationTimeoutSeconds}"></label>
+          <label class="loomos-field"><span>Find a module</span><input class="loomos-input" type="search" data-module-search placeholder="Cast, inventory, continuity..."></label>
+          <p class="loomos-hint">Track changes compiler output. Display only changes the UI and never deletes data. Inject controls the compact future-context summary. Core tracking stays on for continuity safety.</p>
+          ${renderModuleMatrix()}
         </div>
       </details>`;
   }
-  function render() {
-    tab.root.dataset.skin = settings.skin;
+  function diagnosticText() {
+    const lines = [
+      `version: 0.1.1`,
+      `identity: ${exactLabel()}`,
+      `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
+      `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
+      `connection: ${pipeline?.connectionId || settings.connectionId || "automatic"}`,
+      `phase: ${pipeline?.phase || "idle"}`,
+      `attempt: ${pipeline?.attempt || "-"}`,
+      `elapsed: ${pipeline ? `${Math.round(pipeline.elapsedMs / 100) / 10}s` : "-"}`
+    ];
+    return lines.join("\n");
+  }
+  function emptyStateHtml() {
+    return `<div class="loomos-shell loomos-empty">
+      <h3>No state for this exact swipe</h3>
+      <p>LoomOS never substitutes another swipe. Generate a fresh snapshot for ${escapeHtml(exactLabel())}.</p>
+      <button class="loomos-button loomos-button-primary" data-action="generate"${disabled(!permissions.generation || !permissions.chatMutation || Boolean(activeGenerationRequestId))}>Generate State</button>
+    </div>`;
+  }
+  function toolbarHtml() {
     const canGenerate = permissions.generation && permissions.chatMutation;
     const missingPermission = !permissions.generation || !permissions.chatMutation || settings.injectionEnabled && !permissions.interceptor;
-    const exactLabel = activeIdentity ? `${activeIdentity.messageId.slice(0, 8)} \xB7 swipe ${activeIdentity.swipeId}` : "No active message";
-    const panels = state ? [
-      settings.panels.kernel ? renderKernel(state) : "",
-      settings.panels.castMatrix ? renderCast(state) : "",
-      settings.panels.threadLoom ? renderThreads(state) : "",
-      settings.panels.continuityFirewall ? renderFirewall(state) : ""
-    ].join("") : `
-        <div class="loomos-shell loomos-empty">
-          <h3>No state for this exact swipe</h3>
-          <p>LoomOS will not reuse another message or swipe. Generate a fresh snapshot for ${escapeHtml(exactLabel)}.</p>
-          <button class="loomos-button loomos-button-primary" data-action="generate"${disabled(!canGenerate || activeGenerationRequestId !== null)}>Generate State</button>
-        </div>`;
+    return `<div class="loomos-toolbar">
+      <button class="loomos-button loomos-button-primary" data-action="viewer">Open Viewer</button>
+      <button class="loomos-button" data-action="generate"${disabled(!canGenerate || Boolean(activeGenerationRequestId))}>${state ? "Refresh State" : "Generate State"}</button>
+      <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation)}>Reload</button>
+      ${activeGenerationRequestId ? `<button class="loomos-button" data-action="cancel">Cancel</button>` : ""}
+      ${state ? `<button class="loomos-button loomos-button-danger" data-action="delete">Delete Exact State</button>` : ""}
+      ${missingPermission ? `<button class="loomos-button" data-action="permissions">Enable Features</button>` : ""}
+    </div>`;
+  }
+  function renderDrawer() {
+    tab.root.dataset.skin = settings.skin;
     tab.root.innerHTML = `
       <div class="loomos-shell">
         <div class="loomos-header">
-          <div class="loomos-title">
-            <strong>LoomOS Command Deck</strong>
-            <span>${escapeHtml(exactLabel)}</span>
-          </div>
-          <span class="loomos-status">${escapeHtml(status)}</span>
+          <div class="loomos-title"><strong>LoomOS Command Deck</strong><span>${escapeHtml(exactLabel())}</span></div>
+          <span class="loomos-status" title="${escapeHtml(elapsedLabel())}">${escapeHtml(elapsedLabel())}</span>
         </div>
-        <div class="loomos-toolbar">
-          <button class="loomos-button loomos-button-primary" data-action="generate"${disabled(!canGenerate || activeGenerationRequestId !== null)}>${state ? "Refresh" : "Generate"}</button>
-          <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation)}>Reload</button>
-          ${activeGenerationRequestId ? `<button class="loomos-button" data-action="cancel">Cancel</button>` : ""}
-          ${state ? `<button class="loomos-button loomos-button-danger" data-action="delete">Delete State</button>` : ""}
-          ${missingPermission ? `<button class="loomos-button loomos-warning" data-action="permissions">Enable Features</button>` : ""}
-        </div>
+        ${toolbarHtml()}
       </div>
       ${renderSettings()}
-      <div class="loomos-grid">${panels}</div>`;
+      ${state ? renderDashboard(state, settings) : emptyStateHtml()}
+      <details class="loomos-shell loomos-settings">
+        <summary>Pipeline Diagnostics</summary>
+        <pre class="loomos-diagnostic">${escapeHtml(diagnosticText())}</pre>
+      </details>`;
+  }
+  function renderViewer() {
+    if (!modal) return;
+    modal.root.className = "loomos-root";
+    modal.root.dataset.skin = settings.skin;
+    modal.setTitle(`LoomOS | ${exactLabel()}`);
+    modal.root.innerHTML = `
+      <div class="loomos-shell">
+        <div class="loomos-header">
+          <div class="loomos-title"><strong>${state ? escapeHtml(state.kernel.scene || "Story State") : "Exact Swipe State"}</strong><span>${escapeHtml(exactLabel())}</span></div>
+          <span class="loomos-status">${escapeHtml(elapsedLabel())}</span>
+        </div>
+        ${toolbarHtml()}
+      </div>
+      ${state ? renderDashboard(state, settings) : emptyStateHtml()}`;
+  }
+  function renderAll() {
+    renderDrawer();
+    renderViewer();
     refreshMessageAction();
+  }
+  function openViewer() {
+    if (modal) {
+      renderViewer();
+      return;
+    }
+    modal = ctx.ui.showModal({
+      title: `LoomOS | ${exactLabel()}`,
+      width: 980,
+      maxHeight: 820
+    });
+    const root = modal.root;
+    const onClick = (event) => handleActionClick(event);
+    root.addEventListener("click", onClick);
+    const removeDismiss = modal.onDismiss(() => {
+      root.removeEventListener("click", onClick);
+      removeDismiss();
+      modal = null;
+      modalListenerCleanup = null;
+    });
+    modalListenerCleanup = () => {
+      root.removeEventListener("click", onClick);
+      removeDismiss();
+      modal?.dismiss();
+      modal = null;
+    };
+    renderViewer();
   }
   function readSettings() {
     const root = tab.root;
-    const next = {
+    const moduleSettings = Object.fromEntries(MODULE_KEYS.map((key) => {
+      const current = settings.moduleSettings[key];
+      const value = {
+        track: CORE_TRACKING_MODULES.has(key) ? true : root.querySelector(`[data-module="${key}"][data-axis="track"]`)?.checked ?? current.track,
+        display: root.querySelector(`[data-module="${key}"][data-axis="display"]`)?.checked ?? current.display,
+        inject: root.querySelector(`[data-module="${key}"][data-axis="inject"]`)?.checked ?? current.inject
+      };
+      return [key, value];
+    }));
+    return LoomOSSettingsSchema.parse({
+      ...settings,
       skin: root.querySelector('[data-setting="skin"]')?.value,
+      modulePreset: root.querySelector('[data-setting="modulePreset"]')?.value,
+      connectionId: root.querySelector('[data-setting="connectionId"]')?.value ?? "",
       autoGeneration: root.querySelector('[data-setting="autoGeneration"]')?.value,
       injectionEnabled: root.querySelector('[data-setting="injectionEnabled"]')?.checked,
       injectionTokenBudget: Number(root.querySelector('[data-setting="injectionTokenBudget"]')?.value),
+      compilerSeedTokenBudget: Number(root.querySelector('[data-setting="compilerSeedTokenBudget"]')?.value),
       recentMessageLimit: Number(root.querySelector('[data-setting="recentMessageLimit"]')?.value),
-      connectionId: root.querySelector('[data-setting="connectionId"]')?.value ?? "",
-      panels: {
-        kernel: root.querySelector('[data-panel="kernel"]')?.checked,
-        castMatrix: root.querySelector('[data-panel="castMatrix"]')?.checked,
-        threadLoom: root.querySelector('[data-panel="threadLoom"]')?.checked,
-        continuityFirewall: root.querySelector('[data-panel="continuityFirewall"]')?.checked
-      }
-    };
-    return LoomOSSettingsSchema.parse(next);
+      generationTimeoutSeconds: Number(root.querySelector('[data-setting="generationTimeoutSeconds"]')?.value),
+      moduleSettings
+    });
   }
   function saveCurrentSettings() {
     try {
       settings = readSettings();
       status = "Saving settings";
-      send({
-        type: "save_settings",
-        requestId: requestId("settings"),
-        settings
-      });
-      render();
+      send({ type: "save_settings", requestId: requestId("settings"), settings });
+      renderAll();
     } catch (error) {
       status = error instanceof Error ? error.message : String(error);
-      render();
+      renderAll();
     }
+  }
+  function applyPreset(preset) {
+    settings = LoomOSSettingsSchema.parse({
+      ...settings,
+      modulePreset: preset,
+      moduleSettings: moduleSettingsForPreset(preset)
+    });
+    status = `${presetLabel(preset)} preset applied`;
+    send({ type: "save_settings", requestId: requestId("preset"), settings });
+    renderAll();
   }
   function startGeneration() {
     const identity = currentRequest();
-    if (!identity || !identity.messageId) {
+    if (!identity?.messageId) {
       status = "Open a chat with at least one message first.";
-      render();
+      renderAll();
       return;
     }
     if (!permissions.generation || !permissions.chatMutation) {
       status = "Generation and chat access permissions are required.";
-      render();
+      renderAll();
       return;
     }
     activeGenerationRequestId = requestId("generate");
-    status = "Compiling story state";
+    status = "Resolving exact swipe";
+    pipeline = null;
+    startElapsedTimer();
     send({
       type: "generate_state",
       requestId: activeGenerationRequestId,
       identity
     });
-    render();
+    renderAll();
   }
   function reloadState() {
     const identity = currentRequest();
-    if (!identity || !identity.messageId) {
+    if (!identity?.messageId) {
       activeIdentity = null;
       state = null;
       status = "No active message";
-      render();
+      renderAll();
       return;
     }
     status = "Loading exact swipe";
-    send({
-      type: "get_state",
-      requestId: requestId("state"),
-      identity
-    });
-    render();
+    send({ type: "get_state", requestId: requestId("state"), identity });
+    renderAll();
   }
   async function deleteCurrentState() {
     const identity = currentRequest();
-    if (!identity || !identity.messageId) return;
+    if (!identity?.messageId) return;
     const { confirmed } = await ctx.ui.showConfirm({
       title: "Delete LoomOS State",
       message: "Delete the stored snapshot for this exact message and swipe?",
@@ -4704,29 +5398,25 @@ function setup(ctx) {
       confirmLabel: "Delete"
     });
     if (!confirmed) return;
-    send({
-      type: "delete_state",
-      requestId: requestId("delete"),
-      identity
-    });
+    send({ type: "delete_state", requestId: requestId("delete"), identity });
   }
   async function requestPermissions() {
     try {
+      const requested = [
+        "generation",
+        "chat_mutation"
+      ];
+      if (settings.injectionEnabled) requested.push("interceptor");
       status = "Waiting for permission confirmation";
-      render();
-      await ctx.permissions.request(
-        ["generation", "chat_mutation", "interceptor"],
-        {
-          reason: "LoomOS reads chat history to compile swipe-specific state, runs quiet generation, and optionally injects a compact state summary."
-        }
-      );
-      send({
-        type: "refresh_permissions",
-        requestId: requestId("permissions")
+      renderAll();
+      await ctx.permissions.request(requested, {
+        reason: "LoomOS reads chat history for exact-swipe state, runs quiet generation, and optionally injects a compact summary."
       });
+      send({ type: "refresh_permissions", requestId: requestId("permissions") });
+      send({ type: "get_connections", requestId: requestId("connections") });
     } catch (error) {
       status = error instanceof Error ? error.message : String(error);
-      render();
+      renderAll();
     }
   }
   function syncFromHost(asReady) {
@@ -4736,33 +5426,20 @@ function setup(ctx) {
       state = null;
       status = "No active chat";
       send({ type: "ready", active: null });
-      render();
+      renderAll();
       return;
     }
     status = "Loading exact swipe";
-    if (asReady) {
-      send({ type: "ready", active });
-    } else {
-      send({
-        type: "get_state",
-        requestId: requestId("sync"),
-        identity: active
-      });
-    }
-    render();
+    if (asReady) send({ type: "ready", active });
+    else send({ type: "get_state", requestId: requestId("sync"), identity: active });
+    renderAll();
   }
   function identityFromEvent(payload) {
     if (!isRecord(payload) || !isRecord(payload.message)) return null;
     const message = payload.message;
     const chatId = typeof payload.chatId === "string" ? payload.chatId : typeof message.chat_id === "string" ? message.chat_id : null;
-    if (!chatId || typeof message.id !== "string" || typeof message.swipe_id !== "number") {
-      return null;
-    }
-    return {
-      chatId,
-      messageId: message.id,
-      swipeId: message.swipe_id
-    };
+    if (!chatId || typeof message.id !== "string" || typeof message.swipe_id !== "number") return null;
+    return { chatId, messageId: message.id, swipeId: message.swipe_id };
   }
   function handleBackendMessage(payload) {
     if (!isRecord(payload) || typeof payload.type !== "string") return;
@@ -4771,13 +5448,18 @@ function setup(ctx) {
       case "bootstrap":
         settings = response.settings;
         permissions = response.permissions;
+        connections = response.connections;
         activeIdentity = response.identity;
         state = response.state;
-        status = response.identity ? response.state ? "State loaded" : "Ready to generate" : "No active message";
+        status = response.identity ? response.state ? "Exact swipe state loaded" : "Ready to generate" : "No active message";
         break;
       case "settings":
         settings = response.settings;
         status = "Settings saved";
+        break;
+      case "connections":
+        connections = response.connections;
+        status = connections.length > 0 ? "Connections refreshed" : "No ready connections found";
         break;
       case "state":
         activeIdentity = response.identity;
@@ -4789,49 +5471,71 @@ function setup(ctx) {
         status = "Permissions updated";
         break;
       case "generation_status":
-        if (response.status === "started") {
+        if (response.report) pipeline = response.report;
+        if (response.status === "started" || response.status === "progress") {
           activeGenerationRequestId = response.requestId;
           if (response.identity) activeIdentity = response.identity;
-          status = "Compiling story state";
+          status = response.message ?? "Compiling story state";
         } else {
-          if (activeGenerationRequestId === response.requestId) {
-            activeGenerationRequestId = null;
-          }
+          if (activeGenerationRequestId === response.requestId) activeGenerationRequestId = null;
+          stopElapsedTimer();
           status = response.message ?? (response.status === "completed" ? "State compiled" : response.status);
         }
         break;
       case "error":
+        if (response.requestId === activeGenerationRequestId) {
+          activeGenerationRequestId = null;
+          stopElapsedTimer();
+        }
         status = response.message;
         break;
     }
-    render();
+    renderAll();
   }
-  function handleRootClick(event) {
+  function handleActionClick(event) {
     const target = event.target?.closest("[data-action]");
     const action = target?.dataset.action;
     if (!action) return;
+    if (action === "viewer") openViewer();
     if (action === "generate") startGeneration();
     if (action === "reload") reloadState();
     if (action === "cancel" && activeGenerationRequestId) {
-      send({
-        type: "cancel_generation",
-        requestId: activeGenerationRequestId
-      });
+      send({ type: "cancel_generation", requestId: activeGenerationRequestId });
     }
     if (action === "delete") void deleteCurrentState();
     if (action === "permissions") void requestPermissions();
   }
   function handleRootChange(event) {
     const target = event.target;
-    if (target?.matches("[data-setting], [data-panel]")) {
-      saveCurrentSettings();
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+    if (target.dataset.setting === "modulePreset") {
+      const preset = target.value;
+      if (preset !== "custom") {
+        applyPreset(preset);
+        return;
+      }
     }
+    if (target.matches("[data-module]")) {
+      const preset = tab.root.querySelector('[data-setting="modulePreset"]');
+      if (preset) preset.value = "custom";
+    }
+    if (target.matches("[data-setting], [data-module]")) saveCurrentSettings();
   }
-  tab.root.addEventListener("click", handleRootClick);
+  function handleRootInput(event) {
+    const target = event.target;
+    if (!target?.matches("[data-module-search]")) return;
+    const query = target.value.trim().toLowerCase();
+    tab.root.querySelectorAll("[data-module-row]").forEach((row) => {
+      row.hidden = Boolean(query) && !(row.dataset.search ?? "").includes(query);
+    });
+  }
+  tab.root.addEventListener("click", handleActionClick);
   tab.root.addEventListener("change", handleRootChange);
-  cleanups.push(() => tab.root.removeEventListener("click", handleRootClick));
+  tab.root.addEventListener("input", handleRootInput);
+  cleanups.push(() => tab.root.removeEventListener("click", handleActionClick));
   cleanups.push(() => tab.root.removeEventListener("change", handleRootChange));
-  cleanups.push(inputAction.onClick(() => tab.activate()));
+  cleanups.push(() => tab.root.removeEventListener("input", handleRootInput));
+  cleanups.push(inputAction.onClick(openViewer));
   cleanups.push(tab.onActivate(() => syncFromHost(false)));
   cleanups.push(ctx.onBackendMessage(handleBackendMessage));
   cleanups.push(ctx.events.on("CHAT_SWITCHED", () => syncFromHost(true)));
@@ -4842,39 +5546,29 @@ function setup(ctx) {
     const latest = ctx.messages.getLatestMessageId();
     if (identity?.messageId && identity.messageId === latest) {
       status = "Loading selected swipe";
-      send({
-        type: "get_state",
-        requestId: requestId("swipe"),
-        identity
-      });
-      render();
+      send({ type: "get_state", requestId: requestId("swipe"), identity });
+      renderAll();
     }
   }));
   cleanups.push(ctx.events.on("SWIPE_EDITED", (payload) => {
     const identity = identityFromEvent(payload);
-    if (identity) {
-      send({
-        type: "get_state",
-        requestId: requestId("swipe-edit"),
-        identity
-      });
-    }
+    if (identity) send({ type: "get_state", requestId: requestId("swipe-edit"), identity });
   }));
   cleanups.push(ctx.events.on("CHARACTER_MESSAGE_RENDERED", refreshMessageAction));
   cleanups.push(ctx.events.on("USER_MESSAGE_RENDERED", refreshMessageAction));
-  render();
+  renderAll();
   syncFromHost(true);
   return () => {
     if (disposed) return;
     const chatId = ctx.getActiveChat().chatId ?? void 0;
     send({ type: "frontend_disposed", chatId });
     if (activeGenerationRequestId) {
-      send({
-        type: "cancel_generation",
-        requestId: activeGenerationRequestId
-      });
+      send({ type: "cancel_generation", requestId: activeGenerationRequestId });
     }
     disposed = true;
+    stopElapsedTimer();
+    modalListenerCleanup?.();
+    modalListenerCleanup = null;
     messageActionCleanup?.();
     messageActionCleanup = null;
     for (const cleanup of cleanups.splice(0).reverse()) {

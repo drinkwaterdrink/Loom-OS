@@ -32,7 +32,9 @@ The extension does not request `chats`, `context_handler`, `ui_panels`,
 - Per-user storage: `spindle.userStorage.getJson()` / `setJson()` / `delete()`
 - Chat history: `spindle.chat.getMessages()`
 - Quiet generation: `spindle.generate.quiet()`
+- Connection discovery: `spindle.connections.list()`
 - Prompt injection: `spindle.registerInterceptor()`
+- Native viewer: `ctx.ui.showModal()`
 - Token budget: `spindle.tokens.countText()`
 - Swipe events: `MESSAGE_SWIPED` and `SWIPE_EDITED`
 - Live permission changes: `spindle.permissions.onChanged()`
@@ -45,3 +47,14 @@ chats/{chatId}/messages/{messageId}/swipes/{swipeId}.json
 ```
 
 Path segments are percent-encoded before they reach Spindle storage.
+
+## Generation Compatibility Notes
+
+LoomOS does not force `temperature`, `max_tokens`, or provider-native structured
+output fields. It uses prompt-engineered JSON, validates with Zod, and retries
+once with a repair prompt. The response adapter accepts the current typed
+`unknown` return and normalizes raw strings plus `content`, `text`, `output`,
+`response`, `message`, and `message.content` shapes.
+
+Every generation has an `AbortSignal`, a configurable timeout, targeted
+operator-scoped `userId`, and visible frontend pipeline reports.

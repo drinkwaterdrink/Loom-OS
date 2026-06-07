@@ -10,6 +10,8 @@ test("settings defaults are complete and conservative", () => {
   assert.equal(DEFAULT_SETTINGS.autoGeneration, "manual");
   assert.equal(DEFAULT_SETTINGS.injectionEnabled, false);
   assert.equal(DEFAULT_SETTINGS.injectionTokenBudget, 320);
+  assert.equal(DEFAULT_SETTINGS.moduleSettings.sceneKernel.track, true);
+  assert.equal(DEFAULT_SETTINGS.moduleSettings.dialogueState.track, false);
   assert.equal(DEFAULT_SETTINGS.skin, "auto");
 });
 
@@ -18,8 +20,32 @@ test("a valid LoomOS state passes strict validation", () => {
   assert.deepEqual(LoomOSStateSchema.parse(state), state);
 });
 
+test("a minimal V2 state with disabled optional modules validates", () => {
+  const state = makeState({
+    activeModules: [
+      "sceneKernel",
+      "deltas",
+      "castCore",
+      "storyThreads",
+      "continuity",
+    ],
+    meters: [],
+    scene: null,
+    worldState: null,
+    tools: {
+      actionResolver: null,
+      dialogueState: null,
+      directorStyle: null,
+      closenessState: null,
+      imagePrompt: null,
+    },
+    auditLog: [],
+  });
+  assert.equal(LoomOSStateSchema.safeParse(state).success, true);
+});
+
 test("invalid thread urgency is rejected", () => {
   const state = makeState();
-  state.threadLoom[0]!.urgency = 9;
+  state.storyState.threadLoom[0]!.urgency = 9;
   assert.equal(LoomOSStateSchema.safeParse(state).success, false);
 });

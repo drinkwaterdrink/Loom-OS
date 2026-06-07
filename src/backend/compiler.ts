@@ -4,14 +4,20 @@ import {
   LoomOSStateSchema,
 } from "../shared/schemas";
 import {
-  STATE_COMPILER_PROMPT,
+  buildStateCompilerPrompt,
   STATE_REPAIR_PROMPT,
 } from "../shared/prompts";
-import type { LoomOSState, StateIdentity } from "../shared/types";
+import type {
+  GenerationPhase,
+  LoomOSState,
+  ModuleKey,
+  StateIdentity,
+} from "../shared/types";
 
 export type GenerateCompilerOutput = (
   messages: LlmMessageDTO[],
   signal: AbortSignal,
+  attempt: 1 | 2,
 ) => Promise<string>;
 
 export interface CompileRequest {
@@ -19,15 +25,20 @@ export interface CompileRequest {
   transcript: string;
   messageCount: number;
   existingState: LoomOSState | null;
+  seedState: LoomOSState | null;
+  seedText: string;
+  enabledModules: ModuleKey[];
+  connectionId: string;
   signal: AbortSignal;
   generate: GenerateCompilerOutput;
+  onPhase?: (phase: GenerationPhase, attempt: 1 | 2, message: string) => void;
 }
 
 export type CompileResult =
   | { ok: true; state: LoomOSState; repaired: boolean }
   | { ok: false; state: LoomOSState | null; error: string };
 
-function extractJsonObject(raw: string): unknown {
+export function extractJsonObject(raw: string): unknown {
   const withoutFence = raw
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
@@ -44,11 +55,9 @@ function validationError(raw: string): string {
   try {
     const parsed = extractJsonObject(raw);
     const result = LoomOSCompiledStateSchema.safeParse(parsed);
-    if (result.success) {
-      return "Unknown validation failure.";
-    }
+    if (result.success) return "Unknown validation failure.";
     return result.error.issues
-      .slice(0, 12)
+      .slice(0, 16)
       .map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`)
       .join("\n");
   } catch (error) {
@@ -58,71 +67,87 @@ function validationError(raw: string): string {
 
 export function parseCompilerOutput(
   raw: string,
-  identity: StateIdentity,
-  messageCount: number,
+  request: Pick<
+    CompileRequest,
+    "identity" | "messageCount" | "seedState" | "connectionId" | "enabledModules"
+  >,
   repaired: boolean,
 ): LoomOSState {
   const compiled = LoomOSCompiledStateSchema.parse(extractJsonObject(raw));
   return LoomOSStateSchema.parse({
     ...compiled,
-    schemaVersion: 1,
-    identity,
+    activeModules: request.enabledModules,
+    schemaVersion: 2,
+    identity: request.identity,
     generatedAt: new Date().toISOString(),
     source: {
-      messageCount,
+      messageCount: request.messageCount,
       repaired,
+      seedIdentity: request.seedState?.identity ?? null,
+      connectionId: request.connectionId,
     },
   });
+}
+
+function compilerUserMessage(request: CompileRequest): string {
+  return [
+    "TARGET IDENTITY:",
+    JSON.stringify(request.identity),
+    "",
+    "PREVIOUS STATE SEED (compiler context only; may be null):",
+    request.seedText || "null",
+    "",
+    "RECENT TRANSCRIPT:",
+    request.transcript,
+  ].join("\n");
 }
 
 export async function compileStateWithRepair(
   request: CompileRequest,
 ): Promise<CompileResult> {
+  request.onPhase?.("building_prompt", 1, "Building the enabled-module compiler prompt.");
   const firstMessages: LlmMessageDTO[] = [
-    { role: "system", content: STATE_COMPILER_PROMPT },
-    {
-      role: "user",
-      content: `Compile state for this transcript:\n\n${request.transcript}`,
-    },
+    { role: "system", content: buildStateCompilerPrompt(request.enabledModules) },
+    { role: "user", content: compilerUserMessage(request) },
   ];
 
-  const firstRaw = await request.generate(firstMessages, request.signal);
+  request.onPhase?.("requesting", 1, "Requesting structured state from the selected connection.");
+  const firstRaw = await request.generate(firstMessages, request.signal, 1);
+  request.onPhase?.("validating", 1, "Validating State V2 output.");
   try {
     return {
       ok: true,
-      state: parseCompilerOutput(
-        firstRaw,
-        request.identity,
-        request.messageCount,
-        false,
-      ),
+      state: parseCompilerOutput(firstRaw, request, false),
       repaired: false,
     };
   } catch {
+    request.onPhase?.("repairing", 2, "Output was invalid; running the single repair pass.");
     const repairMessages: LlmMessageDTO[] = [
-      { role: "system", content: STATE_REPAIR_PROMPT },
+      {
+        role: "system",
+        content: `${STATE_REPAIR_PROMPT}\n\n${buildStateCompilerPrompt(request.enabledModules)}`,
+      },
       {
         role: "user",
         content: [
+          "Enabled modules:",
+          request.enabledModules.join(", "),
+          "",
           "Validation failures:",
           validationError(firstRaw),
           "",
           "Malformed output:",
-          firstRaw.slice(0, 24_000),
+          firstRaw.slice(0, 36_000),
         ].join("\n"),
       },
     ];
 
-    const repairedRaw = await request.generate(repairMessages, request.signal);
+    const repairedRaw = await request.generate(repairMessages, request.signal, 2);
+    request.onPhase?.("validating", 2, "Validating repaired State V2 output.");
     try {
       return {
         ok: true,
-        state: parseCompilerOutput(
-          repairedRaw,
-          request.identity,
-          request.messageCount,
-          true,
-        ),
+        state: parseCompilerOutput(repairedRaw, request, true),
         repaired: true,
       };
     } catch {

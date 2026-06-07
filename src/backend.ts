@@ -1,11 +1,15 @@
 import type {
   ChatMessageDTO,
+  ConnectionProfileDTO,
   LlmMessageDTO,
   MessageSwipedPayloadDTO,
   SwipeEditedPayloadDTO,
 } from "lumiverse-spindle-types";
 import { compileStateWithRepair } from "./backend/compiler";
+import { runQuietGeneration } from "./backend/generation";
 import { buildCompactInjection } from "./shared/compact";
+import { migrateStateToCurrent } from "./shared/migrations";
+import { trackedModuleKeys } from "./shared/modules";
 import type {
   BackendResponse,
   FrontendRequest,
@@ -17,12 +21,15 @@ import {
   LoomOSStateSchema,
   StateIdentitySchema,
 } from "./shared/schemas";
+import { buildStateSeedForCompiler } from "./shared/seed";
 import {
   messageStatePrefix,
   SETTINGS_PATH,
   stateStoragePath,
 } from "./shared/storage";
 import type {
+  ConnectionSummary,
+  GenerationPhase,
   LoomOSSettings,
   LoomOSState,
   PermissionSnapshot,
@@ -35,10 +42,7 @@ const EXTENSION_ID = "loomos_command_deck";
 const disposers: Array<() => void> = [];
 const activeChatByUser = new Map<string, string>();
 const usersByChat = new Map<string, Set<string>>();
-const jobs = new Map<string, {
-  controller: AbortController;
-  identityKey: string;
-}>();
+const jobs = new Map<string, { controller: AbortController; identityKey: string }>();
 const jobByIdentity = new Map<string, string>();
 
 let interceptorRegistered = false;
@@ -62,9 +66,7 @@ function permissionSnapshot(): PermissionSnapshot {
 }
 
 function send(payload: BackendResponse, userId: string): void {
-  if (!disposed) {
-    spindle.sendToFrontend(payload, userId);
-  }
+  if (!disposed) spindle.sendToFrontend(payload, userId);
 }
 
 function rememberUserChat(userId: string, chatId: string | null): void {
@@ -72,16 +74,12 @@ function rememberUserChat(userId: string, chatId: string | null): void {
   if (previous && previous !== chatId) {
     const previousUsers = usersByChat.get(previous);
     previousUsers?.delete(userId);
-    if (previousUsers?.size === 0) {
-      usersByChat.delete(previous);
-    }
+    if (previousUsers?.size === 0) usersByChat.delete(previous);
   }
-
   if (!chatId) {
     activeChatByUser.delete(userId);
     return;
   }
-
   activeChatByUser.set(userId, chatId);
   const users = usersByChat.get(chatId) ?? new Set<string>();
   users.add(userId);
@@ -103,6 +101,12 @@ async function getSettings(userId: string): Promise<LoomOSSettings> {
   });
   const parsed = LoomOSSettingsSchema.safeParse(raw);
   if (parsed.success) {
+    if (!isRecord(raw) || raw.schemaVersion !== 2) {
+      await spindle.userStorage.setJson(SETTINGS_PATH, parsed.data, {
+        indent: 2,
+        userId,
+      });
+    }
     return parsed.data;
   }
   spindle.log.warn("Invalid LoomOS settings found; defaults will be used.");
@@ -114,45 +118,27 @@ async function saveSettings(
   userId: string,
 ): Promise<LoomOSSettings> {
   const parsed = LoomOSSettingsSchema.parse(settings);
-  await spindle.userStorage.setJson(SETTINGS_PATH, parsed, {
-    indent: 2,
-    userId,
-  });
+  await spindle.userStorage.setJson(SETTINGS_PATH, parsed, { indent: 2, userId });
   return parsed;
 }
 
-async function getMessages(chatId: string) {
+async function getMessages(chatId: string): Promise<ChatMessageDTO[]> {
   if (!spindle.permissions.has("chat_mutation")) {
-    throw new Error(
-      "PERMISSION_DENIED: chat_mutation is required to inspect chat history.",
-    );
+    throw new Error("PERMISSION_DENIED: chat_mutation is required to read chat history.");
   }
   return spindle.chat.getMessages(chatId);
 }
 
-async function resolveIdentity(
-  requested: IdentityRequest,
-): Promise<StateIdentity> {
+async function resolveIdentity(requested: IdentityRequest): Promise<StateIdentity> {
   const messages = await getMessages(requested.chatId);
   const messageId = requested.messageId ?? messages.at(-1)?.id;
-  if (!messageId) {
-    throw new Error("This chat has no message to attach LoomOS state to.");
-  }
-
+  if (!messageId) throw new Error("This chat has no message to attach LoomOS state to.");
   const message = messages.find((candidate) => candidate.id === messageId);
-  if (!message) {
-    throw new Error("The requested message no longer exists in this chat.");
-  }
-
+  if (!message) throw new Error("The requested message no longer exists in this chat.");
   const swipeId = requested.swipeId ?? message.swipe_id;
-  if (
-    !Number.isInteger(swipeId)
-    || swipeId < 0
-    || swipeId >= message.swipes.length
-  ) {
+  if (!Number.isInteger(swipeId) || swipeId < 0 || swipeId >= message.swipes.length) {
     throw new Error("The requested swipe no longer exists for this message.");
   }
-
   return StateIdentitySchema.parse({
     chatId: requested.chatId,
     messageId,
@@ -164,43 +150,37 @@ async function loadState(
   identity: StateIdentity,
   userId: string,
 ): Promise<LoomOSState | null> {
-  const raw = await spindle.userStorage.getJson<unknown>(
-    stateStoragePath(identity),
-    { fallback: null, userId },
-  );
-  const parsed = LoomOSStateSchema.safeParse(raw);
-  if (!parsed.success) {
-    return null;
-  }
-  const storedIdentity = parsed.data.identity;
+  const path = stateStoragePath(identity);
+  const raw = await spindle.userStorage.getJson<unknown>(path, {
+    fallback: null,
+    userId,
+  });
+  const state = migrateStateToCurrent(raw);
+  if (!state) return null;
   if (
-    storedIdentity.chatId !== identity.chatId
-    || storedIdentity.messageId !== identity.messageId
-    || storedIdentity.swipeId !== identity.swipeId
+    state.identity.chatId !== identity.chatId
+    || state.identity.messageId !== identity.messageId
+    || state.identity.swipeId !== identity.swipeId
   ) {
     spindle.log.warn("Ignored a LoomOS state file with mismatched identity.");
     return null;
   }
-  return parsed.data;
+  if (isRecord(raw) && raw.schemaVersion === 1) {
+    await spindle.userStorage.setJson(path, state, { indent: 2, userId });
+  }
+  return state;
 }
 
-async function persistState(
-  state: LoomOSState,
-  userId: string,
-): Promise<LoomOSState> {
+async function persistState(state: LoomOSState, userId: string): Promise<LoomOSState> {
   const parsed = LoomOSStateSchema.parse(state);
-  await spindle.userStorage.setJson(
-    stateStoragePath(parsed.identity),
-    parsed,
-    { indent: 2, userId },
-  );
+  await spindle.userStorage.setJson(stateStoragePath(parsed.identity), parsed, {
+    indent: 2,
+    userId,
+  });
   return parsed;
 }
 
-async function deleteState(
-  identity: StateIdentity,
-  userId: string,
-): Promise<void> {
+async function deleteState(identity: StateIdentity, userId: string): Promise<void> {
   const path = stateStoragePath(identity);
   if (await spindle.userStorage.exists(path, userId)) {
     await spindle.userStorage.delete(path, userId);
@@ -212,11 +192,8 @@ async function invalidateMessageStates(
   messageId: string,
   userId: string,
 ): Promise<void> {
-  const prefix = messageStatePrefix(chatId, messageId);
-  const paths = await spindle.userStorage.list(prefix, userId);
-  await Promise.all(paths.map((path) =>
-    spindle.userStorage.delete(path, userId)
-  ));
+  const paths = await spindle.userStorage.list(messageStatePrefix(chatId, messageId), userId);
+  await Promise.all(paths.map((path) => spindle.userStorage.delete(path, userId)));
 }
 
 async function sendExactState(
@@ -232,48 +209,97 @@ async function sendExactState(
   }, userId);
 }
 
-function transcriptContent(
-  message: Awaited<ReturnType<typeof getMessages>>[number],
-  identity: StateIdentity,
-): string {
-  if (message.id !== identity.messageId) {
-    return message.content;
-  }
+function transcriptContent(message: ChatMessageDTO, identity: StateIdentity): string {
+  if (message.id !== identity.messageId) return message.content;
   return message.swipes[identity.swipeId] ?? message.content;
 }
 
 async function buildTranscript(
   identity: StateIdentity,
   settings: LoomOSSettings,
-): Promise<{ transcript: string; messageCount: number }> {
-  const messages = await getMessages(identity.chatId);
-  const targetIndex = messages.findIndex(
-    (message) => message.id === identity.messageId,
-  );
-  if (targetIndex < 0) {
-    throw new Error("The target message disappeared before compilation.");
-  }
-
+  messages?: ChatMessageDTO[],
+): Promise<{ transcript: string; messageCount: number; messages: ChatMessageDTO[] }> {
+  const allMessages = messages ?? await getMessages(identity.chatId);
+  const targetIndex = allMessages.findIndex((message) => message.id === identity.messageId);
+  if (targetIndex < 0) throw new Error("The target message disappeared before compilation.");
   const start = Math.max(0, targetIndex + 1 - settings.recentMessageLimit);
-  const selected = messages.slice(start, targetIndex + 1);
+  const selected = allMessages.slice(start, targetIndex + 1);
   const transcript = selected.map((message) => {
-    const role = message.role.toUpperCase();
+    const role = message.is_user ? "USER" : "ASSISTANT";
     const name = message.name ? ` ${message.name}` : "";
     const content = transcriptContent(message, identity).slice(0, 12_000);
     return `[${message.index_in_chat} ${role}${name}]\n${content}`;
   }).join("\n\n");
+  return { transcript, messageCount: selected.length, messages: allMessages };
+}
 
+async function loadCompilationSeed(
+  identity: StateIdentity,
+  userId: string,
+  settings: LoomOSSettings,
+  messages: ChatMessageDTO[],
+  exactState: LoomOSState | null,
+): Promise<{ state: LoomOSState | null; text: string }> {
+  if (exactState) {
+    return {
+      state: exactState,
+      text: buildStateSeedForCompiler(exactState, settings),
+    };
+  }
+  const targetIndex = messages.findIndex((message) => message.id === identity.messageId);
+  for (let index = targetIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message) continue;
+    const previousIdentity = StateIdentitySchema.parse({
+      chatId: identity.chatId,
+      messageId: message.id,
+      swipeId: message.swipe_id,
+    });
+    const previous = await loadState(previousIdentity, userId);
+    if (previous) {
+      return {
+        state: previous,
+        text: buildStateSeedForCompiler(previous, settings),
+      };
+    }
+  }
+  return { state: null, text: "null" };
+}
+
+function connectionSummary(connection: ConnectionProfileDTO): ConnectionSummary {
   return {
-    transcript,
-    messageCount: selected.length,
+    id: connection.id,
+    name: connection.name,
+    provider: connection.provider,
+    model: connection.model,
+    isDefault: connection.is_default,
+    ready: connection.has_api_key,
   };
 }
 
-function generationContent(result: unknown): string {
-  if (isRecord(result) && typeof result.content === "string") {
-    return result.content;
+async function listConnections(userId: string): Promise<ConnectionSummary[]> {
+  if (!spindle.permissions.has("generation")) return [];
+  try {
+    return (await spindle.connections.list(userId)).map(connectionSummary);
+  } catch (error) {
+    spindle.log.warn(`LoomOS could not list connections: ${errorMessage(error)}`);
+    return [];
   }
-  throw new Error("Lumiverse generation returned no textual content.");
+}
+
+function chooseConnection(
+  connections: ConnectionSummary[],
+  requestedId: string,
+): ConnectionSummary | null {
+  if (requestedId) {
+    const selected = connections.find((connection) => connection.id === requestedId);
+    if (!selected) throw new Error("The selected LoomOS connection no longer exists.");
+    if (!selected.ready) throw new Error(`Connection "${selected.name}" has no API key configured.`);
+    return selected;
+  }
+  return connections.find((connection) => connection.isDefault && connection.ready)
+    ?? connections.find((connection) => connection.ready)
+    ?? null;
 }
 
 function requestJobKey(userId: string, requestId: string): string {
@@ -294,67 +320,98 @@ async function generateState(
   userId: string,
 ): Promise<void> {
   if (!spindle.permissions.has("generation")) {
-    throw new Error(
-      "PERMISSION_DENIED: generation is required to compile LoomOS state.",
-    );
+    throw new Error("PERMISSION_DENIED: generation is required to compile LoomOS state.");
   }
 
+  const startedAt = Date.now();
   const identity = await resolveIdentity(requested);
   const settings = await getSettings(userId);
   const existingState = await loadState(identity, userId);
-  const { transcript, messageCount } = await buildTranscript(identity, settings);
+  const transcriptResult = await buildTranscript(identity, settings);
+  const connections = await listConnections(userId);
+  const connection = chooseConnection(connections, settings.connectionId);
+  if (!connection) {
+    throw new Error("No ready Lumiverse LLM connection is available. Configure a connection, then retry.");
+  }
+
   const controller = new AbortController();
   const jobKey = requestJobKey(userId, requestId);
   const identityKey = identityJobKey(userId, identity);
   const previousJob = jobByIdentity.get(identityKey);
-  if (previousJob) {
-    abortJob(previousJob);
-  }
-
+  if (previousJob) abortJob(previousJob);
   jobs.set(jobKey, { controller, identityKey });
   jobByIdentity.set(identityKey, jobKey);
+
+  const progress = (
+    phase: GenerationPhase,
+    attempt: 1 | 2,
+    message: string,
+  ) => {
+    send({
+      type: "generation_status",
+      requestId,
+      status: "progress",
+      identity,
+      message,
+      report: {
+        phase,
+        attempt,
+        elapsedMs: Date.now() - startedAt,
+        connectionId: connection.id,
+        message,
+      },
+    }, userId);
+  };
+
   send({
     type: "generation_status",
     requestId,
     status: "started",
     identity,
+    message: `Preparing ${connection.name} (${connection.model || connection.provider}).`,
+    report: {
+      phase: "resolving",
+      attempt: 1,
+      elapsedMs: 0,
+      connectionId: connection.id,
+      message: "Resolved exact message and swipe.",
+    },
   }, userId);
 
   try {
+    progress("loading_seed", 1, "Loading continuity seed from this or the nearest prior message.");
+    const seed = await loadCompilationSeed(
+      identity,
+      userId,
+      settings,
+      transcriptResult.messages,
+      existingState,
+    );
+    const enabledModules = trackedModuleKeys(settings);
     const compiled = await compileStateWithRepair({
       identity,
-      transcript,
-      messageCount,
+      transcript: transcriptResult.transcript,
+      messageCount: transcriptResult.messageCount,
       existingState,
+      seedState: seed.state,
+      seedText: seed.text,
+      enabledModules,
+      connectionId: connection.id,
       signal: controller.signal,
-      generate: async (messages, signal) => {
-        const result = await spindle.generate.quiet({
-          type: "quiet",
+      onPhase: progress,
+      generate: async (messages, signal) =>
+        runQuietGeneration(spindle, {
           messages,
-          connection_id: settings.connectionId || undefined,
-          parameters: {
-            temperature: 0.1,
-            max_tokens: 1800,
-          },
-          reasoning: { source: "off" },
+          connectionId: connection.id,
           userId,
-          signal,
-        });
-        return generationContent(result);
-      },
+          timeoutMs: settings.generationTimeoutSeconds * 1000,
+          parentSignal: signal,
+        }),
     });
 
-    if (controller.signal.aborted) {
-      throw new DOMException("Generation cancelled.", "AbortError");
-    }
-
+    if (controller.signal.aborted) throw new DOMException("Generation cancelled.", "AbortError");
     if (!compiled.ok) {
-      send({
-        type: "state",
-        requestId,
-        identity,
-        state: compiled.state,
-      }, userId);
+      send({ type: "state", requestId, identity, state: compiled.state }, userId);
       send({
         type: "generation_status",
         requestId,
@@ -365,6 +422,7 @@ async function generateState(
       return;
     }
 
+    progress("saving", compiled.repaired ? 2 : 1, "Saving validated exact-swipe state.");
     const state = await persistState(compiled.state, userId);
     send({ type: "state", requestId, identity, state }, userId);
     send({
@@ -374,13 +432,17 @@ async function generateState(
       identity,
       message: compiled.repaired
         ? "State compiled after one repair pass."
-        : "State compiled.",
+        : "State compiled and saved.",
+      report: {
+        phase: "saving",
+        attempt: compiled.repaired ? 2 : 1,
+        elapsedMs: Date.now() - startedAt,
+        connectionId: connection.id,
+        message: "Validated state saved.",
+      },
     }, userId);
   } catch (error) {
-    if (
-      controller.signal.aborted
-      || (error instanceof Error && error.name === "AbortError")
-    ) {
+    if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
       send({
         type: "generation_status",
         requestId,
@@ -390,21 +452,18 @@ async function generateState(
       }, userId);
       return;
     }
-
+    const message = errorMessage(error);
+    spindle.log.error(`LoomOS generation failed (${connection.id}): ${message}`);
     send({
       type: "generation_status",
       requestId,
       status: "failed",
       identity,
-      message: errorMessage(error),
+      message,
     }, userId);
   } finally {
-    if (jobs.get(jobKey)?.controller === controller) {
-      jobs.delete(jobKey);
-    }
-    if (jobByIdentity.get(identityKey) === jobKey) {
-      jobByIdentity.delete(identityKey);
-    }
+    if (jobs.get(jobKey)?.controller === controller) jobs.delete(jobKey);
+    if (jobByIdentity.get(identityKey) === jobKey) jobByIdentity.delete(identityKey);
   }
 }
 
@@ -415,15 +474,11 @@ function parseFrontendRequest(payload: unknown): FrontendRequest {
   return payload as FrontendRequest;
 }
 
-async function handleFrontendRequest(
-  payload: unknown,
-  userId: string,
-): Promise<void> {
+async function handleFrontendRequest(payload: unknown, userId: string): Promise<void> {
   let requestId: string | undefined;
   try {
     const request = parseFrontendRequest(payload);
     requestId = "requestId" in request ? request.requestId : undefined;
-
     switch (request.type) {
       case "ready": {
         rememberUserChat(userId, request.active?.chatId ?? null);
@@ -435,6 +490,7 @@ async function handleFrontendRequest(
           type: "bootstrap",
           settings,
           permissions: permissionSnapshot(),
+          connections: await listConnections(userId),
           identity,
           state: identity ? await loadState(identity, userId) : null,
         }, userId);
@@ -444,11 +500,7 @@ async function handleFrontendRequest(
         rememberUserChat(userId, null);
         return;
       case "get_settings":
-        send({
-          type: "settings",
-          requestId,
-          settings: await getSettings(userId),
-        }, userId);
+        send({ type: "settings", requestId, settings: await getSettings(userId) }, userId);
         return;
       case "save_settings":
         send({
@@ -456,6 +508,9 @@ async function handleFrontendRequest(
           requestId,
           settings: await saveSettings(request.settings, userId),
         }, userId);
+        return;
+      case "get_connections":
+        send({ type: "connections", requestId, connections: await listConnections(userId) }, userId);
         return;
       case "get_state": {
         const identity = await resolveIdentity(request.identity);
@@ -472,82 +527,51 @@ async function handleFrontendRequest(
         ) {
           throw new Error("State identity does not match the live message swipe.");
         }
-        const state = await persistState(
-          LoomOSStateSchema.parse(request.state),
-          userId,
-        );
-        send({
-          type: "state",
-          requestId,
-          identity: state.identity,
-          state,
-        }, userId);
+        const state = await persistState(request.state, userId);
+        send({ type: "state", requestId, identity: state.identity, state }, userId);
         return;
       }
       case "delete_state": {
         const identity = await resolveIdentity(request.identity);
         await deleteState(identity, userId);
-        send({
-          type: "state",
-          requestId,
-          identity,
-          state: null,
-        }, userId);
+        send({ type: "state", requestId, identity, state: null }, userId);
         return;
       }
       case "generate_state":
-        void generateState(request.requestId, request.identity, userId);
+        void generateState(request.requestId, request.identity, userId).catch((error) => {
+          send({
+            type: "generation_status",
+            requestId: request.requestId,
+            status: "failed",
+            message: errorMessage(error),
+          }, userId);
+        });
         return;
       case "cancel_generation":
         abortJob(requestJobKey(userId, request.requestId));
         return;
       case "refresh_permissions":
-        send({
-          type: "permissions",
-          requestId,
-          permissions: permissionSnapshot(),
-        }, userId);
+        send({ type: "permissions", requestId, permissions: permissionSnapshot() }, userId);
         return;
     }
   } catch (error) {
-    send({
-      type: "error",
-      requestId,
-      message: errorMessage(error),
-    }, userId);
+    send({ type: "error", requestId, message: errorMessage(error) }, userId);
   }
 }
 
 function eventMessage(payload: unknown): ChatMessageDTO | null {
-  if (!isRecord(payload) || !isRecord(payload.message)) {
-    return null;
-  }
+  if (!isRecord(payload) || !isRecord(payload.message)) return null;
   const message = payload.message;
   if (
     typeof message.id !== "string"
     || typeof message.chat_id !== "string"
     || typeof message.swipe_id !== "number"
     || !Array.isArray(message.swipes)
-  ) {
-    return null;
-  }
+  ) return null;
   return message as unknown as ChatMessageDTO;
 }
 
-async function notifyUsersOfIdentity(
-  chatId: string,
-  identity: StateIdentity,
-  eventUserId?: string,
-): Promise<void> {
-  await Promise.all(eventUsers(chatId, eventUserId).map((userId) =>
-    sendExactState(userId, identity)
-  ));
-}
-
-async function handleMessageEdited(
-  payload: unknown,
-  eventUserId?: string,
-): Promise<void> {
+async function handleMessageEdited(payload: unknown, eventUserId?: string): Promise<void> {
   const message = eventMessage(payload);
   if (!message) return;
   const identity = StateIdentitySchema.parse({
@@ -570,17 +594,15 @@ async function handleMessageSwiped(
     messageId: payload.message.id,
     swipeId: payload.message.swipe_id,
   });
-
   for (const userId of eventUsers(payload.chatId, eventUserId)) {
     if (payload.action === "deleted") {
       await invalidateMessageStates(payload.chatId, payload.message.id, userId);
     } else if (payload.action === "updated" || payload.action === "added") {
-      const affectedIdentity = StateIdentitySchema.parse({
+      await deleteState(StateIdentitySchema.parse({
         chatId: payload.chatId,
         messageId: payload.message.id,
         swipeId: payload.swipeId,
-      });
-      await deleteState(affectedIdentity, userId);
+      }), userId);
     }
     await sendExactState(userId, activeIdentity);
   }
@@ -601,26 +623,14 @@ async function handleSwipeEdited(
   }
 }
 
-async function handleMessageDeleted(
-  payload: unknown,
-  eventUserId?: string,
-): Promise<void> {
-  if (
-    !isRecord(payload)
-    || typeof payload.chatId !== "string"
-    || typeof payload.messageId !== "string"
-  ) {
-    return;
-  }
+async function handleMessageDeleted(payload: unknown, eventUserId?: string): Promise<void> {
+  if (!isRecord(payload) || typeof payload.chatId !== "string" || typeof payload.messageId !== "string") return;
   for (const userId of eventUsers(payload.chatId, eventUserId)) {
     await invalidateMessageStates(payload.chatId, payload.messageId, userId);
   }
 }
 
-async function handleMessageSent(
-  payload: unknown,
-  eventUserId?: string,
-): Promise<void> {
+async function handleMessageSent(payload: unknown, eventUserId?: string): Promise<void> {
   const message = eventMessage(payload);
   if (!message) return;
   const identity = StateIdentitySchema.parse({
@@ -628,80 +638,56 @@ async function handleMessageSent(
     messageId: message.id,
     swipeId: message.swipe_id,
   });
-
   for (const userId of eventUsers(message.chat_id, eventUserId)) {
     await sendExactState(userId, identity);
     const settings = await getSettings(userId);
     const shouldGenerate = settings.autoGeneration === "every"
       || (settings.autoGeneration === "assistant" && !message.is_user);
     if (shouldGenerate && spindle.permissions.has("generation")) {
-      const requestId = `auto:${message.id}:${message.swipe_id}:${Date.now()}`;
-      void generateState(requestId, identity, userId);
+      void generateState(
+        `auto:${message.id}:${message.swipe_id}:${Date.now()}`,
+        identity,
+        userId,
+      ).catch((error) => {
+        spindle.log.warn(`LoomOS automatic generation skipped: ${errorMessage(error)}`);
+      });
     }
   }
 }
 
 function tryRegisterInterceptor(): void {
-  if (interceptorRegistered || !spindle.permissions.has("interceptor")) {
-    return;
-  }
+  if (interceptorRegistered || !spindle.permissions.has("interceptor")) return;
   interceptorRegistered = true;
   interceptorEnabled = true;
-
   spindle.registerInterceptor(async (messages, context) => {
-    if (!interceptorEnabled || !isRecord(context)) {
-      return messages;
-    }
-    if (context.generationType === "quiet" || typeof context.chatId !== "string") {
-      return messages;
-    }
-    if (!spindle.permissions.has("chat_mutation")) {
-      return messages;
-    }
-
+    if (!interceptorEnabled || disposed || !isRecord(context)) return messages;
+    if (context.generationType === "quiet" || typeof context.chatId !== "string") return messages;
+    if (!spindle.permissions.has("chat_mutation")) return messages;
     const chatId = context.chatId;
     const chatUsers = usersByChat.get(chatId);
-    if (!chatUsers || chatUsers.size !== 1) {
-      return messages;
-    }
+    if (!chatUsers || chatUsers.size !== 1) return messages;
     const userId = [...chatUsers][0]!;
-
     try {
       const settings = await getSettings(userId);
-      if (!settings.injectionEnabled) {
-        return messages;
-      }
+      if (!settings.injectionEnabled) return messages;
       const storedMessages = await getMessages(chatId);
       const latest = storedMessages.at(-1);
-      if (!latest) {
-        return messages;
-      }
+      if (!latest) return messages;
       const identity = StateIdentitySchema.parse({
         chatId,
         messageId: latest.id,
         swipeId: latest.swipe_id,
       });
       const state = await loadState(identity, userId);
-      if (!state) {
-        return messages;
-      }
-
-      const compact = await buildCompactInjection(
-        state,
-        settings.injectionTokenBudget,
-        async (text) => {
-          try {
-            const result = await spindle.tokens.countText(text, { userId });
-            return result.total_tokens;
-          } catch {
-            return Math.ceil(text.length / 4);
-          }
-        },
-      );
-      const injected: LlmMessageDTO = {
-        role: "system",
-        content: compact,
-      };
+      if (!state) return messages;
+      const compact = await buildCompactInjection(state, settings, async (text) => {
+        try {
+          return (await spindle.tokens.countText(text, { userId })).total_tokens;
+        } catch {
+          return Math.ceil(text.length / 4);
+        }
+      });
+      const injected: LlmMessageDTO = { role: "system", content: compact };
       return {
         messages: [injected, ...messages],
         breakdown: [{ messageIndex: 0, name: "LoomOS Story State" }],
@@ -716,16 +702,15 @@ function tryRegisterInterceptor(): void {
 function disposeBackend(): void {
   if (disposed) return;
   disposed = true;
-  for (const { controller } of jobs.values()) {
-    controller.abort();
-  }
+  interceptorEnabled = false;
+  for (const { controller } of jobs.values()) controller.abort();
   jobs.clear();
   jobByIdentity.clear();
   for (const dispose of disposers.splice(0).reverse()) {
     try {
       dispose();
     } catch {
-      // Runtime shutdown should continue even if one host disposer has failed.
+      // Continue runtime shutdown.
     }
   }
   activeChatByUser.clear();
@@ -751,30 +736,22 @@ disposers.push(spindle.on("SWIPE_EDITED", (payload, userId) => {
   void handleSwipeEdited(payload, userId);
 }));
 disposers.push(spindle.permissions.onDenied(({ permission, operation }) => {
-  spindle.log.warn(
-    `LoomOS permission denied: ${permission} for ${operation}.`,
-  );
+  spindle.log.warn(`LoomOS permission denied: ${permission} for ${operation}.`);
 }));
 disposers.push(spindle.permissions.onChanged(({ permission, granted }) => {
   if (permission === "generation" && !granted) {
-    for (const { controller } of jobs.values()) {
-      controller.abort();
-    }
+    for (const { controller } of jobs.values()) controller.abort();
   }
   if (permission === "interceptor") {
     interceptorEnabled = granted;
-    if (granted) {
-      tryRegisterInterceptor();
-    }
+    if (granted) tryRegisterInterceptor();
   }
   for (const userId of activeChatByUser.keys()) {
     send({ type: "permissions", permissions: permissionSnapshot() }, userId);
   }
 }));
 disposers.push(spindle.on("SPINDLE_EXTENSION_UNLOADED", (payload) => {
-  if (isRecord(payload) && payload.extensionId === EXTENSION_ID) {
-    disposeBackend();
-  }
+  if (isRecord(payload) && payload.extensionId === EXTENSION_ID) disposeBackend();
 }));
 
 tryRegisterInterceptor();

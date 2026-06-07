@@ -1,4 +1,6 @@
 import type {
+  ConnectionSummary,
+  GenerationPipelineReport,
   LoomOSSettings,
   LoomOSState,
   PermissionSnapshot,
@@ -16,6 +18,7 @@ export type FrontendRequest =
   | { type: "frontend_disposed"; chatId?: string }
   | { type: "get_settings"; requestId: string }
   | { type: "save_settings"; requestId: string; settings: LoomOSSettings }
+  | { type: "get_connections"; requestId: string }
   | { type: "get_state"; requestId: string; identity: IdentityRequest }
   | { type: "save_state"; requestId: string; state: LoomOSState }
   | { type: "delete_state"; requestId: string; identity: IdentityRequest }
@@ -28,10 +31,12 @@ export type BackendResponse =
       type: "bootstrap";
       settings: LoomOSSettings;
       permissions: PermissionSnapshot;
+      connections: ConnectionSummary[];
       identity: StateIdentity | null;
       state: LoomOSState | null;
     }
   | { type: "settings"; requestId?: string; settings: LoomOSSettings }
+  | { type: "connections"; requestId?: string; connections: ConnectionSummary[] }
   | {
       type: "state";
       requestId?: string;
@@ -41,9 +46,10 @@ export type BackendResponse =
   | {
       type: "generation_status";
       requestId: string;
-      status: "started" | "completed" | "cancelled" | "failed";
+      status: "started" | "progress" | "completed" | "cancelled" | "failed";
       identity?: StateIdentity;
       message?: string;
+      report?: GenerationPipelineReport;
     }
   | { type: "permissions"; requestId?: string; permissions: PermissionSnapshot }
   | { type: "error"; requestId?: string; message: string };

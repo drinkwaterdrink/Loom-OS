@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { compileStateWithRepair } from "../src/backend/compiler";
+import { trackedModuleKeys } from "../src/shared/modules";
+import { DEFAULT_SETTINGS } from "../src/shared/schemas";
 import { compiledState, identity, makeState } from "./fixtures";
 
 test("compiler retries exactly once and accepts repaired JSON", async () => {
@@ -14,6 +16,10 @@ test("compiler retries exactly once and accepts repaired JSON", async () => {
     transcript: "[0 USER]\nHello",
     messageCount: 1,
     existingState: null,
+    seedState: null,
+    seedText: "null",
+    enabledModules: trackedModuleKeys(DEFAULT_SETTINGS),
+    connectionId: "connection-1",
     signal: new AbortController().signal,
     generate: async () => outputs[calls++]!,
   });
@@ -35,6 +41,10 @@ test("invalid output never replaces an existing valid state", async () => {
     transcript: "[0 USER]\nHello",
     messageCount: 1,
     existingState: existing,
+    seedState: existing,
+    seedText: JSON.stringify(existing),
+    enabledModules: trackedModuleKeys(DEFAULT_SETTINGS),
+    connectionId: "connection-1",
     signal: new AbortController().signal,
     generate: async () => {
       calls += 1;

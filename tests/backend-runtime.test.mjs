@@ -1,44 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
+import { compiledState } from "./fixtures.ts";
 
-const validCompilerOutput = {
-  kernel: {
-    scene: "Archive search",
-    location: "North tower",
-    timeframe: "Before dawn",
-    tone: "Tense",
-    objective: "Recover the ledger.",
-    summary: "Mara searches the tower archive.",
-    constraints: ["The east stair is blocked."],
-  },
-  castMatrix: [{
-    name: "Mara",
-    role: "Investigator",
-    status: "Searching",
-    location: "North tower",
-    emotionalState: "Focused",
-    goals: ["Find the ledger"],
-    relationships: [],
-    leverage: [],
-  }],
-  threadLoom: [{
-    title: "Missing ledger",
-    status: "active",
-    urgency: 4,
-    summary: "The ledger remains missing.",
-    nextPressure: "Guards arrive.",
-    participants: ["Mara"],
-  }],
-  continuityFirewall: {
-    establishedFacts: ["The east stair is blocked."],
-    pendingConsequences: ["Guards are approaching."],
-    secrets: [],
-    risks: [],
-  },
-};
-
-test("built backend compiles, repairs, and stores exact swipe state", async () => {
+test("built backend compiles, repairs, and stores exact swipe State V2", async () => {
   const frontendHandlers = [];
   const eventHandlers = new Map();
   const frontendMessages = [];
@@ -82,13 +47,9 @@ test("built backend compiles, repairs, and stores exact swipe state", async () =
     },
     userStorage: {
       getJson: async (path, options = {}) => userFiles.has(path) ? userFiles.get(path) : options.fallback,
-      setJson: async (path, value) => {
-        userFiles.set(path, value);
-      },
+      setJson: async (path, value) => userFiles.set(path, value),
       exists: async (path) => userFiles.has(path),
-      delete: async (path) => {
-        userFiles.delete(path);
-      },
+      delete: async (path) => userFiles.delete(path),
       list: async (prefix = "") => [...userFiles.keys()].filter((path) => path.startsWith(prefix)),
     },
     chat: {
@@ -108,17 +69,31 @@ test("built backend compiles, repairs, and stores exact swipe state", async () =
         parent_message_id: null,
         branch_id: null,
         created_at: 1,
-        role: "assistant",
       }],
+    },
+    connections: {
+      list: async () => [{
+        id: "connection-1",
+        name: "Mock Connection",
+        provider: "mock",
+        api_url: "",
+        model: "mock-model",
+        preset_id: null,
+        is_default: true,
+        has_api_key: true,
+        metadata: {},
+        reasoning_bindings: null,
+        created_at: 1,
+        updated_at: 1,
+      }],
+      get: async () => null,
     },
     generate: {
       quiet: async () => {
         generationCalls += 1;
-        return {
-          content: generationCalls === 1
-            ? "invalid"
-            : JSON.stringify(validCompilerOutput),
-        };
+        return generationCalls === 1
+          ? { text: "invalid" }
+          : { message: { content: JSON.stringify(compiledState) } };
       },
     },
     tokens: {
@@ -141,24 +116,16 @@ test("built backend compiles, repairs, and stores exact swipe state", async () =
 
   await frontendHandlers[0]({
     type: "ready",
-    active: {
-      chatId: "chat-1",
-      messageId: "message-1",
-      swipeId: 1,
-    },
+    active: { chatId: "chat-1", messageId: "message-1", swipeId: 1 },
   }, "user-1");
 
   await frontendHandlers[0]({
     type: "generate_state",
     requestId: "generate-1",
-    identity: {
-      chatId: "chat-1",
-      messageId: "message-1",
-      swipeId: 1,
-    },
+    identity: { chatId: "chat-1", messageId: "message-1", swipeId: 1 },
   }, "user-1");
 
-  const deadline = Date.now() + 2000;
+  const deadline = Date.now() + 3000;
   while (
     !frontendMessages.some(({ payload }) =>
       payload.type === "generation_status" && payload.status === "completed"
@@ -171,16 +138,22 @@ test("built backend compiles, repairs, and stores exact swipe state", async () =
   assert.equal(generationCalls, 2);
   const stored = userFiles.get("chats/chat-1/messages/message-1/swipes/1.json");
   assert.ok(stored);
+  assert.equal(stored.schemaVersion, 2);
   assert.deepEqual(stored.identity, {
     chatId: "chat-1",
     messageId: "message-1",
     swipeId: 1,
   });
   assert.equal(stored.source.repaired, true);
+  assert.equal(stored.source.connectionId, "connection-1");
   assert.ok(frontendMessages.some(({ payload, userId }) =>
     userId === "user-1"
     && payload.type === "generation_status"
-    && payload.status === "completed"
+    && payload.status === "progress"
+    && payload.report?.phase === "repairing"
+  ));
+  assert.ok(frontendMessages.some(({ payload }) =>
+    payload.type === "bootstrap" && payload.connections.length === 1
   ));
 
   backend.disposeBackend();
