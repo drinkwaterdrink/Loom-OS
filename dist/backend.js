@@ -539,15 +539,15 @@ var ParseStatus = class _ParseStatus {
       this.value = "aborted";
   }
   static mergeArray(status, results) {
-    const arrayValue = [];
+    const arrayValue2 = [];
     for (const s of results) {
       if (s.status === "aborted")
         return INVALID;
       if (s.status === "dirty")
         status.dirty();
-      arrayValue.push(s.value);
+      arrayValue2.push(s.value);
     }
-    return { status: status.value, value: arrayValue };
+    return { status: status.value, value: arrayValue2 };
   }
   static async mergeObjectAsync(status, pairs) {
     const syncPairs = [];
@@ -4336,6 +4336,30 @@ function normalizeModuleSettings(input) {
   }
   return next;
 }
+function getEffectiveModuleCatalog(settings) {
+  const overrides = settings?.stockModuleOverrides ?? {};
+  return MODULE_CATALOG.map((module, index) => {
+    const override = overrides[module.key];
+    const compilerInstruction = override?.compilerGuidanceAddendum ? `${module.compilerInstruction} [Override: ${override.compilerGuidanceAddendum}]`.trim() : module.compilerInstruction;
+    return {
+      ...module,
+      label: override?.label ?? module.label,
+      description: override?.description ?? module.description,
+      group: override?.group ?? module.group,
+      compilerInstruction,
+      icon: override?.icon ?? "",
+      displayOrder: override?.displayOrder ?? index * 10,
+      intensityLabel: override?.intensityLabel ?? module.intensity,
+      hiddenFromSettings: override?.hiddenFromSettings ?? false,
+      defaultControl: {
+        ...BALANCED_MODULE_SETTINGS[module.key],
+        display: override?.defaultDisplay ?? BALANCED_MODULE_SETTINGS[module.key].display,
+        inject: override?.defaultInject ?? BALANCED_MODULE_SETTINGS[module.key].inject
+      },
+      overridden: Boolean(override && Object.keys(override).length > 0)
+    };
+  }).sort((a, b) => a.displayOrder - b.displayOrder || a.label.localeCompare(b.label));
+}
 function trackedModuleKeys(settings) {
   return MODULE_KEYS.filter((key) => settings.moduleSettings[key].track);
 }
@@ -4376,6 +4400,45 @@ var CustomModulePresetSchema = external_exports.object({
   updatedAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
   moduleSettings: ModuleSettingsSchema
 }).strict();
+var CustomModuleFieldTypeSchema = external_exports.enum([
+  "text",
+  "longText",
+  "number",
+  "boolean",
+  "enum",
+  "gauge",
+  "chips",
+  "list"
+]);
+var CustomModuleFieldSchema = external_exports.object({
+  id: external_exports.string().min(1).max(160),
+  label: external_exports.string().trim().min(1).max(160),
+  key: external_exports.string().trim().regex(/^[A-Za-z][A-Za-z0-9_]*$/).max(80),
+  type: CustomModuleFieldTypeSchema,
+  required: external_exports.boolean().default(false),
+  description: external_exports.string().trim().max(500).default(""),
+  defaultValue: external_exports.unknown().optional(),
+  enumOptions: external_exports.array(external_exports.string().trim().min(1).max(160)).max(30).default([]),
+  maxItems: external_exports.number().int().min(1).max(50).optional(),
+  min: external_exports.number().finite().optional(),
+  max: external_exports.number().finite().optional(),
+  displayHint: external_exports.string().trim().max(160).optional()
+}).strict().superRefine((field, context) => {
+  if (field.type === "enum" && field.enumOptions.length === 0) {
+    context.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      path: ["enumOptions"],
+      message: "Enum fields require at least one option."
+    });
+  }
+  if (field.min !== void 0 && field.max !== void 0 && field.min > field.max) {
+    context.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      path: ["min"],
+      message: "Minimum cannot exceed maximum."
+    });
+  }
+});
 var CustomModuleSchema = external_exports.object({
   id: external_exports.string().min(1).max(160),
   label: external_exports.string().trim().min(1).max(160),
@@ -4385,10 +4448,15 @@ var CustomModuleSchema = external_exports.object({
   display: external_exports.boolean().default(true),
   inject: external_exports.boolean().default(true),
   compilerInstruction: external_exports.string().trim().max(1600),
-  outputMode: external_exports.enum(["cards", "bullets", "chips", "gauge"]).default("cards"),
+  outputMode: external_exports.enum(["cards", "bullets", "chips", "gauge", "template"]).default("cards"),
   maxItems: external_exports.number().int().min(1).max(24).default(6),
   intensity: external_exports.enum(["light", "medium", "heavy", "experimental"]).default("medium"),
-  displayOrder: external_exports.number().int().optional()
+  displayOrder: external_exports.number().int().optional(),
+  schemaFields: external_exports.array(CustomModuleFieldSchema).max(40).default([]),
+  htmlTemplate: external_exports.string().max(8e3).default(""),
+  cssTemplate: external_exports.string().max(8e3).default(""),
+  templateEngine: external_exports.enum(["mustache-lite", "token-replace"]).default("mustache-lite"),
+  allowHtmlTemplate: external_exports.boolean().default(false)
 }).strict();
 var StateIdentitySchema = external_exports.object({
   chatId: external_exports.string().min(1).max(300),
@@ -4862,6 +4930,7 @@ var CustomModuleDataSchema = external_exports.object({
   moduleId: external_exports.string().min(1).max(160),
   label: ShortText,
   summary: MediumText.default(""),
+  fields: external_exports.record(external_exports.unknown()).default({}),
   items: external_exports.array(CustomModuleItemSchema).max(24).default([])
 }).strict();
 var LoomOSCompiledStateSchema = external_exports.object({
@@ -4938,6 +5007,1005 @@ var LegacyLoomOSStateSchema = external_exports.object({
   }).strict()
 }).strict();
 var DEFAULT_SETTINGS = LoomOSSettingsSchema.parse({});
+
+// src/shared/normalizeCompiledState.ts
+var CompiledStateNormalizationError = class extends Error {
+  report;
+  constructor(report) {
+    super(report.issues.slice(0, 8).join("\n") || "Compiled state normalization failed.");
+    this.name = "CompiledStateNormalizationError";
+    this.report = report;
+  }
+};
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function cloneJson(value) {
+  if (value === void 0) return {};
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return {};
+  }
+}
+function asRecord(value) {
+  return isRecord(value) ? value : {};
+}
+function mark(changes, path) {
+  if (!changes.includes(path)) changes.push(path);
+}
+function textFromValue(value) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (!isRecord(value)) return "";
+  for (const key of [
+    "goal",
+    "text",
+    "summary",
+    "title",
+    "name",
+    "issue",
+    "description",
+    "secret",
+    "rumor",
+    "action",
+    "target",
+    "label",
+    "note",
+    "value"
+  ]) {
+    if (value[key] !== void 0) {
+      const extracted = textFromValue(value[key]);
+      if (extracted) return extracted;
+    }
+  }
+  return "";
+}
+function text(value, max, fallback = "") {
+  return (textFromValue(value) || fallback).replace(/\s+/g, " ").trim().slice(0, max);
+}
+function numberValue(value, min, max, fallback) {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(min, Math.min(max, numeric));
+}
+function integerValue(value, min, max, fallback) {
+  return Math.trunc(numberValue(value, min, max, fallback));
+}
+function booleanValue(value, fallback) {
+  if (typeof value === "boolean") return value;
+  if (value === "true" || value === 1) return true;
+  if (value === "false" || value === 0) return false;
+  return fallback;
+}
+function enumValue(value, allowed, fallback) {
+  return typeof value === "string" && allowed.includes(value) ? value : fallback;
+}
+function arrayValue(value) {
+  if (Array.isArray(value)) return value;
+  if (value === void 0 || value === null || value === "") return [];
+  return [value];
+}
+function stringArray(value, maxItems, maxLength) {
+  return arrayValue(value).map((item) => text(item, maxLength)).filter(Boolean).slice(0, maxItems);
+}
+function defaultGauge(maxValue = 100) {
+  return {
+    value: 0,
+    pct: "0%",
+    band: "unknown",
+    color: "var(--loomos-muted)",
+    trend: "unknown",
+    note: ""
+  };
+}
+function normalizeGauge(value, maxValue = 100) {
+  const source = asRecord(value);
+  const gauge = defaultGauge(maxValue);
+  gauge.value = numberValue(source.value, 0, maxValue, 0);
+  gauge.pct = text(source.pct, 12, `${Math.round(gauge.value / maxValue * 100)}%`);
+  gauge.band = text(source.band, 160, "unknown");
+  gauge.color = text(source.color, 40, "var(--loomos-muted)");
+  gauge.trend = enumValue(source.trend, ["down", "steady", "up", "unknown"], "unknown");
+  gauge.note = text(source.note, 500);
+  return gauge;
+}
+function defaultKernel() {
+  return {
+    scene: "",
+    location: "",
+    timeframe: "",
+    date: "",
+    time: "",
+    elapsed: "",
+    weather: "",
+    pov: "",
+    tone: "",
+    topic: "",
+    theme: "",
+    objective: "",
+    summary: "",
+    currentFocus: "",
+    nextFocus: "",
+    currentRisk: "",
+    stopMode: "",
+    stopWhy: "",
+    constraints: []
+  };
+}
+function normalizeKernel(value) {
+  const source = asRecord(value);
+  const result = defaultKernel();
+  for (const key of [
+    "scene",
+    "location",
+    "timeframe",
+    "date",
+    "time",
+    "elapsed",
+    "weather",
+    "pov",
+    "tone",
+    "topic",
+    "theme",
+    "stopMode"
+  ]) {
+    result[key] = text(source[key], 500);
+  }
+  for (const key of [
+    "objective",
+    "summary",
+    "currentFocus",
+    "nextFocus",
+    "currentRisk",
+    "stopWhy"
+  ]) {
+    result[key] = text(source[key], 1600);
+  }
+  result.constraints = stringArray(source.constraints, 12, 500);
+  return result;
+}
+function defaultDelta() {
+  return {
+    headline: "",
+    changedModules: [],
+    changes: [],
+    carriedForward: [],
+    newlyEstablished: []
+  };
+}
+function normalizeDelta(value, enabledModules) {
+  const source = asRecord(value);
+  const result = defaultDelta();
+  result.headline = text(source.headline, 1600);
+  result.changedModules = arrayValue(source.changedModules).filter((item) => typeof item === "string" && MODULE_KEYS.includes(item)).filter((item) => enabledModules.includes(item)).slice(0, MODULE_KEYS.length);
+  result.changes = arrayValue(source.changes).map((item) => {
+    const row = asRecord(item);
+    const rowText = text(row.text ?? item, 1600);
+    if (!rowText) return null;
+    return {
+      text: rowText,
+      age: text(row.age, 500),
+      module: enumValue(row.module, MODULE_KEYS, "deltas"),
+      importance: enumValue(row.importance, ["low", "medium", "high", "critical"], "medium")
+    };
+  }).filter((item) => Boolean(item)).slice(0, 6);
+  result.carriedForward = stringArray(source.carriedForward, 6, 1600);
+  result.newlyEstablished = stringArray(source.newlyEstablished, 6, 1600);
+  return result;
+}
+function normalizePocket(value) {
+  if (typeof value === "string") {
+    const name2 = text(value, 160);
+    return name2 ? { name: name2, type: "misc", qty: 1, condition: "", known: true } : null;
+  }
+  if (!isRecord(value)) return null;
+  const name = text(value.name ?? value.item ?? value.title ?? value.text, 160);
+  if (!name) return null;
+  return {
+    name,
+    type: enumValue(
+      value.type,
+      ["consumable", "concealed", "tool", "key", "evidence", "misc"],
+      "misc"
+    ),
+    qty: integerValue(value.qty ?? value.quantity, 0, 9999, 1),
+    condition: text(value.condition, 500),
+    known: booleanValue(value.known, true),
+    ...text(value.color, 40) ? { color: text(value.color, 40) } : {},
+    changed: booleanValue(value.changed, false),
+    ...text(value.changeNote, 500) ? { changeNote: text(value.changeNote, 500) } : {}
+  };
+}
+function normalizeRelationship(value) {
+  if (typeof value === "string") {
+    const target2 = text(value, 500);
+    return target2 ? { target: target2, axis: "general", value: 0 } : null;
+  }
+  if (!isRecord(value)) return null;
+  const target = text(value.target ?? value.name ?? value.text ?? value.summary, 500);
+  if (!target) return null;
+  const pct = text(value.pct, 12);
+  const label = text(value.label, 160);
+  const color = text(value.color, 40);
+  const evidence = text(value.evidence, 1600);
+  return {
+    target,
+    axis: text(value.axis ?? value.type, 500, "general"),
+    value: numberValue(value.value, -100, 100, 0),
+    ...pct ? { pct } : {},
+    ...label ? { label } : {},
+    ...color ? { color } : {},
+    ...value.trend !== void 0 ? { trend: enumValue(value.trend, ["down", "steady", "up", "unknown"], "unknown") } : {},
+    ...evidence ? { evidence } : {}
+  };
+}
+function normalizeOptionalTextObject(value, fields) {
+  const source = asRecord(value);
+  return Object.fromEntries(fields.flatMap((field) => {
+    const normalized = text(source[field], field === "fullDescription" || field === "anchor" ? 1600 : 500);
+    return normalized ? [[field, normalized]] : [];
+  }));
+}
+function normalizeClothing(value) {
+  const source = asRecord(value);
+  const layers = arrayValue(source.layers).map((item) => {
+    const row = asRecord(item);
+    const layerText = text(row.text ?? row.description ?? item, 500);
+    if (!layerText) return null;
+    const state = text(row.state, 500);
+    const color = text(row.color, 40);
+    return {
+      slot: enumValue(
+        row.slot,
+        ["outer", "upper", "lower", "feet", "accessory", "other"],
+        "other"
+      ),
+      text: layerText,
+      ...state ? { state } : {},
+      ...color ? { color } : {}
+    };
+  }).filter((item) => Boolean(item)).slice(0, 5);
+  return {
+    ...normalizeOptionalTextObject(source, [
+      "summary",
+      "silhouette",
+      "palette",
+      "fabric",
+      "fit",
+      "condition",
+      "notable"
+    ]),
+    layerCount: integerValue(source.layerCount, 0, 5, layers.length),
+    layers
+  };
+}
+function normalizeCastContinuity(value) {
+  const source = asRecord(value);
+  const uncertainty = arrayValue(source.uncertainty).map((item) => {
+    const row = asRecord(item);
+    const claim = text(row.claim ?? row.text ?? item, 1600);
+    if (!claim) return null;
+    const handling = text(row.handling, 500);
+    return {
+      claim,
+      confidence: numberValue(row.confidence, 0, 10, 0),
+      label: enumValue(
+        row.label,
+        ["UNKNOWN", "DOUBTFUL", "POSSIBLE", "LIKELY", "CONFIRMED"],
+        "UNKNOWN"
+      ),
+      ...handling ? { handling } : {}
+    };
+  }).filter((item) => Boolean(item)).slice(0, 4);
+  const lastConfirmed = text(source.lastConfirmed, 500);
+  const sourceHint = text(source.sourceHint, 500);
+  return {
+    ...lastConfirmed ? { lastConfirmed } : {},
+    ...sourceHint ? { sourceHint } : {},
+    uncertainty
+  };
+}
+function defaultCastMember(partial = {}) {
+  const name = text(partial.name, 160, "Unknown");
+  return {
+    id: text(partial.id, 160, name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "unknown"),
+    name,
+    kind: "npc",
+    qty: 1,
+    role: "",
+    location: "",
+    status: "",
+    emotionalState: "",
+    intent: "",
+    pose: "",
+    proximity: "",
+    hands: "",
+    awareness: "ambient",
+    threat: {
+      value: 0,
+      pct: "0%",
+      band: "unknown",
+      color: "var(--loomos-muted)",
+      note: ""
+    },
+    spotlight: defaultGauge(),
+    visualAnchor: "",
+    identitySummary: "",
+    clothingSummary: "",
+    goals: [],
+    relationships: [],
+    leverage: [],
+    pockets: [],
+    stableFacts: []
+  };
+}
+function normalizeCastMember(value, index) {
+  const source = asRecord(value);
+  if (!Object.keys(source).length && typeof value !== "string") return null;
+  const base = defaultCastMember({
+    name: source.name ?? (typeof value === "string" ? value : `Unknown ${index + 1}`),
+    id: source.id
+  });
+  base.kind = enumValue(source.kind, ["pov", "main", "npc", "crowd", "background"], "npc");
+  base.qty = integerValue(source.qty, 1, 1e4, 1);
+  base.role = text(source.role, 500);
+  base.location = text(source.location, 500);
+  base.status = text(source.status, 500);
+  base.emotionalState = text(source.emotionalState, 500);
+  base.intent = text(source.intent, 1600);
+  base.pose = text(source.pose, 500);
+  base.proximity = text(source.proximity, 500);
+  base.hands = text(source.hands, 500);
+  base.awareness = enumValue(source.awareness, ["none", "ambient", "watching", "alerted", "hostile"], "ambient");
+  const threat = normalizeGauge(source.threat, 10);
+  base.threat = {
+    value: threat.value,
+    pct: threat.pct,
+    band: threat.band,
+    color: threat.color,
+    note: threat.note
+  };
+  base.spotlight = normalizeGauge(source.spotlight);
+  base.visualAnchor = text(source.visualAnchor, 1600);
+  base.identitySummary = text(source.identitySummary, 1600);
+  base.clothingSummary = text(source.clothingSummary, 1600);
+  base.goals = stringArray(source.goals, 6, 500);
+  base.relationships = arrayValue(source.relationships).map(normalizeRelationship).filter((item) => Boolean(item)).slice(0, 8);
+  base.leverage = stringArray(source.leverage, 6, 500);
+  base.pockets = arrayValue(source.pockets).map(normalizePocket).filter((item) => Boolean(item)).slice(0, 6);
+  base.stableFacts = stringArray(source.stableFacts, 6, 500);
+  const changeNote = text(source.changeNote, 500);
+  const relSummary = text(source.relSummary, 500);
+  return {
+    ...base,
+    changed: booleanValue(source.changed, false),
+    ...changeNote ? { changeNote } : {},
+    appearance: normalizeOptionalTextObject(source.appearance, [
+      "species",
+      "ageBand",
+      "genderPresentation",
+      "height",
+      "build",
+      "skin",
+      "face",
+      "facialStructure",
+      "hair",
+      "eyes",
+      "voice",
+      "movement",
+      "distinguishingMarks",
+      "presence",
+      "fullDescription",
+      "anchor"
+    ]),
+    clothing: normalizeClothing(source.clothing),
+    currentState: normalizeOptionalTextObject(source.currentState, [
+      "injury",
+      "pose",
+      "proximity",
+      "leftHand",
+      "rightHand",
+      "emotion",
+      "intent",
+      "physicalTell",
+      "socialPosition"
+    ]),
+    ...relSummary ? { relSummary } : {},
+    continuity: normalizeCastContinuity(source.continuity)
+  };
+}
+function normalizeSceneItem(value) {
+  if (typeof value === "string") {
+    const name2 = text(value, 160);
+    return name2 ? { name: name2, owner: "", location: "", condition: "", lastTouch: "", importance: "medium" } : null;
+  }
+  if (!isRecord(value)) return null;
+  const name = text(value.name ?? value.title ?? value.text, 160);
+  if (!name) return null;
+  return {
+    name,
+    owner: text(value.owner, 160),
+    location: text(value.location, 500),
+    condition: text(value.condition, 500),
+    lastTouch: text(value.lastTouch, 500),
+    importance: enumValue(value.importance, ["low", "medium", "high", "critical"], "medium")
+  };
+}
+function defaultScene() {
+  return {
+    privacy: "semi-private",
+    observerCount: 0,
+    observerPressure: defaultGauge(10),
+    crowdNoise: "",
+    crowdFlow: "",
+    light: {
+      primary: "",
+      secondary: "",
+      quality: "",
+      color: ""
+    },
+    spatial: [],
+    access: {
+      exit: "FREE",
+      lineOfSight: "",
+      noiseMask: "",
+      items: [],
+      people: []
+    },
+    carryover: {
+      body: [],
+      room: [],
+      social: []
+    },
+    items: []
+  };
+}
+function normalizeScene(value) {
+  const source = asRecord(value);
+  const result = defaultScene();
+  result.privacy = enumValue(source.privacy, ["private", "semi-private", "public", "exposed"], "semi-private");
+  result.observerCount = integerValue(source.observerCount, 0, 1e4, 0);
+  result.observerPressure = normalizeGauge(source.observerPressure, 10);
+  result.crowdNoise = text(source.crowdNoise, 500);
+  result.crowdFlow = text(source.crowdFlow, 500);
+  const light = asRecord(source.light);
+  result.light = {
+    primary: text(light.primary, 500),
+    secondary: text(light.secondary, 500),
+    quality: text(light.quality, 500),
+    color: text(light.color, 40)
+  };
+  result.spatial = stringArray(source.spatial, 8, 1600);
+  const access = asRecord(source.access);
+  result.access = {
+    exit: enumValue(access.exit, ["FREE", "WATCHED", "BLOCKED"], "FREE"),
+    lineOfSight: text(access.lineOfSight, 500),
+    noiseMask: text(access.noiseMask, 500),
+    items: stringArray(access.items, 5, 500),
+    people: stringArray(access.people, 5, 500)
+  };
+  const carryover = asRecord(source.carryover);
+  result.carryover = {
+    body: stringArray(carryover.body, 5, 500),
+    room: stringArray(carryover.room, 5, 500),
+    social: stringArray(carryover.social, 5, 500)
+  };
+  result.items = arrayValue(source.items).map(normalizeSceneItem).filter((item) => Boolean(item)).slice(0, 10);
+  return result;
+}
+function defaultWorldState() {
+  return {
+    recentEnvironmentalChanges: [],
+    activeHazards: [],
+    rumors: [],
+    secrets: [],
+    loadedSigns: []
+  };
+}
+function normalizeWorldState(value) {
+  const source = asRecord(value);
+  const result = defaultWorldState();
+  result.recentEnvironmentalChanges = stringArray(source.recentEnvironmentalChanges, 6, 1600);
+  result.activeHazards = stringArray(source.activeHazards, 6, 1600);
+  result.rumors = arrayValue(source.rumors).map((item) => {
+    const row = asRecord(item);
+    const rumor = text(row.rumor ?? item, 1600);
+    if (!rumor) return null;
+    const credibility = numberValue(row.credibility, 0, 10, 0);
+    return {
+      rumor,
+      source: text(row.source, 500),
+      credibility,
+      pct: text(row.pct, 12, `${Math.round(credibility * 10)}%`),
+      color: text(row.color, 40, "var(--loomos-muted)")
+    };
+  }).filter((item) => Boolean(item)).slice(0, 8);
+  result.secrets = arrayValue(source.secrets).map((item) => {
+    const row = asRecord(item);
+    const secret = text(row.secret ?? item, 1600);
+    if (!secret) return null;
+    return {
+      secret,
+      visibleHint: text(row.visibleHint, 1600),
+      knownBy: stringArray(row.knownBy, 6, 160)
+    };
+  }).filter((item) => Boolean(item)).slice(0, 8);
+  result.loadedSigns = arrayValue(source.loadedSigns).map((item) => {
+    const row = asRecord(item);
+    const thing = text(row.thing ?? row.name ?? item, 500);
+    if (!thing) return null;
+    return {
+      thing,
+      ...text(row.plantedBy ?? row.loadedBy, 500) ? { plantedBy: text(row.plantedBy ?? row.loadedBy, 500) } : {},
+      ...text(row.payoffWhen ?? row.firesWhen, 1600) ? { payoffWhen: text(row.payoffWhen ?? row.firesWhen, 1600) } : {},
+      state: enumValue(row.state, ["LOADED", "HEATING", "FIRED", "DORMANT"], "LOADED"),
+      ...text(row.evidence, 1600) ? { evidence: text(row.evidence, 1600) } : {},
+      ...text(row.payoffHint, 500) ? { payoffHint: text(row.payoffHint, 500) } : {},
+      changed: booleanValue(row.changed, false),
+      ...text(row.changeNote, 500) ? { changeNote: text(row.changeNote, 500) } : {}
+    };
+  }).filter((item) => Boolean(item)).slice(0, 8);
+  return result;
+}
+function defaultStoryState() {
+  return {
+    goals: [],
+    conflicts: [],
+    threadLoom: [],
+    stakes: [],
+    countdowns: [],
+    spotlightQueue: [],
+    autonomyQueue: []
+  };
+}
+function normalizeStoryState(value) {
+  const source = asRecord(value);
+  const result = defaultStoryState();
+  result.goals = arrayValue(source.goals).map((item) => {
+    if (typeof item === "string") {
+      const goal2 = text(item, 1600);
+      return goal2 ? { who: "Unknown", goal: goal2, status: "ACTIVE", note: "" } : null;
+    }
+    const row = asRecord(item);
+    const goal = text(row.goal ?? row.text ?? row.summary ?? row.title, 1600);
+    if (!goal) return null;
+    return {
+      who: text(row.who, 160, "Unknown"),
+      goal,
+      status: enumValue(row.status, ["ACTIVE", "BLOCKED", "PROGRESSED", "RESOLVED"], "ACTIVE"),
+      note: text(row.note, 1600)
+    };
+  }).filter((item) => Boolean(item)).slice(0, 10);
+  result.conflicts = arrayValue(source.conflicts).map((item) => {
+    const row = asRecord(item);
+    const label = text(row.label ?? row.text ?? item, 500);
+    if (!label) return null;
+    return {
+      a: text(row.a, 160),
+      b: text(row.b, 160),
+      label,
+      severity: integerValue(row.severity, 1, 3, 1)
+    };
+  }).filter((item) => Boolean(item)).slice(0, 8);
+  result.threadLoom = arrayValue(source.threadLoom).map((item) => {
+    const row = asRecord(item);
+    const title = text(row.title ?? row.name ?? row.text, 240);
+    if (!title) return null;
+    const progress = numberValue(row.progress, 0, 10, 0);
+    return {
+      title,
+      status: enumValue(row.status, ["dormant", "active", "escalating", "blocked", "resolved"], "active"),
+      urgency: integerValue(row.urgency, 0, 5, 0),
+      priority: enumValue(row.priority, ["low", "medium", "high", "critical"], "medium"),
+      progress,
+      pct: text(row.pct, 12, `${Math.round(progress * 10)}%`),
+      color: text(row.color, 40, "var(--loomos-muted)"),
+      label: text(row.label, 160, "active"),
+      summary: text(row.summary, 1600),
+      nextPressure: text(row.nextPressure, 1600),
+      participants: stringArray(row.participants, 12, 160)
+    };
+  }).filter((item) => Boolean(item)).slice(0, 24);
+  result.stakes = arrayValue(source.stakes).map((item) => {
+    const row = asRecord(item);
+    const who = text(row.who, 160);
+    const win = text(row.win, 1600);
+    const lose = text(row.lose, 1600);
+    return who || win || lose ? { who, win, lose } : null;
+  }).filter((item) => Boolean(item)).slice(0, 8);
+  result.countdowns = arrayValue(source.countdowns).map((item) => {
+    const row = asRecord(item);
+    const title = text(row.title ?? row.name ?? item, 500);
+    if (!title) return null;
+    return {
+      title,
+      left: numberValue(row.left, 0, Number.MAX_SAFE_INTEGER, 0),
+      unit: text(row.unit, 160),
+      pct: text(row.pct, 12, "0%"),
+      color: text(row.color, 40, "var(--loomos-muted)")
+    };
+  }).filter((item) => Boolean(item)).slice(0, 8);
+  result.spotlightQueue = arrayValue(source.spotlightQueue).map((item) => {
+    const row = asRecord(item);
+    const name = text(row.name ?? row.who ?? item, 160);
+    if (!name) return null;
+    const pct = text(row.pct, 12);
+    const color = text(row.color, 40);
+    const reason = text(row.reason, 500);
+    return {
+      name,
+      turnsSince: integerValue(row.turnsSince, 0, Number.MAX_SAFE_INTEGER, 0),
+      ...pct ? { pct } : {},
+      ...color ? { color } : {},
+      need: enumValue(row.need, ["active", "soon", "okay", "quiet", "background"], "okay"),
+      ...reason ? { reason } : {}
+    };
+  }).filter((item) => Boolean(item)).slice(0, 12);
+  result.autonomyQueue = arrayValue(source.autonomyQueue).map((item) => {
+    const row = asRecord(item);
+    const action = text(row.action ?? row.text ?? item, 1600);
+    if (!action) return null;
+    return {
+      who: text(row.who, 160, "Unknown"),
+      action,
+      unlessInterruptedBy: text(row.unlessInterruptedBy, 1600)
+    };
+  }).filter((item) => Boolean(item)).slice(0, 8);
+  return result;
+}
+function defaultContinuityFirewall() {
+  return {
+    establishedFacts: [],
+    antiRetconAnchors: [],
+    pendingConsequences: [],
+    offscreenState: [],
+    bannedNext: [],
+    impossibleNext: [],
+    risks: [],
+    terms: []
+  };
+}
+function normalizeContinuityFirewall(value) {
+  const source = asRecord(value);
+  const result = defaultContinuityFirewall();
+  result.establishedFacts = stringArray(source.establishedFacts, 40, 1600);
+  result.antiRetconAnchors = stringArray(source.antiRetconAnchors, 30, 1600);
+  result.pendingConsequences = arrayValue(source.pendingConsequences).map((item) => {
+    const row = asRecord(item);
+    const pending = text(row.pending ?? row.text ?? row.summary ?? item, 1600);
+    const cause = text(row.cause ?? row.reason ?? pending, 500);
+    if (!pending && !cause) return null;
+    const trigger = text(row.trigger, 500);
+    const pct = text(row.pct, 12);
+    const evidence = text(row.evidence, 1600);
+    const changeNote = text(row.changeNote, 500);
+    return {
+      cause: cause || pending.slice(0, 500),
+      pending: pending || cause,
+      ...trigger ? { trigger } : {},
+      urgency: numberValue(row.urgency, 0, 10, 5),
+      ...pct ? { pct } : {},
+      status: enumValue(row.status, ["PENDING", "ACTIVE", "FIRED", "RESOLVED", "DORMANT"], "PENDING"),
+      ...evidence ? { evidence } : {},
+      changed: booleanValue(row.changed, false),
+      ...changeNote ? { changeNote } : {}
+    };
+  }).filter((item) => Boolean(item)).slice(0, 30);
+  result.offscreenState = stringArray(source.offscreenState, 24, 1600);
+  result.bannedNext = arrayValue(source.bannedNext).map((item) => {
+    if (typeof item === "string") {
+      const rowText2 = text(item, 1600);
+      return rowText2 ? { text: rowText2, scope: "turn", source: "compiler" } : null;
+    }
+    const row = asRecord(item);
+    const rowText = text(row.text ?? row.issue ?? row.summary, 1600);
+    if (!rowText) return null;
+    const reason = text(row.reason, 500);
+    const color = text(row.color, 40);
+    return {
+      text: rowText,
+      ...reason ? { reason } : {},
+      scope: enumValue(
+        row.scope,
+        ["turn", "scene", "persistent"],
+        booleanValue(row.persistent, false) ? "persistent" : "turn"
+      ),
+      ...color ? { color } : {},
+      source: enumValue(row.source, ["user", "system", "compiler"], "compiler")
+    };
+  }).filter((item) => Boolean(item)).slice(0, 12);
+  result.impossibleNext = stringArray(source.impossibleNext, 12, 1600);
+  result.risks = arrayValue(source.risks).map((item) => {
+    if (typeof item === "string") {
+      const issue2 = text(item, 1600);
+      return issue2 ? { severity: "medium", issue: issue2, evidence: "", recommendation: "" } : null;
+    }
+    const row = asRecord(item);
+    const issue = text(row.issue ?? row.text ?? row.summary, 1600);
+    if (!issue) return null;
+    return {
+      severity: enumValue(row.severity, ["low", "medium", "high", "critical"], "medium"),
+      issue,
+      evidence: text(row.evidence, 1600),
+      recommendation: text(row.recommendation, 1600)
+    };
+  }).filter((item) => Boolean(item)).slice(0, 24);
+  result.terms = arrayValue(source.terms).map((item) => {
+    const row = asRecord(item);
+    const term = text(row.term ?? row.text ?? row.summary ?? item, 1600);
+    const party = text(row.party ?? row.who, 160, "Unknown");
+    if (!term) return null;
+    const risk = text(row.risk, 500);
+    const evidence = text(row.evidence, 1600);
+    const changeNote = text(row.changeNote, 500);
+    return {
+      party,
+      term,
+      ...risk ? { risk } : {},
+      status: enumValue(
+        row.status,
+        ["PENDING", "ACCEPTED", "REJECTED", "BROKEN", "EXPIRED", "UNKNOWN"],
+        "UNKNOWN"
+      ),
+      binding: booleanValue(row.binding, false),
+      ...evidence ? { evidence } : {},
+      changed: booleanValue(row.changed, false),
+      ...changeNote ? { changeNote } : {}
+    };
+  }).filter((item) => Boolean(item)).slice(0, 10);
+  return result;
+}
+function defaultTools() {
+  return {
+    actionResolver: null,
+    dialogueState: null,
+    directorStyle: null,
+    closenessState: null,
+    imagePrompt: null
+  };
+}
+function normalizeTools(value) {
+  const source = asRecord(value);
+  const result = defaultTools();
+  if (isRecord(source.actionResolver)) {
+    result.actionResolver = {
+      userAction: text(source.actionResolver.userAction, 1600),
+      worldResponse: text(source.actionResolver.worldResponse, 1600),
+      risk: text(source.actionResolver.risk, 1600),
+      blockers: stringArray(source.actionResolver.blockers, 6, 500)
+    };
+  }
+  if (isRecord(source.dialogueState)) {
+    result.dialogueState = {
+      openThread: text(source.dialogueState.openThread, 1600),
+      socialMask: text(source.dialogueState.socialMask, 1600),
+      levers: stringArray(source.dialogueState.levers, 6, 500),
+      taboos: stringArray(source.dialogueState.taboos, 6, 500)
+    };
+  }
+  if (isRecord(source.directorStyle)) {
+    result.directorStyle = {
+      primary: text(source.directorStyle.primary, 500),
+      mask: text(source.directorStyle.mask, 500),
+      push: text(source.directorStyle.push, 1600),
+      voiceCues: stringArray(source.directorStyle.voiceCues, 6, 500)
+    };
+  }
+  if (isRecord(source.closenessState)) {
+    result.closenessState = {
+      emotional: text(source.closenessState.emotional, 500),
+      physical: text(source.closenessState.physical, 500),
+      consentSignals: stringArray(source.closenessState.consentSignals, 6, 500),
+      boundaries: stringArray(source.closenessState.boundaries, 6, 500)
+    };
+  }
+  if (isRecord(source.imagePrompt)) {
+    result.imagePrompt = {
+      aspect: text(source.imagePrompt.aspect, 160),
+      shot: text(source.imagePrompt.shot, 500),
+      medium: text(source.imagePrompt.medium, 500),
+      subject: text(source.imagePrompt.subject, 1600),
+      positive: text(source.imagePrompt.positive, 1600),
+      negative: text(source.imagePrompt.negative, 1600),
+      full: text(source.imagePrompt.full, 3e3),
+      hint: text(source.imagePrompt.hint, 1600)
+    };
+  }
+  return result;
+}
+function normalizeCustomField(value, field) {
+  if (value === void 0 || value === null || value === "") {
+    if (field.defaultValue !== void 0) return cloneJson(field.defaultValue);
+    if (field.type === "number") return field.min ?? 0;
+    if (field.type === "boolean") return false;
+    if (field.type === "enum") return field.enumOptions[0] ?? "";
+    if (field.type === "gauge") return defaultGauge(field.max ?? 100);
+    if (field.type === "chips" || field.type === "list") return [];
+    return "";
+  }
+  if (field.type === "text") return text(value, 500);
+  if (field.type === "longText") return text(value, 1600);
+  if (field.type === "number") {
+    return numberValue(value, field.min ?? -1e6, field.max ?? 1e6, Number(field.defaultValue) || 0);
+  }
+  if (field.type === "boolean") return booleanValue(value, Boolean(field.defaultValue));
+  if (field.type === "enum") return enumValue(value, field.enumOptions, field.enumOptions[0] ?? "");
+  if (field.type === "gauge") return normalizeGauge(value, field.max ?? 100);
+  if (field.type === "chips") return stringArray(value, field.maxItems ?? 24, 160);
+  if (field.type === "list") {
+    return arrayValue(value).filter((item) => typeof item === "string" || isRecord(item)).slice(0, field.maxItems ?? 24).map((item) => typeof item === "string" ? text(item, 1600) : cloneJson(item));
+  }
+  return value;
+}
+function normalizeCustomModuleData(value, customModules) {
+  return arrayValue(value).map((item) => {
+    const row = asRecord(item);
+    const moduleId = text(row.moduleId ?? row.id, 160);
+    if (!moduleId) return null;
+    const module = customModules.find((candidate) => candidate.id === moduleId);
+    const fieldsSource = asRecord(row.fields);
+    const fields = module ? Object.fromEntries(module.schemaFields.map((field) => [
+      field.key,
+      normalizeCustomField(fieldsSource[field.key], field)
+    ])) : Object.fromEntries(Object.entries(fieldsSource).slice(0, 40));
+    const items = arrayValue(row.items).map((entry) => {
+      if (typeof entry === "string") {
+        const entryText = text(entry, 1600);
+        return entryText ? {
+          title: entryText.slice(0, 80),
+          text: entryText,
+          importance: "medium"
+        } : null;
+      }
+      const itemRow = asRecord(entry);
+      const itemText = text(itemRow.text ?? itemRow.summary ?? itemRow.description ?? itemRow.title, 1600);
+      const title = text(itemRow.title ?? itemRow.name ?? itemText, 500);
+      if (!title && !itemText) return null;
+      const color = text(itemRow.color, 40);
+      return {
+        title: title || itemText.slice(0, 80),
+        text: itemText,
+        importance: enumValue(itemRow.importance, ["low", "medium", "high", "critical"], "medium"),
+        ...color ? { color } : {}
+      };
+    }).filter((entry) => Boolean(entry)).slice(0, module?.maxItems ?? 24);
+    return {
+      moduleId,
+      label: text(row.label, 500, module?.label ?? moduleId),
+      summary: text(row.summary, 1600),
+      fields,
+      items
+    };
+  }).filter((item) => Boolean(item)).slice(0, 80);
+}
+function normalizeCompiledState(value, options) {
+  const cloned = cloneJson(value);
+  const source = asRecord(cloned);
+  const changes = [];
+  if (!isRecord(cloned)) mark(changes, "root");
+  const enabled = options.enabledModules.filter((key) => MODULE_KEYS.includes(key));
+  const activeModules = arrayValue(source.activeModules).filter((item) => typeof item === "string" && MODULE_KEYS.includes(item)).filter((item) => enabled.includes(item));
+  const normalizedActive = activeModules.length > 0 ? activeModules : enabled;
+  if (JSON.stringify(source.activeModules) !== JSON.stringify(normalizedActive)) mark(changes, "activeModules");
+  const wantsScene = enabled.some((key) => ["worldSpace", "inventory"].includes(key));
+  const wantsWorld = enabled.some((key) => ["worldSpace", "secretsRumors"].includes(key));
+  const normalized = {
+    activeModules: normalizedActive,
+    kernel: normalizeKernel(source.kernel),
+    delta: normalizeDelta(source.delta, enabled),
+    meters: arrayValue(source.meters).map((item) => {
+      const row = asRecord(item);
+      const id = enumValue(row.id, ["tension", "danger", "socialHeat", "coherence", "hiddenInfo", "omen"], "");
+      if (!id) return null;
+      return {
+        id,
+        label: text(row.label, 160, id),
+        ...normalizeGauge(row)
+      };
+    }).filter((item) => Boolean(item)).slice(0, 6),
+    scene: source.scene !== null && (isRecord(source.scene) || wantsScene) ? normalizeScene(source.scene) : null,
+    castMatrix: arrayValue(source.castMatrix).map(normalizeCastMember).filter((item) => Boolean(item)).slice(0, 24),
+    worldState: source.worldState !== null && (isRecord(source.worldState) || wantsWorld) ? normalizeWorldState(source.worldState) : null,
+    storyState: normalizeStoryState(source.storyState),
+    continuityFirewall: normalizeContinuityFirewall(source.continuityFirewall),
+    tools: normalizeTools(source.tools),
+    auditLog: arrayValue(source.auditLog).map((item) => {
+      const row = asRecord(item);
+      const system = text(row.system, 160);
+      const result = text(row.result ?? item, 500);
+      if (!system && !result) return null;
+      return {
+        system: system || "compiler",
+        marker: text(row.marker, 160),
+        result,
+        repaired: booleanValue(row.repaired, false),
+        notes: text(row.notes, 1600)
+      };
+    }).filter((item) => Boolean(item)).slice(0, 12),
+    customModuleData: normalizeCustomModuleData(source.customModuleData, options.customModules ?? [])
+  };
+  const parsed = LoomOSCompiledStateSchema.safeParse(normalized);
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map(
+      (issue) => `${issue.path.join(".") || "root"}: ${issue.message}`
+    );
+    throw new CompiledStateNormalizationError({
+      normalized: true,
+      changes,
+      issues
+    });
+  }
+  return {
+    state: parsed.data,
+    report: {
+      normalized: changes.length > 0 || JSON.stringify(cloned) !== JSON.stringify(parsed.data),
+      changes,
+      issues: []
+    }
+  };
+}
+function transcriptKernel(transcript) {
+  const lines = transcript.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("["));
+  const summary = lines.slice(-2).join(" ").replace(/\s+/g, " ").slice(0, 1600);
+  return {
+    ...defaultKernel(),
+    scene: summary.slice(0, 500),
+    summary,
+    currentFocus: summary
+  };
+}
+function buildFallbackCompiledState(request) {
+  const seed = request.seedState;
+  const kernel = seed ? {
+    ...defaultKernel(),
+    scene: seed.kernel.scene,
+    location: seed.kernel.location,
+    timeframe: seed.kernel.timeframe,
+    date: seed.kernel.date,
+    time: seed.kernel.time,
+    elapsed: seed.kernel.elapsed,
+    weather: seed.kernel.weather,
+    pov: seed.kernel.pov,
+    tone: seed.kernel.tone,
+    topic: seed.kernel.topic,
+    theme: seed.kernel.theme,
+    objective: seed.kernel.objective,
+    summary: seed.kernel.summary,
+    currentFocus: seed.kernel.currentFocus,
+    currentRisk: seed.kernel.currentRisk,
+    constraints: seed.kernel.constraints.slice(0, 12)
+  } : transcriptKernel(request.transcript);
+  return LoomOSCompiledStateSchema.parse({
+    activeModules: request.enabledModules,
+    kernel,
+    delta: {
+      ...defaultDelta(),
+      headline: "Compiler output was invalid; saved minimal fallback state."
+    },
+    meters: [],
+    scene: null,
+    castMatrix: [],
+    worldState: null,
+    storyState: defaultStoryState(),
+    continuityFirewall: seed ? {
+      ...defaultContinuityFirewall(),
+      establishedFacts: seed.continuityFirewall.establishedFacts.slice(0, 20),
+      antiRetconAnchors: seed.continuityFirewall.antiRetconAnchors.slice(0, 15),
+      pendingConsequences: seed.continuityFirewall.pendingConsequences.slice(0, 15),
+      offscreenState: seed.continuityFirewall.offscreenState.slice(0, 12)
+    } : defaultContinuityFirewall(),
+    tools: defaultTools(),
+    auditLog: [{
+      system: "compiler",
+      marker: "normalization_v2",
+      result: "fallback_state_saved",
+      repaired: true,
+      notes: text(request.notes, 1600)
+    }],
+    customModuleData: []
+  });
+}
 
 // src/shared/prompts.ts
 var CORE_CONTRACT = `
@@ -5062,25 +6130,50 @@ Exact JSON field contract (values below are type examples, not story facts):
 For disabled optional modules: meters=[], scene=null, worldState=null, the
 corresponding tools member=null, and auditLog=[]. Empty optional arrays inside an
 enabled object are valid. Do not emit example rows when there is no evidence.`;
-function buildStateCompilerPrompt(enabledModules, customModules, overrides) {
-  const enabled = MODULE_CATALOG.filter((module) => enabledModules.includes(module.key)).map((module) => {
-    const base = `- ${module.key}: ${module.description}`;
-    const addendum = overrides?.[module.key]?.compilerGuidanceAddendum;
-    return addendum ? `${base} [Override: ${addendum}]` : base;
+function buildStateCompilerPrompt(enabledModules, customModules = [], overrides = {}) {
+  const enabled = getEffectiveModuleCatalog({ stockModuleOverrides: overrides }).filter((module) => enabledModules.includes(module.key)).map((module) => {
+    return [
+      `- ${module.key} (${module.label}): ${module.compilerInstruction}`,
+      `  Schema: ${module.schemaSummary}`
+    ].join("\n");
   }).join("\n");
-  const enabledCustom = (customModules || []).filter((m) => m.enabled).map((m) => `- customModuleData[moduleId=${m.id}] (${m.label}): ${m.compilerInstruction} (maxItems: ${m.maxItems || 6})`).join("\n");
+  const enabledCustom = customModules.filter((m) => m.enabled).map((m) => {
+    const fields = Object.fromEntries(m.schemaFields.map((field) => {
+      if (field.type === "number") return [field.key, field.defaultValue ?? field.min ?? 0];
+      if (field.type === "boolean") return [field.key, field.defaultValue ?? false];
+      if (field.type === "enum") return [field.key, field.defaultValue ?? field.enumOptions[0] ?? ""];
+      if (field.type === "gauge") {
+        return [field.key, {
+          value: field.defaultValue ?? field.min ?? 0,
+          pct: "0%",
+          band: "unknown",
+          color: "var(--loomos-muted)",
+          trend: "unknown",
+          note: ""
+        }];
+      }
+      if (field.type === "chips" || field.type === "list") return [field.key, []];
+      return [field.key, field.defaultValue ?? ""];
+    }));
+    return [
+      `- customModuleData[moduleId=${m.id}] (${m.label}): ${m.compilerInstruction}`,
+      `  maxItems=${m.maxItems}; outputMode=${m.outputMode}; fields=${JSON.stringify(fields)}`,
+      "  Output data only. Never output HTML, CSS, scripts, or template markup."
+    ].join("\n");
+  }).join("\n");
   const trackingText = enabled + (enabledCustom ? "\n\nEnabled custom tracking modules:\n" + enabledCustom : "");
   let customContract = "";
   let customShape = "";
-  if (customModules && customModules.some((m) => m.enabled)) {
+  if (customModules.some((m) => m.enabled)) {
     customContract = `
-- customModuleData: Array of compiled custom modules. For each enabled custom module, append an entry with the exact moduleId, label, a turn summary, and an array of items (up to its maxItems limit) containing title, text, importance (low/medium/high/critical), and optional color.`;
+- customModuleData: Array of compiled custom modules. For each enabled custom module, append an entry with the exact moduleId, label, a turn summary, a fields object using only its declared schema field keys, and an items array (up to its maxItems limit) containing title, text, importance (low/medium/high/critical), and optional color.`;
     customShape = `,
   "customModuleData": [
     {
       "moduleId": "custom_module_id",
       "label": "Custom Module Label",
       "summary": "Turn summary",
+      "fields": {},
       "items": [
         {
           "title": "Item title",
@@ -5121,6 +6214,9 @@ Rules:
 - Keep character tracking non-explicit. When age is unspecified, treat characters as adults and never output minors.
 - Do not reveal hidden chain-of-thought. Secrets are reader-visible dramatic state only.
 - activeModules must contain only enabled module keys.
+- For custom modules, output structured data only. The user-authored renderer owns HTML and CSS.
+- Respect each custom schema field key, type, enum options, required flag, numeric range, and maxItems.
+- Empty schema defaults are valid when the transcript has no evidence.
 - Use numeric ranges exactly as named: percentages 0-100, threat/observer pressure 0-10, urgency 0-5, conflict severity 1-3.
 
 Character depth rules:
@@ -5176,277 +6272,6 @@ EXAMPLES:
   GOOD: "relationships": [{"target": "Iven", "axis": "Trust", "value": 30}]
 `;
 
-// src/shared/normalizeCompiledState.ts
-function isRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function extractString(value) {
-  if (typeof value === "string") return value;
-  if (isRecord(value)) {
-    for (const key of ["text", "rule", "issue", "claim", "reason", "description", "name", "title", "goal", "summary", "thing", "item"]) {
-      const v = value[key];
-      if (typeof v === "string" && v.trim()) return v.trim();
-    }
-    for (const v of Object.values(value)) {
-      if (typeof v === "string" && v.trim()) return v.trim();
-    }
-    return "";
-  }
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return "";
-}
-function coerceStringArray(arr) {
-  if (!Array.isArray(arr)) {
-    const s = extractString(arr);
-    return s ? [s] : [];
-  }
-  const result = [];
-  for (const item of arr) {
-    if (item === null || item === void 0) continue;
-    if (typeof item === "string") {
-      if (item.trim()) result.push(item.trim());
-    } else if (isRecord(item)) {
-      const extracted = extractString(item);
-      if (extracted) result.push(extracted);
-    } else if (typeof item === "number" || typeof item === "boolean") {
-      result.push(String(item));
-    }
-  }
-  return result;
-}
-function coercePocketItem(item) {
-  if (isRecord(item)) {
-    const name = extractString(item) || "Unknown item";
-    const type = typeof item.type === "string" && ["consumable", "concealed", "tool", "key", "evidence", "misc"].includes(item.type) ? item.type : "misc";
-    let qty = 1;
-    if (typeof item.qty === "number" && Number.isInteger(item.qty) && item.qty >= 0) {
-      qty = item.qty;
-    } else if (typeof item.qty === "string") {
-      const parsed = parseInt(item.qty, 10);
-      if (!isNaN(parsed) && parsed >= 0) qty = parsed;
-    }
-    const result = {
-      name,
-      type,
-      qty,
-      condition: typeof item.condition === "string" ? item.condition : "",
-      known: typeof item.known === "boolean" ? item.known : true
-    };
-    if (item.color !== void 0 && typeof item.color === "string") result.color = item.color;
-    if (item.changed !== void 0) result.changed = item.changed;
-    if (item.changeNote !== void 0) result.changeNote = item.changeNote;
-    return result;
-  }
-  if (typeof item === "string" && item.trim()) {
-    return { name: item.trim(), type: "misc", qty: 1, condition: "", known: true };
-  }
-  return null;
-}
-function coerceRelationship(item) {
-  if (isRecord(item)) {
-    const target = extractString(item) || "";
-    if (!target) return null;
-    return {
-      target,
-      axis: typeof item.axis === "string" && item.axis.trim() ? item.axis.trim() : "general",
-      value: typeof item.value === "number" && item.value >= -100 && item.value <= 100 ? item.value : 0,
-      ...item.pct !== void 0 ? { pct: item.pct } : {},
-      ...item.label !== void 0 ? { label: item.label } : {},
-      ...item.color !== void 0 ? { color: item.color } : {},
-      ...item.trend !== void 0 ? { trend: item.trend } : {},
-      ...item.evidence !== void 0 ? { evidence: item.evidence } : {}
-    };
-  }
-  if (typeof item === "string" && item.trim()) {
-    return { target: item.trim(), axis: "general", value: 0 };
-  }
-  return null;
-}
-function coerceSetupEntry(item) {
-  if (isRecord(item)) {
-    const thing = extractString(item) || "";
-    if (!thing) return null;
-    return {
-      thing,
-      ...item.plantedBy !== void 0 ? { plantedBy: item.plantedBy } : {},
-      ...item.payoffWhen !== void 0 ? { payoffWhen: item.payoffWhen } : {},
-      state: typeof item.state === "string" && ["LOADED", "HEATING", "FIRED", "DORMANT"].includes(item.state) ? item.state : "LOADED",
-      ...item.evidence !== void 0 ? { evidence: item.evidence } : {},
-      ...item.payoffHint !== void 0 ? { payoffHint: item.payoffHint } : {},
-      ...item.changed !== void 0 ? { changed: item.changed } : {},
-      ...item.changeNote !== void 0 ? { changeNote: item.changeNote } : {}
-    };
-  }
-  if (typeof item === "string" && item.trim()) {
-    return { thing: item.trim(), state: "LOADED" };
-  }
-  return null;
-}
-function coerceConsequenceEntry(item) {
-  if (isRecord(item)) {
-    const cause = typeof item.cause === "string" ? item.cause.slice(0, 500) : "";
-    const pending = typeof item.pending === "string" ? item.pending : extractString(item);
-    if (!cause && !pending) return null;
-    return {
-      cause: cause || pending.slice(0, 500),
-      pending: pending || cause,
-      ...item.trigger !== void 0 ? { trigger: item.trigger } : {},
-      urgency: typeof item.urgency === "number" ? item.urgency : 5,
-      ...item.pct !== void 0 ? { pct: item.pct } : {},
-      status: typeof item.status === "string" && ["PENDING", "ACTIVE", "FIRED", "RESOLVED", "DORMANT"].includes(item.status) ? item.status : "PENDING",
-      ...item.evidence !== void 0 ? { evidence: item.evidence } : {},
-      ...item.changed !== void 0 ? { changed: item.changed } : {},
-      ...item.changeNote !== void 0 ? { changeNote: item.changeNote } : {}
-    };
-  }
-  if (typeof item === "string" && item.trim()) {
-    return { cause: item.trim().slice(0, 500), pending: item.trim().slice(0, 1600), urgency: 5, status: "PENDING" };
-  }
-  return null;
-}
-function coerceAvoidNext(item) {
-  if (isRecord(item)) {
-    const text = extractString(item) || "";
-    if (!text) return null;
-    return {
-      text,
-      ...item.reason !== void 0 ? { reason: item.reason } : {},
-      scope: typeof item.scope === "string" && ["turn", "scene", "persistent"].includes(item.scope) ? item.scope : "turn",
-      ...item.color !== void 0 ? { color: item.color } : {},
-      source: typeof item.source === "string" && ["user", "system", "compiler"].includes(item.source) ? item.source : "compiler"
-    };
-  }
-  if (typeof item === "string" && item.trim()) {
-    return { text: item.trim(), scope: "turn", source: "compiler" };
-  }
-  return null;
-}
-function coerceTermEntry(item) {
-  if (isRecord(item)) {
-    const party = extractString(item) || "";
-    const term = typeof item.term === "string" ? item.term : "";
-    if (!party && !term) return null;
-    const result = {
-      party: party || "Unknown",
-      term: term || extractString(item) || "",
-      status: typeof item.status === "string" && ["PENDING", "ACCEPTED", "REJECTED", "BROKEN", "EXPIRED", "UNKNOWN"].includes(item.status) ? item.status : "UNKNOWN"
-    };
-    if (item.risk !== void 0) result.risk = item.risk;
-    if (item.binding !== void 0) result.binding = item.binding;
-    if (item.evidence !== void 0) result.evidence = item.evidence;
-    if (item.changed !== void 0) result.changed = item.changed;
-    if (item.changeNote !== void 0) result.changeNote = item.changeNote;
-    return result;
-  }
-  if (typeof item === "string" && item.trim()) {
-    return { party: item.trim(), term: item.trim(), status: "UNKNOWN", binding: false };
-  }
-  return null;
-}
-function coerceAuditEntry(item) {
-  if (!isRecord(item)) return null;
-  const system = typeof item.system === "string" && item.system.trim() ? item.system.trim() : "";
-  const marker = typeof item.marker === "string" && item.marker.trim() ? item.marker.trim() : "";
-  const result = typeof item.result === "string" && item.result.trim() ? item.result.trim() : extractString(item);
-  if (!system && !marker && !result) return null;
-  return {
-    system: system || "compiler",
-    marker: marker || "auto",
-    result: result || "auto-normalized",
-    repaired: typeof item.repaired === "boolean" ? item.repaired : false,
-    notes: typeof item.notes === "string" ? item.notes : extractString(item) || ""
-  };
-}
-function coerceStringFields(target, fields) {
-  for (const field of fields) {
-    const val = target[field];
-    if (val !== void 0) {
-      target[field] = coerceStringArray(val);
-    }
-  }
-}
-function normalizeCompilerOutput(raw) {
-  if (!isRecord(raw)) return raw;
-  const root = { ...raw };
-  if (isRecord(root.kernel)) {
-    coerceStringFields(root.kernel, ["constraints"]);
-  }
-  if (Array.isArray(root.castMatrix)) {
-    root.castMatrix = root.castMatrix.map((member) => {
-      if (!isRecord(member)) return member;
-      const m = { ...member };
-      coerceStringFields(m, ["goals", "stableFacts", "leverage"]);
-      if (Array.isArray(m.pockets)) {
-        m.pockets = m.pockets.map((item) => coercePocketItem(item)).filter(Boolean);
-      }
-      if (Array.isArray(m.relationships)) {
-        m.relationships = m.relationships.map((item) => coerceRelationship(item)).filter(Boolean);
-      }
-      return m;
-    });
-  }
-  if (isRecord(root.continuityFirewall)) {
-    const fw = root.continuityFirewall;
-    coerceStringFields(fw, ["establishedFacts", "antiRetconAnchors", "offscreenState", "impossibleNext"]);
-    if (Array.isArray(fw.pendingConsequences)) {
-      fw.pendingConsequences = fw.pendingConsequences.map((item) => coerceConsequenceEntry(item)).filter(Boolean);
-    }
-    if (Array.isArray(fw.bannedNext)) {
-      fw.bannedNext = fw.bannedNext.map((item) => coerceAvoidNext(item)).filter(Boolean);
-    }
-    if (Array.isArray(fw.terms)) {
-      fw.terms = fw.terms.map((item) => coerceTermEntry(item)).filter(Boolean);
-    }
-  }
-  if (isRecord(root.scene)) {
-    const scene = root.scene;
-    coerceStringFields(scene, ["spatial"]);
-    if (isRecord(scene.access)) {
-      coerceStringFields(scene.access, ["items", "people"]);
-    }
-    if (isRecord(scene.carryover)) {
-      coerceStringFields(scene.carryover, ["body", "room", "social"]);
-    }
-  }
-  if (isRecord(root.worldState)) {
-    const ws = root.worldState;
-    coerceStringFields(ws, ["recentEnvironmentalChanges", "activeHazards"]);
-    if (Array.isArray(ws.loadedSigns)) {
-      ws.loadedSigns = ws.loadedSigns.map((item) => coerceSetupEntry(item)).filter(Boolean);
-    }
-  }
-  if (isRecord(root.storyState)) {
-    const ss = root.storyState;
-    if (Array.isArray(ss.threadLoom)) {
-      ss.threadLoom = ss.threadLoom.map((thread) => {
-        if (!isRecord(thread)) return thread;
-        const t = { ...thread };
-        coerceStringFields(t, ["participants"]);
-        return t;
-      });
-    }
-  }
-  if (isRecord(root.tools)) {
-    const tools = root.tools;
-    if (isRecord(tools.actionResolver)) {
-      coerceStringFields(tools.actionResolver, ["blockers"]);
-    }
-    if (isRecord(tools.dialogueState)) {
-      coerceStringFields(tools.dialogueState, ["levers", "taboos"]);
-    }
-    if (isRecord(tools.directorStyle)) {
-      coerceStringFields(tools.directorStyle, ["voiceCues"]);
-    }
-    if (isRecord(tools.closenessState)) {
-      coerceStringFields(tools.closenessState, ["consentSignals", "boundaries"]);
-    }
-  }
-  if (Array.isArray(root.auditLog)) {
-    root.auditLog = root.auditLog.map((item) => coerceAuditEntry(item)).filter(Boolean);
-  }
-  return root;
-}
-
 // src/backend/compiler.ts
 function extractJsonObject(raw) {
   const withoutFence = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
@@ -5457,24 +6282,23 @@ function extractJsonObject(raw) {
   }
   return JSON.parse(withoutFence.slice(firstBrace, lastBrace + 1));
 }
-function validationError(raw) {
+function rawValidationIssues(raw) {
   try {
-    const parsed = normalizeCompilerOutput(extractJsonObject(raw));
+    const parsed = extractJsonObject(raw);
     const result = LoomOSCompiledStateSchema.safeParse(parsed);
-    if (result.success) return "Unknown validation failure.";
-    const details = result.error.issues.slice(0, 16).map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`).join("\n");
-    const hint = "\n[Hint] This is usually a compiler shape issue. Normalization attempted to coerce common LLM mistakes (objects as strings, strings as objects). Check castMatrix[].goals (must be string[]), pockets (must be object[]), and impossibleNext (must be string[]).";
-    return details + hint;
+    if (result.success) return [];
+    return result.error.issues.map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`);
   } catch (error) {
-    return error instanceof Error ? error.message : String(error);
+    return [error instanceof Error ? error.message : String(error)];
   }
 }
-function parseCompilerOutput(raw, request, repaired) {
-  const rawParsed = extractJsonObject(raw);
-  const normalized = normalizeCompilerOutput(rawParsed);
-  const compiled = LoomOSCompiledStateSchema.parse(normalized);
-  return LoomOSStateSchema.parse({
-    ...compiled,
+function parseCompilerOutputDetailed(raw, request, repaired) {
+  const normalized = normalizeCompiledState(extractJsonObject(raw), {
+    enabledModules: request.enabledModules,
+    customModules: request.customModules
+  });
+  const state = LoomOSStateSchema.parse({
+    ...normalized.state,
     activeModules: request.enabledModules,
     schemaVersion: 2,
     identity: request.identity,
@@ -5486,6 +6310,25 @@ function parseCompilerOutput(raw, request, repaired) {
       connectionId: request.connectionId
     }
   });
+  return { state, report: normalized.report };
+}
+function normalizeFailureIssues(error, raw) {
+  if (error instanceof CompiledStateNormalizationError) return error.report.issues;
+  const rawIssues = rawValidationIssues(raw);
+  return rawIssues.length > 0 ? rawIssues : [error instanceof Error ? error.message : String(error)];
+}
+function debugReport(firstIssues, repairIssues, fallbackSaved) {
+  return [
+    "LoomOS compiler debug report",
+    "Normalization attempted: yes",
+    `Fallback saved: ${fallbackSaved ? "yes" : "no"}`,
+    "",
+    "First output issues:",
+    ...firstIssues.length > 0 ? firstIssues : ["none"],
+    "",
+    "Repair output issues:",
+    ...repairIssues.length > 0 ? repairIssues : ["none"]
+  ].join("\n");
 }
 function compilerUserMessage(request) {
   return [
@@ -5502,26 +6345,48 @@ function compilerUserMessage(request) {
 async function compileStateWithRepair(request) {
   request.onPhase?.("building_prompt", 1, "Building the enabled-module compiler prompt.");
   const firstMessages = [
-    { role: "system", content: buildStateCompilerPrompt(request.enabledModules, request.customModules, request.stockModuleOverrides) },
+    {
+      role: "system",
+      content: buildStateCompilerPrompt(
+        request.enabledModules,
+        request.customModules,
+        request.stockModuleOverrides
+      )
+    },
     { role: "user", content: compilerUserMessage(request) }
   ];
   request.onPhase?.("requesting", 1, "Requesting structured state from the selected connection.");
   const firstRaw = await request.generate(firstMessages, request.signal, 1);
-  request.onPhase?.("validating", 1, "Validating State V2 output.");
+  request.onPhase?.("validating", 1, "Normalizing and validating State V2 output.");
+  let firstIssues = [];
   try {
+    const parsed = parseCompilerOutputDetailed(firstRaw, request, false);
     return {
       ok: true,
-      state: parseCompilerOutput(firstRaw, request, false),
-      repaired: false
+      state: parsed.state,
+      repaired: false,
+      normalized: parsed.report.normalized,
+      fallbackSaved: false,
+      issues: [],
+      debugReport: debugReport([], [], false)
     };
-  } catch {
-    request.onPhase?.("repairing", 2, "Output was invalid; running the single repair pass.");
+  } catch (error) {
+    firstIssues = normalizeFailureIssues(error, firstRaw);
+    request.onPhase?.(
+      "repairing",
+      2,
+      `Output remained invalid after normalization; repairing ${firstIssues[0] ?? "schema mismatch"}.`
+    );
     const repairMessages = [
       {
         role: "system",
         content: `${STATE_REPAIR_PROMPT}
 
-${buildStateCompilerPrompt(request.enabledModules, request.customModules, request.stockModuleOverrides)}`
+${buildStateCompilerPrompt(
+          request.enabledModules,
+          request.customModules,
+          request.stockModuleOverrides
+        )}`
       },
       {
         role: "user",
@@ -5530,7 +6395,7 @@ ${buildStateCompilerPrompt(request.enabledModules, request.customModules, reques
           request.enabledModules.join(", "),
           "",
           "Validation failures:",
-          validationError(firstRaw),
+          firstIssues.slice(0, 8).join("\n"),
           "",
           "Malformed output:",
           firstRaw.slice(0, 36e3)
@@ -5538,21 +6403,47 @@ ${buildStateCompilerPrompt(request.enabledModules, request.customModules, reques
       }
     ];
     const repairedRaw = await request.generate(repairMessages, request.signal, 2);
-    request.onPhase?.("validating", 2, "Validating repaired State V2 output.");
+    request.onPhase?.("validating", 2, "Normalizing and validating repaired State V2 output.");
     try {
+      const parsed = parseCompilerOutputDetailed(repairedRaw, request, true);
       return {
         ok: true,
-        state: parseCompilerOutput(repairedRaw, request, true),
-        repaired: true
+        state: parsed.state,
+        repaired: true,
+        normalized: parsed.report.normalized,
+        fallbackSaved: false,
+        issues: firstIssues.slice(0, 8),
+        debugReport: debugReport(firstIssues, [], false)
       };
-    } catch {
+    } catch (error2) {
+      const repairIssues = normalizeFailureIssues(error2, repairedRaw);
+      const issues = [...firstIssues, ...repairIssues].slice(0, 8);
+      const fallbackCompiled = buildFallbackCompiledState({
+        enabledModules: request.enabledModules,
+        seedState: request.seedState ?? request.existingState,
+        transcript: request.transcript,
+        notes: issues.join(" | ")
+      });
+      const state = LoomOSStateSchema.parse({
+        ...fallbackCompiled,
+        schemaVersion: 2,
+        identity: request.identity,
+        generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        source: {
+          messageCount: request.messageCount,
+          repaired: true,
+          seedIdentity: request.seedState?.identity ?? null,
+          connectionId: request.connectionId
+        }
+      });
       return {
-        ok: false,
-        state: request.existingState,
-        error: [
-          "Compiler output remained invalid after one repair attempt.",
-          validationError(repairedRaw)
-        ].join(" ")
+        ok: true,
+        state,
+        repaired: true,
+        normalized: true,
+        fallbackSaved: true,
+        issues,
+        debugReport: debugReport(firstIssues, repairIssues, true)
       };
     }
   }
@@ -5618,17 +6509,17 @@ function xmlEscape(value, max = 260) {
   return clean(value, max).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 function memberInjection(member, hasVisuals, hasClothing) {
-  let text = `cast.${xmlEscape(member.name, 80)}: ${xmlEscape(member.status)}; intent=${xmlEscape(member.intent)}; goal=${xmlEscape(member.goals[0] ?? "")}`;
+  let text2 = `cast.${xmlEscape(member.name, 80)}: ${xmlEscape(member.status)}; intent=${xmlEscape(member.intent)}; goal=${xmlEscape(member.goals[0] ?? "")}`;
   if (hasVisuals) {
-    text += `; pose=${xmlEscape(member.currentState?.pose ?? member.pose ?? "")}; emotion=${xmlEscape(member.currentState?.emotion ?? member.emotionalState ?? "")}`;
+    text2 += `; pose=${xmlEscape(member.currentState?.pose ?? member.pose ?? "")}; emotion=${xmlEscape(member.currentState?.emotion ?? member.emotionalState ?? "")}`;
   }
   if (hasClothing && member.clothing?.summary) {
-    text += `; attire=${xmlEscape(member.clothing.summary)}`;
+    text2 += `; attire=${xmlEscape(member.clothing.summary)}`;
   }
   if (member.changed) {
-    text += ` [changed]`;
+    text2 += ` [changed]`;
   }
-  return text;
+  return text2;
 }
 async function buildCompactInjection(state, settings, countTokens, overrides) {
   const open = "<loomos_state>";
@@ -5695,9 +6586,11 @@ async function buildCompactInjection(state, settings, countTokens, overrides) {
   for (const cm of enabledCustomMods) {
     if (cm.enabled && cm.inject) {
       const compiled = state.customModuleData?.find((m) => m.moduleId === cm.id);
-      if (compiled && compiled.items.length > 0) {
+      if (compiled && (compiled.items.length > 0 || Object.keys(compiled.fields).length > 0)) {
+        const fieldSummary = Object.entries(compiled.fields).slice(0, 4).map(([key, value]) => `${key}=${typeof value === "object" ? JSON.stringify(value) : String(value)}`).join("; ");
         fragments.push(
           `cmod.${xmlEscape(cm.label, 80)}: ${xmlEscape(compiled.summary)}`,
+          ...fieldSummary ? [`fields.${xmlEscape(cm.label, 60)}: ${xmlEscape(fieldSummary)}`] : [],
           ...compiled.items.slice(0, 3).map(
             (it) => `item.${xmlEscape(cm.label, 60)}: ${xmlEscape(it.title)} - ${xmlEscape(it.text)}`
           )
@@ -6237,11 +7130,11 @@ async function buildInjectionPreview(chatId, userId) {
         omittedNames.push("cmod:" + cm.label);
       }
     }
-    const compact = await buildCompactInjection(state, settings, async (text) => {
+    const compact = await buildCompactInjection(state, settings, async (text2) => {
       try {
-        return (await spindle.tokens.countText(text, { userId })).total_tokens;
+        return (await spindle.tokens.countText(text2, { userId })).total_tokens;
       } catch {
-        return Math.ceil(text.length / 4);
+        return Math.ceil(text2.length / 4);
       }
     });
     const tokenResult = await (async () => {
@@ -6423,9 +7316,6 @@ async function generateState(requestId, requested, userId) {
       existingState
     );
     const enabledModules = trackedModuleKeys(settings);
-    const stockModuleOverrides = settings.stockModuleOverrides ? Object.fromEntries(
-      Object.entries(settings.stockModuleOverrides).filter(([_, v]) => v?.compilerGuidanceAddendum).map(([k, v]) => [k, { compilerGuidanceAddendum: v.compilerGuidanceAddendum }])
-    ) : void 0;
     const compiled = await compileStateWithRepair({
       identity,
       transcript: transcriptResult.transcript,
@@ -6435,7 +7325,7 @@ async function generateState(requestId, requested, userId) {
       seedText: seed.text,
       enabledModules,
       customModules: settings.customModules,
-      stockModuleOverrides,
+      stockModuleOverrides: settings.stockModuleOverrides,
       connectionId: connection.id,
       signal: controller.signal,
       onPhase: progress,
@@ -6467,13 +7357,17 @@ async function generateState(requestId, requested, userId) {
       requestId,
       status: "completed",
       identity,
-      message: compiled.repaired ? "State compiled after one repair pass." : "State compiled and saved.",
+      message: compiled.fallbackSaved ? "Compiler output stayed invalid; a minimal valid fallback state was saved." : compiled.repaired ? "State compiled after one repair pass." : compiled.normalized ? "State normalized, validated, and saved." : "State compiled and saved.",
       report: {
         phase: "saving",
         attempt: compiled.repaired ? 2 : 1,
         elapsedMs: Date.now() - startedAt,
         connectionId: connection.id,
-        message: "Validated state saved."
+        message: compiled.fallbackSaved ? "Minimal fallback state saved." : "Validated state saved.",
+        normalized: compiled.normalized,
+        fallbackSaved: compiled.fallbackSaved,
+        issues: compiled.issues.slice(0, 8),
+        debugReport: compiled.debugReport
       }
     }, userId);
   } catch (error) {
@@ -6703,11 +7597,11 @@ function tryRegisterInterceptor() {
       });
       const state = await loadState(identity, userId);
       if (!state) return messages;
-      const compact = await buildCompactInjection(state, settings, async (text) => {
+      const compact = await buildCompactInjection(state, settings, async (text2) => {
         try {
-          return (await spindle.tokens.countText(text, { userId })).total_tokens;
+          return (await spindle.tokens.countText(text2, { userId })).total_tokens;
         } catch {
-          return Math.ceil(text.length / 4);
+          return Math.ceil(text2.length / 4);
         }
       });
       const injected = { role: "system", content: compact };

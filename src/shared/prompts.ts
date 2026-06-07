@@ -1,7 +1,9 @@
 import {
-  MODULE_CATALOG,
+  getEffectiveModuleCatalog,
   type ModuleKey,
+  type StockModuleOverrides,
 } from "./modules";
+import type { CustomModule } from "./types";
 
 const CORE_CONTRACT = `
 Always return these top-level keys:
@@ -129,30 +131,54 @@ enabled object are valid. Do not emit example rows when there is no evidence.`;
 
 export function buildStateCompilerPrompt(
   enabledModules: ModuleKey[],
-  customModules?: any[],
-  overrides?: Record<string, { compilerGuidanceAddendum?: string }>,
+  customModules: CustomModule[] = [],
+  overrides: StockModuleOverrides = {},
 ): string {
-  const enabled = MODULE_CATALOG
+  const enabled = getEffectiveModuleCatalog({ stockModuleOverrides: overrides })
     .filter((module) => enabledModules.includes(module.key))
     .map((module) => {
-      const base = `- ${module.key}: ${module.description}`;
-      const addendum = overrides?.[module.key]?.compilerGuidanceAddendum;
-      return addendum ? `${base} [Override: ${addendum}]` : base;
+      return [
+        `- ${module.key} (${module.label}): ${module.compilerInstruction}`,
+        `  Schema: ${module.schemaSummary}`,
+      ].join("\n");
     })
     .join("\n");
 
-  const enabledCustom = (customModules || [])
+  const enabledCustom = customModules
     .filter((m) => m.enabled)
-    .map((m) => `- customModuleData[moduleId=${m.id}] (${m.label}): ${m.compilerInstruction} (maxItems: ${m.maxItems || 6})`)
+    .map((m) => {
+      const fields = Object.fromEntries(m.schemaFields.map((field) => {
+        if (field.type === "number") return [field.key, field.defaultValue ?? field.min ?? 0];
+        if (field.type === "boolean") return [field.key, field.defaultValue ?? false];
+        if (field.type === "enum") return [field.key, field.defaultValue ?? field.enumOptions[0] ?? ""];
+        if (field.type === "gauge") {
+          return [field.key, {
+            value: field.defaultValue ?? field.min ?? 0,
+            pct: "0%",
+            band: "unknown",
+            color: "var(--loomos-muted)",
+            trend: "unknown",
+            note: "",
+          }];
+        }
+        if (field.type === "chips" || field.type === "list") return [field.key, []];
+        return [field.key, field.defaultValue ?? ""];
+      }));
+      return [
+        `- customModuleData[moduleId=${m.id}] (${m.label}): ${m.compilerInstruction}`,
+        `  maxItems=${m.maxItems}; outputMode=${m.outputMode}; fields=${JSON.stringify(fields)}`,
+        "  Output data only. Never output HTML, CSS, scripts, or template markup.",
+      ].join("\n");
+    })
     .join("\n");
 
   const trackingText = enabled + (enabledCustom ? "\n\nEnabled custom tracking modules:\n" + enabledCustom : "");
 
   let customContract = "";
   let customShape = "";
-  if (customModules && customModules.some((m) => m.enabled)) {
+  if (customModules.some((m) => m.enabled)) {
     customContract = `
-- customModuleData: Array of compiled custom modules. For each enabled custom module, append an entry with the exact moduleId, label, a turn summary, and an array of items (up to its maxItems limit) containing title, text, importance (low/medium/high/critical), and optional color.`;
+- customModuleData: Array of compiled custom modules. For each enabled custom module, append an entry with the exact moduleId, label, a turn summary, a fields object using only its declared schema field keys, and an items array (up to its maxItems limit) containing title, text, importance (low/medium/high/critical), and optional color.`;
     
     customShape = `,
   "customModuleData": [
@@ -160,6 +186,7 @@ export function buildStateCompilerPrompt(
       "moduleId": "custom_module_id",
       "label": "Custom Module Label",
       "summary": "Turn summary",
+      "fields": {},
       "items": [
         {
           "title": "Item title",
@@ -204,6 +231,9 @@ Rules:
 - Keep character tracking non-explicit. When age is unspecified, treat characters as adults and never output minors.
 - Do not reveal hidden chain-of-thought. Secrets are reader-visible dramatic state only.
 - activeModules must contain only enabled module keys.
+- For custom modules, output structured data only. The user-authored renderer owns HTML and CSS.
+- Respect each custom schema field key, type, enum options, required flag, numeric range, and maxItems.
+- Empty schema defaults are valid when the transcript has no evidence.
 - Use numeric ranges exactly as named: percentages 0-100, threat/observer pressure 0-10, urgency 0-5, conflict severity 1-3.
 
 Character depth rules:

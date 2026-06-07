@@ -124,9 +124,14 @@ export async function buildCompactInjection(
   for (const cm of enabledCustomMods) {
     if (cm.enabled && cm.inject) {
       const compiled = state.customModuleData?.find((m) => m.moduleId === cm.id);
-      if (compiled && compiled.items.length > 0) {
+      if (compiled && (compiled.items.length > 0 || Object.keys(compiled.fields).length > 0)) {
+        const fieldSummary = Object.entries(compiled.fields)
+          .slice(0, 4)
+          .map(([key, value]) => `${key}=${typeof value === "object" ? JSON.stringify(value) : String(value)}`)
+          .join("; ");
         fragments.push(
           `cmod.${xmlEscape(cm.label, 80)}: ${xmlEscape(compiled.summary)}`,
+          ...(fieldSummary ? [`fields.${xmlEscape(cm.label, 60)}: ${xmlEscape(fieldSummary)}`] : []),
           ...compiled.items.slice(0, 3).map((it) =>
             `item.${xmlEscape(cm.label, 60)}: ${xmlEscape(it.title)} - ${xmlEscape(it.text)}`
           )

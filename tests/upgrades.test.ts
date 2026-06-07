@@ -59,7 +59,7 @@ test("custom presets validate and serialize in settings", () => {
 });
 
 test("custom modules validate and serialize in settings", () => {
-  const rawSettings: Partial<LoomOSSettings> = {
+  const rawSettings = {
     customModules: [
       {
         id: "custom-mod-1",
@@ -84,15 +84,22 @@ test("custom modules validate and serialize in settings", () => {
 });
 
 test("compiler prompt builder incorporates custom modules dynamically", () => {
-  const customModules = [
+  const customModules = LoomOSSettingsSchema.parse({
+    customModules: [
     {
       id: "custom-mod-1",
+      group: "Custom",
       label: "Faction Rep",
       enabled: true,
+      display: true,
+      inject: true,
+      description: "",
       compilerInstruction: "Track Faction Standings",
+      outputMode: "cards",
       maxItems: 4,
     },
-  ];
+    ],
+  }).customModules;
 
   const prompt = buildStateCompilerPrompt(["sceneKernel"], customModules);
   assert.ok(prompt.includes("customModuleData[moduleId=custom-mod-1]"));
@@ -108,6 +115,7 @@ test("state schema validates compiled custom module data", () => {
         moduleId: "custom-mod-1",
         label: "Faction Rep",
         summary: "Standing has improved",
+        fields: {},
         items: [
           {
             title: "Mages Guild",

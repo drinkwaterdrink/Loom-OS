@@ -47,6 +47,47 @@ export const CustomModulePresetSchema = z.object({
   moduleSettings: ModuleSettingsSchema,
 }).strict();
 
+export const CustomModuleFieldTypeSchema = z.enum([
+  "text",
+  "longText",
+  "number",
+  "boolean",
+  "enum",
+  "gauge",
+  "chips",
+  "list",
+]);
+
+export const CustomModuleFieldSchema = z.object({
+  id: z.string().min(1).max(160),
+  label: z.string().trim().min(1).max(160),
+  key: z.string().trim().regex(/^[A-Za-z][A-Za-z0-9_]*$/).max(80),
+  type: CustomModuleFieldTypeSchema,
+  required: z.boolean().default(false),
+  description: z.string().trim().max(500).default(""),
+  defaultValue: z.unknown().optional(),
+  enumOptions: z.array(z.string().trim().min(1).max(160)).max(30).default([]),
+  maxItems: z.number().int().min(1).max(50).optional(),
+  min: z.number().finite().optional(),
+  max: z.number().finite().optional(),
+  displayHint: z.string().trim().max(160).optional(),
+}).strict().superRefine((field, context) => {
+  if (field.type === "enum" && field.enumOptions.length === 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["enumOptions"],
+      message: "Enum fields require at least one option.",
+    });
+  }
+  if (field.min !== undefined && field.max !== undefined && field.min > field.max) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["min"],
+      message: "Minimum cannot exceed maximum.",
+    });
+  }
+});
+
 export const CustomModuleSchema = z.object({
   id: z.string().min(1).max(160),
   label: z.string().trim().min(1).max(160),
@@ -56,10 +97,15 @@ export const CustomModuleSchema = z.object({
   display: z.boolean().default(true),
   inject: z.boolean().default(true),
   compilerInstruction: z.string().trim().max(1600),
-  outputMode: z.enum(["cards", "bullets", "chips", "gauge"]).default("cards"),
+  outputMode: z.enum(["cards", "bullets", "chips", "gauge", "template"]).default("cards"),
   maxItems: z.number().int().min(1).max(24).default(6),
   intensity: z.enum(["light", "medium", "heavy", "experimental"]).default("medium"),
   displayOrder: z.number().int().optional(),
+  schemaFields: z.array(CustomModuleFieldSchema).max(40).default([]),
+  htmlTemplate: z.string().max(8000).default(""),
+  cssTemplate: z.string().max(8000).default(""),
+  templateEngine: z.enum(["mustache-lite", "token-replace"]).default("mustache-lite"),
+  allowHtmlTemplate: z.boolean().default(false),
 }).strict();
 
 export const StateIdentitySchema = z.object({
@@ -581,6 +627,7 @@ export const CustomModuleDataSchema = z.object({
   moduleId: z.string().min(1).max(160),
   label: ShortText,
   summary: MediumText.default(""),
+  fields: z.record(z.unknown()).default({}),
   items: z.array(CustomModuleItemSchema).max(24).default([]),
 }).strict();
 

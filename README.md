@@ -1,8 +1,19 @@
 # LoomOS Command Deck
 
-Current release: **0.1.4**
+Current release: **0.1.5**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
+
+---
+
+## Key Features & Upgrades in 0.1.5
+
+- **Normalization V2 fallback path**: Compiler JSON is normalized into a complete minimum State V2 shell before strict validation. If the first output and the single repair output both remain invalid, LoomOS saves a minimal valid exact-swipe fallback state instead of leaving the tracker empty.
+- **Expanded shape repair**: Goals, pockets, relationships, impossible moves, scene items, pending consequences, banned next actions, terms, gauges, enums, world rows, tools, and custom module data are coerced where safe without inventing story facts.
+- **Stock module effective catalog**: Built-in modules now use a merged effective catalog for labels, descriptions, groups, icons, ordering, hidden state, default Display/Inject values, prompt guidance, inspector output, and duplicate-as-custom creation.
+- **Custom module schema builder**: Custom modules support typed fields (`text`, `longText`, `number`, `boolean`, `enum`, `gauge`, `chips`, `list`) with reorderable definitions, default values, enum options, min/max constraints, max item limits, display hints, and a copyable expected JSON shape.
+- **Safe HTML/CSS templates**: Custom modules can render escaped compiled data through user-authored templates. Scripts, iframes, forms, event handlers, URL attributes, inline styles, external CSS/assets, unsafe CSS URLs, fixed/sticky positioning, and z-index rules are stripped; CSS selectors are scoped to the module wrapper.
+- **Better diagnostics**: The pipeline panel shows normalization, fallback, and the first validation issues, with a copyable debug report for deeper troubleshooting.
 
 ---
 
@@ -38,7 +49,7 @@ A high-level summary block showing the current delta headline, location and time
 - **Delta** — Headline, all changes with importance badges (low/medium/high/critical), carried-forward facts, and newly-established facts.
 - **Meters** — Diagnostic gauges (tension, danger, coherence, etc.) with trend indicators, bar visualization, and band labels.
 - **Tools** — Action Resolver, Dialogue State, Director Style, Closeness State, and Image Prompt cards (visibility controlled by settings).
-- **Custom Modules** — User-defined module cards rendered in their configured output mode (cards, bullets, chips, gauge).
+- **Custom Modules** — User-defined module cards rendered in their configured output mode (cards, bullets, chips, gauge, or sanitized template).
 
 ### Cast
 Full cast matrix with all tracked characters. Each card shows name, kind (POV/main/NPC/crowd), quantity, awareness level, location, emotional state, threat rating, intent, and status. A collapsible "Visuals & Pockets" section contains pose, proximity, hands, visual anchor, clothing summary, goals, relationships, pocket inventories, and stable facts. Card visibility respects per-module Display settings.
@@ -216,7 +227,10 @@ Each custom module has these fields:
 | `display` | `true` | Whether to render dashboard panels |
 | `inject` | `true` | Whether to include in prompt injection |
 | `compilerInstruction` | (required) | LLM instruction for what to track (max 1600 chars) |
-| `outputMode` | `"cards"` | Render format: cards, bullets, chips, gauge |
+| `outputMode` | `"cards"` | Render format: cards, bullets, chips, gauge, or sanitized template |
+| `schemaFields` | `[]` | Typed custom field definitions used for compiler validation and rendering |
+| `htmlTemplate` / `cssTemplate` | `""` | User-authored template source, capped at 8,000 characters each |
+| `allowHtmlTemplate` | `false` | Opt-in switch for sanitized HTML/CSS template rendering |
 | `maxItems` | `6` | Max items to track (1-24) |
 
 ### Module Preset Manager

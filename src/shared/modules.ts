@@ -258,6 +258,48 @@ export interface StockModuleOverride {
 
 export type StockModuleOverrides = Partial<Record<ModuleKey, StockModuleOverride>>;
 
+export interface EffectiveModuleCatalogEntry extends ModuleCatalogEntry {
+  icon: string;
+  displayOrder: number;
+  intensityLabel: string;
+  hiddenFromSettings: boolean;
+  defaultControl: ModuleControl;
+  overridden: boolean;
+}
+
+export function getStockModule(key: ModuleKey): ModuleCatalogEntry | undefined {
+  return MODULE_CATALOG.find((module) => module.key === key);
+}
+
+export function getEffectiveModuleCatalog(
+  settings?: { stockModuleOverrides?: StockModuleOverrides },
+): EffectiveModuleCatalogEntry[] {
+  const overrides = settings?.stockModuleOverrides ?? {};
+  return MODULE_CATALOG.map((module, index) => {
+    const override = overrides[module.key];
+    const compilerInstruction = override?.compilerGuidanceAddendum
+      ? `${module.compilerInstruction} [Override: ${override.compilerGuidanceAddendum}]`.trim()
+      : module.compilerInstruction;
+    return {
+      ...module,
+      label: override?.label ?? module.label,
+      description: override?.description ?? module.description,
+      group: override?.group ?? module.group,
+      compilerInstruction,
+      icon: override?.icon ?? "",
+      displayOrder: override?.displayOrder ?? index * 10,
+      intensityLabel: override?.intensityLabel ?? module.intensity,
+      hiddenFromSettings: override?.hiddenFromSettings ?? false,
+      defaultControl: {
+        ...BALANCED_MODULE_SETTINGS[module.key],
+        display: override?.defaultDisplay ?? BALANCED_MODULE_SETTINGS[module.key].display,
+        inject: override?.defaultInject ?? BALANCED_MODULE_SETTINGS[module.key].inject,
+      },
+      overridden: Boolean(override && Object.keys(override).length > 0),
+    };
+  }).sort((a, b) => a.displayOrder - b.displayOrder || a.label.localeCompare(b.label));
+}
+
 export const MODULE_SCHEMA_STRUCTURES: Record<ModuleKey, string> = {
   sceneKernel: "kernel.scene, kernel.location, kernel.timeframe, kernel.date, kernel.time, kernel.elapsed, kernel.weather, kernel.pov, kernel.tone, kernel.topic, kernel.theme, kernel.objective, kernel.summary, kernel.currentFocus, kernel.nextFocus, kernel.currentRisk, kernel.stopMode, kernel.stopWhy, kernel.constraints[]",
   deltas: "delta.headline, delta.changedModules[], delta.changes[{text, age, module, importance}], delta.carriedForward[], delta.newlyEstablished[]",

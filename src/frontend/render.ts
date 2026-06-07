@@ -6,6 +6,7 @@ import type {
   StateIdentity,
   InjectionPreview,
 } from "../shared/types";
+import { renderCustomTemplate } from "../shared/customTemplates";
 
 export function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -454,13 +455,36 @@ function renderCustomModules(state: LoomOSState, settings: LoomOSSettings): stri
     if (!compiled) continue;
 
     const itemCount = compiled.items?.length ?? 0;
+    const fieldEntries = Object.entries(compiled.fields ?? {});
     let body = "";
 
-    if (itemCount === 0) {
+    if (cm.outputMode === "template" && cm.allowHtmlTemplate) {
+      const rendered = renderCustomTemplate(cm, compiled);
+      body = `
+        <style>${rendered.css}</style>
+        <section class="loomos-custom-template ${rendered.wrapperClass}">
+          ${rendered.html}
+        </section>
+      `;
+    } else if (itemCount === 0 && fieldEntries.length === 0) {
       body = `<p class="loomos-muted">No evidence compiled for this custom module.</p>`;
     } else {
+      const fieldsHtml = fieldEntries.length > 0
+        ? `<dl class="loomos-custom-fields">${fieldEntries.map(([key, value]) => `
+            <div>
+              <dt>${escapeHtml(cm.schemaFields.find((field) => field.key === key)?.label ?? key)}</dt>
+              <dd>${escapeHtml(
+                Array.isArray(value)
+                  ? value.join(", ")
+                  : typeof value === "object"
+                  ? JSON.stringify(value)
+                  : value
+              )}</dd>
+            </div>
+          `).join("")}</dl>`
+        : "";
       if (cm.outputMode === "bullets") {
-        body = `
+        body = `${fieldsHtml}
           <ul class="loomos-bullet-list">
             ${compiled.items.map(it => `
               <li>
@@ -471,7 +495,7 @@ function renderCustomModules(state: LoomOSState, settings: LoomOSSettings): stri
           </ul>
         `;
       } else if (cm.outputMode === "chips") {
-        body = `
+        body = `${fieldsHtml}
           <div class="loomos-chip-row" style="margin-top: 4px;">
             ${compiled.items.map(it => `
               <span class="loomos-chip" style="${it.color ? `border-color:${escapeHtml(it.color)}` : ""}">
@@ -482,7 +506,7 @@ function renderCustomModules(state: LoomOSState, settings: LoomOSSettings): stri
           </div>
         `;
       } else if (cm.outputMode === "gauge") {
-        body = `
+        body = `${fieldsHtml}
           <div class="loomos-meter-grid">
             ${compiled.items.map(it => {
               const match = it.text.match(/(\d+)%/);
@@ -502,7 +526,7 @@ function renderCustomModules(state: LoomOSState, settings: LoomOSSettings): stri
           </div>
         `;
       } else {
-        body = `
+        body = `${fieldsHtml}
           <div class="loomos-card-grid">
             ${compiled.items.map(it => `
               <div class="loomos-card" style="${it.color ? `border-left: 3px solid ${escapeHtml(it.color)}` : ""}">

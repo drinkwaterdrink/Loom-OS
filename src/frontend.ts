@@ -7,6 +7,7 @@ import {
   MODULE_CATALOG,
   MODULE_KEYS,
   MODULE_SCHEMA_STRUCTURES,
+  getEffectiveModuleCatalog,
   moduleSettingsForPreset,
   BALANCED_MODULE_SETTINGS,
   type StockModuleOverride,
@@ -21,9 +22,12 @@ import {
   LoomOSSettingsSchema,
   CustomModulePresetSchema,
   CustomModuleSchema,
+  CustomModuleFieldSchema,
+  CustomModuleDataSchema,
 } from "./shared/schemas";
 import type {
   ConnectionSummary,
+  CustomModuleField,
   GenerationPipelineReport,
   InjectionPreview,
   LoomOSSettings,
@@ -35,6 +39,13 @@ import type {
   StateHistoryItem,
   StateIdentity,
 } from "./shared/types";
+import { createCustomModuleFromStock } from "./shared/customModuleFactory";
+import {
+  customModuleExpectedShape,
+  renderCustomTemplate,
+  STARTER_CUSTOM_CSS,
+  STARTER_CUSTOM_HTML,
+} from "./shared/customTemplates";
 import {
   escapeHtml,
   renderDashboard,
@@ -669,24 +680,6 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     `;
   }
 
-  function stockModuleLabel(key: string): string {
-    const override = settings.stockModuleOverrides?.[key];
-    if (override?.label) return override.label;
-    return MODULE_CATALOG.find((m) => m.key === key)?.label ?? key;
-  }
-
-  function stockModuleGroup(key: string): string {
-    const override = settings.stockModuleOverrides?.[key];
-    if (override?.group) return override.group;
-    return MODULE_CATALOG.find((m) => m.key === key)?.group ?? "";
-  }
-
-  function stockModuleDescription(key: string): string {
-    const override = settings.stockModuleOverrides?.[key];
-    if (override?.description) return override.description;
-    return MODULE_CATALOG.find((m) => m.key === key)?.description ?? "";
-  }
-
   function hasOverride(key: string): boolean {
     const ov = settings.stockModuleOverrides?.[key];
     return ov !== undefined && Object.keys(ov).length > 0;
@@ -695,11 +688,11 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   function renderModuleMatrix(): string {
     const query = tab.root.querySelector<HTMLInputElement>("[data-module-search]")?.value.trim().toLowerCase() ?? "";
     
-    const modules = MODULE_CATALOG.map((m) => {
+    const modules = getEffectiveModuleCatalog(settings).map((m) => {
       const control = settings.moduleSettings[m.key];
       const isCore = CORE_TRACKING_MODULES.has(m.key);
       const isExperimental = ["dialogueState", "directorStyle", "closenessState", "imagePrompt"].includes(m.key);
-      const overridden = hasOverride(m.key);
+      const overridden = m.overridden;
       
       let pills = "";
       if (isCore) pills += `<span class="loomos-pill pill-core">Core</span>`;
@@ -708,21 +701,22 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       if (!control.display) pills += `<span class="loomos-pill pill-hidden">Hidden</span>`;
       if (overridden) pills += `<span class="loomos-pill pill-overridden">Overridden</span>`;
       
-      const effectiveLabel = stockModuleLabel(m.key);
-      const effectiveGroup = stockModuleGroup(m.key);
-      const effectiveDesc = stockModuleDescription(m.key);
+      const effectiveLabel = m.label;
+      const effectiveGroup = m.group;
+      const effectiveDesc = m.description;
       const searchText = `${effectiveLabel} ${effectiveGroup} ${effectiveDesc} ${m.key}`.toLowerCase();
       const visible = !query || searchText.includes(query);
 
-      const stockEntry = settings.stockModuleOverrides?.[m.key];
-      const hidden = stockEntry?.hiddenFromSettings === true;
-      if (hidden) return { key: m.key, label: effectiveLabel, group: effectiveGroup, description: effectiveDesc, control, isCore, pills, visible: false, isCustom: false, hidden: true };
+      const hidden = m.hiddenFromSettings;
+      if (hidden) return { key: m.key, label: effectiveLabel, group: effectiveGroup, description: effectiveDesc, icon: m.icon, control, isCore, pills, visible: false, isCustom: false, hidden: true };
 
       return {
         key: m.key,
         label: effectiveLabel,
         group: effectiveGroup,
         description: effectiveDesc,
+        icon: m.icon,
+        displayOrder: m.displayOrder,
         control,
         isCore,
         pills,
@@ -744,6 +738,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         label: m.label,
         group: "Custom Modules",
         description: m.description || `Output Mode: ${m.outputMode} | Max Items: ${m.maxItems}`,
+        icon: "",
         control: { track: m.enabled, display: m.display, inject: m.inject },
         isCore: false,
         pills,
@@ -751,11 +746,13 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         isCustom: true,
         outputMode: m.outputMode,
         compilerInstruction: m.compilerInstruction,
-        maxItems: m.maxItems
+        maxItems: m.maxItems,
+        displayOrder: m.displayOrder ?? 10_000,
       };
     });
 
-    const allModules = [...modules, ...customModules];
+    const allModules = [...modules, ...customModules]
+      .sort((a, b) => (a.displayOrder ?? 10_000) - (b.displayOrder ?? 10_000) || a.label.localeCompare(b.label));
     const visibleCount = allModules.filter((m) => m.visible).length;
     const totalCount = allModules.length;
 
@@ -823,7 +820,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
                 <div class="loomos-module-card" data-module-row="${escapeHtml(m.key)}" data-search="${escapeHtml((m.key + " " + m.label + " " + m.group + " " + m.description).toLowerCase())}">
                   <div class="loomos-module-info">
                     <div class="loomos-module-title-row">
-                      <strong>${escapeHtml(m.label)}</strong>
+                      <strong>${m.icon ? `${escapeHtml(m.icon)} ` : ""}${escapeHtml(m.label)}</strong>
                       <div class="loomos-pills">${m.pills}</div>
                     </div>
                     <small>${escapeHtml(m.description)}</small>
@@ -831,6 +828,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
                       <button type="button" class="loomos-link-btn" data-stock-action="inspect" data-stock-key="${escapeHtml(m.key)}">Inspect</button>
                       <button type="button" class="loomos-link-btn" data-stock-action="edit" data-stock-key="${escapeHtml(m.key)}">Edit</button>
                       ${overridden ? `<button type="button" class="loomos-link-btn loomos-link-btn-danger" data-stock-action="reset" data-stock-key="${escapeHtml(m.key)}">Reset</button>` : ""}
+                      <button type="button" class="loomos-link-btn" data-stock-action="duplicate-as-custom" data-stock-key="${escapeHtml(m.key)}">Duplicate as Custom</button>
                     </div>
                   </div>
                   <div class="loomos-module-toggles">
@@ -918,7 +916,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function diagnosticText(): string {
     const lines = [
-      `version: 0.1.4`,
+      `version: 0.1.5`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -926,6 +924,11 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       `phase: ${pipeline?.phase || "idle"}`,
       `attempt: ${pipeline?.attempt || "-"}`,
       `elapsed: ${pipeline ? `${Math.round(pipeline.elapsedMs / 100) / 10}s` : "-"}`,
+      `normalized: ${pipeline?.normalized === undefined ? "-" : pipeline.normalized ? "yes" : "no"}`,
+      `fallbackSaved: ${pipeline?.fallbackSaved === undefined ? "-" : pipeline.fallbackSaved ? "yes" : "no"}`,
+      ...(pipeline?.issues?.length
+        ? ["issues:", ...pipeline.issues.slice(0, 8).map((issue) => `- ${issue}`)]
+        : []),
     ];
     return lines.join("\n");
   }
@@ -998,6 +1001,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       <details class="loomos-shell loomos-settings" data-details="diagnostics">
         <summary>Pipeline Diagnostics</summary>
         <pre class="loomos-diagnostic">${escapeHtml(diagnosticText())}</pre>
+        ${pipeline?.debugReport ? `<button type="button" class="loomos-button loomos-btn-sm" data-action="copy-debug-report">Copy Debug Report</button>` : ""}
       </details>
       ${settings.showInjectionPreview && injectionPreview ? renderInjectionPreview(injectionPreview) : ""}`;
   }
@@ -1133,6 +1137,11 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       nextSettings = moduleSettingsForPreset(preset as Exclude<ModulePreset, "custom">);
     } else {
       return;
+    }
+
+    for (const module of getEffectiveModuleCatalog(settings)) {
+      nextSettings[module.key].display = module.defaultControl.display;
+      nextSettings[module.key].inject = module.defaultControl.inject;
     }
 
     settings = LoomOSSettingsSchema.parse({
@@ -1689,95 +1698,325 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       send({ type: "save_settings", requestId: requestId("stock-reset"), settings });
       status = `Override reset for "${entry.label}"`;
       renderAll();
+      return;
     }
+
+    if (action === "duplicate-as-custom") {
+      const key = moduleKey as ModuleKey;
+      if (!MODULE_KEYS.includes(key)) return;
+      const custom = createCustomModuleFromStock(
+        key,
+        settings,
+        "cmod_" + crypto.randomUUID().replace(/-/g, "").substring(0, 12),
+      );
+      settings = LoomOSSettingsSchema.parse({
+        ...settings,
+        customModules: [...settings.customModules, custom],
+      });
+      send({ type: "save_settings", requestId: requestId("stock-duplicate"), settings });
+      status = `"${custom.label}" created`;
+      renderAll();
+    }
+  }
+
+  async function openCustomModuleEditor(
+    original: LoomOSSettings["customModules"][number] | undefined,
+    customMods: LoomOSSettings["customModules"],
+  ): Promise<void> {
+    const isEdit = Boolean(original);
+    let draft = CustomModuleSchema.parse(original ?? {
+      id: "cmod_" + crypto.randomUUID().replace(/-/g, "").substring(0, 12),
+      label: "New Custom Module",
+      group: "Custom",
+      description: "",
+      enabled: true,
+      display: true,
+      inject: true,
+      compilerInstruction: "Track grounded evidence for this module.",
+      outputMode: "cards",
+      maxItems: 6,
+      intensity: "medium",
+      displayOrder: 10_000,
+      schemaFields: [],
+      htmlTemplate: STARTER_CUSTOM_HTML,
+      cssTemplate: STARTER_CUSTOM_CSS,
+      templateEngine: "mustache-lite",
+      allowHtmlTemplate: false,
+    });
+    let schemaFields: CustomModuleField[] = [...draft.schemaFields];
+    let editingFieldId: string | null = null;
+    const pm = ctx.ui.showModal({
+      title: isEdit ? "Edit Custom Module" : "Add Custom Module",
+      width: Math.min(760, window.innerWidth - 16),
+      maxHeight: Math.min(820, window.innerHeight - 32),
+    });
+
+    const readDefaultValue = (): unknown => {
+      const raw = pm.root.querySelector<HTMLInputElement>("#field-default")?.value.trim() ?? "";
+      if (!raw) return undefined;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return raw;
+      }
+    };
+
+    const syncDraft = (): void => {
+      const currentLabel = pm.root.querySelector<HTMLInputElement>("#mod-label")?.value;
+      if (currentLabel === undefined) return;
+      draft = {
+        ...draft,
+        label: currentLabel,
+        group: pm.root.querySelector<HTMLInputElement>("#mod-group")?.value ?? draft.group,
+        description: pm.root.querySelector<HTMLInputElement>("#mod-desc")?.value ?? draft.description,
+        compilerInstruction: pm.root.querySelector<HTMLTextAreaElement>("#mod-instruction")?.value ?? draft.compilerInstruction,
+        outputMode: (pm.root.querySelector<HTMLSelectElement>("#mod-output-mode")?.value ?? draft.outputMode) as typeof draft.outputMode,
+        intensity: (pm.root.querySelector<HTMLSelectElement>("#mod-intensity")?.value ?? draft.intensity) as typeof draft.intensity,
+        maxItems: Number(pm.root.querySelector<HTMLInputElement>("#mod-max")?.value || draft.maxItems),
+        displayOrder: Number(pm.root.querySelector<HTMLInputElement>("#mod-order")?.value || draft.displayOrder || 10_000),
+        allowHtmlTemplate: pm.root.querySelector<HTMLInputElement>("#mod-allow-template")?.checked ?? draft.allowHtmlTemplate,
+        templateEngine: (pm.root.querySelector<HTMLSelectElement>("#mod-template-engine")?.value ?? draft.templateEngine) as typeof draft.templateEngine,
+        htmlTemplate: pm.root.querySelector<HTMLTextAreaElement>("#mod-html")?.value ?? draft.htmlTemplate,
+        cssTemplate: pm.root.querySelector<HTMLTextAreaElement>("#mod-css")?.value ?? draft.cssTemplate,
+      };
+    };
+
+    const renderEditor = (): void => {
+      const editing = schemaFields.find((field) => field.id === editingFieldId);
+      const previewModule = CustomModuleSchema.parse({
+        ...draft,
+        label: draft.label.trim() || "Custom Module",
+        compilerInstruction: draft.compilerInstruction.trim() || "Track grounded evidence.",
+        schemaFields,
+      });
+      pm.root.className = "loomos-root";
+      pm.root.innerHTML = `
+        <div class="loomos-prompt-dialog loomos-module-editor" data-skin="${settings.skin}">
+          <div class="loomos-editor-grid">
+            <label class="loomos-field"><span>Label</span><input class="loomos-input" id="mod-label" value="${escapeHtml(draft.label)}"></label>
+            <label class="loomos-field"><span>Group</span><input class="loomos-input" id="mod-group" value="${escapeHtml(draft.group)}"></label>
+            <label class="loomos-field loomos-full-span"><span>Description</span><input class="loomos-input" id="mod-desc" value="${escapeHtml(draft.description)}"></label>
+            <label class="loomos-field loomos-full-span"><span>Compiler Instruction</span><textarea class="loomos-input loomos-editor-textarea" id="mod-instruction" maxlength="1600">${escapeHtml(draft.compilerInstruction)}</textarea></label>
+            <label class="loomos-field"><span>Output Mode</span><select class="loomos-select" id="mod-output-mode">
+              ${(["cards", "bullets", "chips", "gauge", "template"] as const).map((mode) =>
+                `<option value="${mode}"${draft.outputMode === mode ? " selected" : ""}>${mode}</option>`
+              ).join("")}
+            </select></label>
+            <label class="loomos-field"><span>Intensity</span><select class="loomos-select" id="mod-intensity">
+              ${(["light", "medium", "heavy", "experimental"] as const).map((value) =>
+                `<option value="${value}"${draft.intensity === value ? " selected" : ""}>${value}</option>`
+              ).join("")}
+            </select></label>
+            <label class="loomos-field"><span>Max Items</span><input class="loomos-input" type="number" id="mod-max" min="1" max="24" value="${draft.maxItems}"></label>
+            <label class="loomos-field"><span>Display Order</span><input class="loomos-input" type="number" id="mod-order" value="${draft.displayOrder ?? 10_000}"></label>
+          </div>
+
+          <details class="loomos-editor-section" open>
+            <summary>Schema Builder <span class="loomos-badge">${schemaFields.length} fields</span></summary>
+            <div class="loomos-editor-section-body">
+              <div class="loomos-schema-field-list">
+                ${schemaFields.map((field, index) => `
+                  <div class="loomos-schema-field-row">
+                    <div><strong>${escapeHtml(field.label)}</strong><small>${escapeHtml(field.key)} | ${escapeHtml(field.type)}${field.required ? " | required" : ""}</small></div>
+                    <div class="loomos-icon-actions">
+                      <button type="button" class="loomos-icon-button" data-field-action="up" data-field-id="${escapeHtml(field.id)}" title="Move up"${index === 0 ? " disabled" : ""}>&#8593;</button>
+                      <button type="button" class="loomos-icon-button" data-field-action="down" data-field-id="${escapeHtml(field.id)}" title="Move down"${index === schemaFields.length - 1 ? " disabled" : ""}>&#8595;</button>
+                      <button type="button" class="loomos-icon-button" data-field-action="edit" data-field-id="${escapeHtml(field.id)}" title="Edit field">Edit</button>
+                      <button type="button" class="loomos-icon-button loomos-button-danger" data-field-action="delete" data-field-id="${escapeHtml(field.id)}" title="Delete field">&times;</button>
+                    </div>
+                  </div>
+                `).join("") || `<p class="loomos-muted">No structured fields yet.</p>`}
+              </div>
+              <div class="loomos-two-column">
+                <label class="loomos-field"><span>Field Label</span><input class="loomos-input" id="field-label" value="${escapeHtml(editing?.label ?? "")}"></label>
+                <label class="loomos-field"><span>Field Key</span><input class="loomos-input" id="field-key" value="${escapeHtml(editing?.key ?? "")}" placeholder="stableKey"></label>
+                <label class="loomos-field"><span>Type</span><select class="loomos-select" id="field-type">
+                  ${(["text", "longText", "number", "boolean", "enum", "gauge", "chips", "list"] as const).map((type) =>
+                    `<option value="${type}"${editing?.type === type ? " selected" : ""}>${type}</option>`
+                  ).join("")}
+                </select></label>
+                <label class="loomos-check"><input type="checkbox" id="field-required"${checked(editing?.required ?? false)}><span>Required</span></label>
+                <label class="loomos-field loomos-full-span"><span>Description</span><input class="loomos-input" id="field-desc" value="${escapeHtml(editing?.description ?? "")}"></label>
+                <label class="loomos-field"><span>Default JSON Value</span><input class="loomos-input" id="field-default" value="${escapeHtml(editing?.defaultValue === undefined ? "" : JSON.stringify(editing.defaultValue))}"></label>
+                <label class="loomos-field"><span>Enum Options</span><input class="loomos-input" id="field-enums" value="${escapeHtml(editing?.enumOptions.join(", ") ?? "")}"></label>
+                <label class="loomos-field"><span>Max Items</span><input class="loomos-input" type="number" id="field-max-items" min="1" max="50" value="${editing?.maxItems ?? ""}"></label>
+                <label class="loomos-field"><span>Display Hint</span><input class="loomos-input" id="field-display-hint" value="${escapeHtml(editing?.displayHint ?? "")}"></label>
+                <label class="loomos-field"><span>Minimum</span><input class="loomos-input" type="number" id="field-min" value="${editing?.min ?? ""}"></label>
+                <label class="loomos-field"><span>Maximum</span><input class="loomos-input" type="number" id="field-max" value="${editing?.max ?? ""}"></label>
+              </div>
+              <div class="loomos-dialog-buttons">
+                <button type="button" class="loomos-button loomos-button-primary" id="field-save">${editing ? "Update Field" : "Add Field"}</button>
+                ${editing ? `<button type="button" class="loomos-button" id="field-cancel">Cancel Edit</button>` : ""}
+                <button type="button" class="loomos-button" id="shape-copy">Copy JSON Shape</button>
+              </div>
+              <pre class="loomos-shape-preview">${escapeHtml(JSON.stringify(customModuleExpectedShape(previewModule), null, 2))}</pre>
+            </div>
+          </details>
+
+          <details class="loomos-editor-section"${draft.outputMode === "template" ? " open" : ""}>
+            <summary>HTML/CSS Template <span class="loomos-badge">Sanitized</span></summary>
+            <div class="loomos-editor-section-body">
+              <label class="loomos-check"><input type="checkbox" id="mod-allow-template"${checked(draft.allowHtmlTemplate)}><span>Allow sanitized HTML template rendering</span></label>
+              <label class="loomos-field"><span>Template Engine</span><select class="loomos-select" id="mod-template-engine">
+                <option value="mustache-lite"${draft.templateEngine === "mustache-lite" ? " selected" : ""}>Mustache Lite</option>
+                <option value="token-replace"${draft.templateEngine === "token-replace" ? " selected" : ""}>Token Replace</option>
+              </select></label>
+              <p class="loomos-perf-warning">No scripts, event attributes, iframes, external assets, links, or external CSS. Templates are sanitized and compiled data is escaped.</p>
+              <label class="loomos-field"><span>HTML Template</span><textarea class="loomos-input loomos-code-editor" id="mod-html" maxlength="8000">${escapeHtml(draft.htmlTemplate)}</textarea></label>
+              <label class="loomos-field"><span>CSS Template</span><textarea class="loomos-input loomos-code-editor" id="mod-css" maxlength="8000">${escapeHtml(draft.cssTemplate)}</textarea></label>
+              <div class="loomos-dialog-buttons">
+                <button type="button" class="loomos-button" id="template-reset">Reset Starter</button>
+                <button type="button" class="loomos-button" id="template-copy">Copy Template</button>
+                <button type="button" class="loomos-button loomos-button-primary" id="template-preview">Refresh Preview</button>
+              </div>
+              <div class="loomos-template-preview" id="template-preview-root"></div>
+            </div>
+          </details>
+
+          <div class="loomos-dialog-buttons loomos-editor-footer">
+            <button type="button" class="loomos-button loomos-button-primary" id="mod-confirm">${isEdit ? "Save Changes" : "Add Module"}</button>
+            <button type="button" class="loomos-button" id="mod-cancel">Cancel</button>
+          </div>
+        </div>`;
+
+      pm.root.querySelector("#field-save")?.addEventListener("click", () => {
+        syncDraft();
+        const label = pm.root.querySelector<HTMLInputElement>("#field-label")?.value.trim() ?? "";
+        const key = pm.root.querySelector<HTMLInputElement>("#field-key")?.value.trim() ?? "";
+        if (!label || !key) {
+          status = "Field label and key are required";
+          return;
+        }
+        const maxItemsRaw = pm.root.querySelector<HTMLInputElement>("#field-max-items")?.value.trim();
+        const minRaw = pm.root.querySelector<HTMLInputElement>("#field-min")?.value.trim();
+        const maxRaw = pm.root.querySelector<HTMLInputElement>("#field-max")?.value.trim();
+        const field = CustomModuleFieldSchema.parse({
+          id: editing?.id ?? "field_" + crypto.randomUUID().replace(/-/g, "").substring(0, 10),
+          label,
+          key,
+          type: pm.root.querySelector<HTMLSelectElement>("#field-type")?.value,
+          required: pm.root.querySelector<HTMLInputElement>("#field-required")?.checked,
+          description: pm.root.querySelector<HTMLInputElement>("#field-desc")?.value.trim() ?? "",
+          defaultValue: readDefaultValue(),
+          enumOptions: (pm.root.querySelector<HTMLInputElement>("#field-enums")?.value ?? "")
+            .split(",").map((value) => value.trim()).filter(Boolean),
+          maxItems: maxItemsRaw ? Number(maxItemsRaw) : undefined,
+          min: minRaw ? Number(minRaw) : undefined,
+          max: maxRaw ? Number(maxRaw) : undefined,
+          displayHint: pm.root.querySelector<HTMLInputElement>("#field-display-hint")?.value.trim() || undefined,
+        });
+        schemaFields = editing
+          ? schemaFields.map((candidate) => candidate.id === editing.id ? field : candidate)
+          : [...schemaFields, field];
+        editingFieldId = null;
+        renderEditor();
+      });
+      pm.root.querySelector("#field-cancel")?.addEventListener("click", () => {
+        syncDraft();
+        editingFieldId = null;
+        renderEditor();
+      });
+      pm.root.querySelectorAll<HTMLElement>("[data-field-action]").forEach((button) => {
+        button.addEventListener("click", () => {
+          syncDraft();
+          const fieldId = button.dataset.fieldId;
+          const fieldAction = button.dataset.fieldAction;
+          const index = schemaFields.findIndex((field) => field.id === fieldId);
+          if (index < 0) return;
+          if (fieldAction === "edit") editingFieldId = fieldId ?? null;
+          if (fieldAction === "delete") schemaFields = schemaFields.filter((field) => field.id !== fieldId);
+          if (fieldAction === "up" && index > 0) {
+            [schemaFields[index - 1], schemaFields[index]] = [schemaFields[index]!, schemaFields[index - 1]!];
+          }
+          if (fieldAction === "down" && index < schemaFields.length - 1) {
+            [schemaFields[index], schemaFields[index + 1]] = [schemaFields[index + 1]!, schemaFields[index]!];
+          }
+          renderEditor();
+        });
+      });
+      pm.root.querySelector("#shape-copy")?.addEventListener("click", async () => {
+        syncDraft();
+        const module = CustomModuleSchema.parse({
+          ...draft,
+          label: draft.label.trim() || "Custom Module",
+          compilerInstruction: draft.compilerInstruction.trim() || "Track grounded evidence.",
+          schemaFields,
+        });
+        await navigator.clipboard.writeText(JSON.stringify(customModuleExpectedShape(module), null, 2));
+        status = "Expected JSON shape copied";
+      });
+      pm.root.querySelector("#template-reset")?.addEventListener("click", () => {
+        syncDraft();
+        draft.htmlTemplate = STARTER_CUSTOM_HTML;
+        draft.cssTemplate = STARTER_CUSTOM_CSS;
+        renderEditor();
+      });
+      pm.root.querySelector("#template-copy")?.addEventListener("click", async () => {
+        syncDraft();
+        await navigator.clipboard.writeText(`${draft.htmlTemplate}\n\n/* CSS */\n${draft.cssTemplate}`);
+        status = "Template copied";
+      });
+      pm.root.querySelector("#template-preview")?.addEventListener("click", () => {
+        syncDraft();
+        const module = CustomModuleSchema.parse({
+          ...draft,
+          label: draft.label.trim() || "Custom Module",
+          compilerInstruction: draft.compilerInstruction.trim() || "Track grounded evidence.",
+          schemaFields,
+        });
+        const sample = CustomModuleDataSchema.parse({
+          ...customModuleExpectedShape(module),
+          summary: "Live sanitized preview",
+          items: [{
+            title: "Sample Item",
+            text: "Compiled data is escaped before insertion.",
+            importance: "medium",
+            changed: false,
+          }],
+        });
+        const preview = renderCustomTemplate(module, sample);
+        const root = pm.root.querySelector<HTMLElement>("#template-preview-root");
+        if (root) {
+          root.innerHTML = `<style>${preview.css}</style><section class="loomos-custom-template ${preview.wrapperClass}">${preview.html}</section>`;
+        }
+      });
+      pm.root.querySelector("#mod-confirm")?.addEventListener("click", () => {
+        syncDraft();
+        const validated = CustomModuleSchema.parse({
+          ...draft,
+          label: draft.label.trim(),
+          group: draft.group.trim() || "Custom",
+          description: draft.description.trim(),
+          compilerInstruction: draft.compilerInstruction.trim(),
+          schemaFields,
+        });
+        settings = LoomOSSettingsSchema.parse({
+          ...settings,
+          customModules: isEdit
+            ? customMods.map((module) => module.id === validated.id ? validated : module)
+            : [...customMods, validated],
+        });
+        send({ type: "save_settings", requestId: requestId("custom-mod"), settings });
+        status = isEdit ? `Custom module "${validated.label}" updated` : `Custom module "${validated.label}" added`;
+        pm.dismiss();
+        renderAll();
+      });
+      pm.root.querySelector("#mod-cancel")?.addEventListener("click", () => pm.dismiss());
+    };
+
+    renderEditor();
   }
 
   async function handleCustomModuleAction(action: string, moduleId?: string): Promise<void> {
     const customMods = settings.customModules || [];
-    
+
     if (action === "add" || (action === "edit" && moduleId)) {
-      const isEdit = action === "edit";
-      const original = isEdit ? customMods.find(m => m.id === moduleId) : null;
-      if (isEdit && !original) return;
-      
-      const pm = ctx.ui.showModal({ title: isEdit ? "Edit Custom Module" : "Add Custom Module", width: 500, maxHeight: 600 });
-      pm.root.innerHTML = `
-        <div class="loomos-root loomos-prompt-dialog" data-skin="${settings.skin}">
-          <label class="loomos-field">
-            <span>Label</span>
-            <input class="loomos-input" type="text" id="mod-label" value="${original ? escapeHtml(original.label) : ""}" placeholder="e.g. Magic Rules" required>
-          </label>
-          <label class="loomos-field">
-            <span>Group</span>
-            <input class="loomos-input" type="text" id="mod-group" value="${original ? escapeHtml(original.group) : "Custom"}" placeholder="e.g. World or Custom">
-          </label>
-          <label class="loomos-field">
-            <span>Description</span>
-            <input class="loomos-input" type="text" id="mod-desc" value="${original ? escapeHtml(original.description) : ""}" placeholder="Short summary of this module">
-          </label>
-          <label class="loomos-field">
-            <span>Compiler Instruction (max 1600 chars)</span>
-            <textarea class="loomos-input" id="mod-instruction" style="height: 100px;" placeholder="Instructions for the compiler. e.g. Track active spell effects, magic costs, and rules. Include severity or cost." required>${original ? escapeHtml(original.compilerInstruction) : ""}</textarea>
-          </label>
-          <label class="loomos-field">
-            <span>Output Mode</span>
-            <select class="loomos-select" id="mod-output-mode">
-              <option value="cards"${original && original.outputMode === "cards" ? " selected" : ""}>Cards (grid of key-value panels)</option>
-              <option value="bullets"${original && original.outputMode === "bullets" ? " selected" : ""}>Bullets (simple list)</option>
-              <option value="chips"${original && original.outputMode === "chips" ? " selected" : ""}>Chips (inline badges)</option>
-              <option value="gauge"${original && original.outputMode === "gauge" ? " selected" : ""}>Gauge (progress bar)</option>
-            </select>
-          </label>
-          <label class="loomos-field">
-            <span>Max Items (1 to 24)</span>
-            <input class="loomos-input" type="number" id="mod-max" min="1" max="24" value="${original ? original.maxItems : 6}">
-          </label>
-          <div class="loomos-dialog-buttons">
-            <button type="button" class="loomos-button loomos-button-primary" id="mod-confirm">${isEdit ? "Save Changes" : "Add Module"}</button>
-            <button type="button" class="loomos-button" id="mod-cancel">Cancel</button>
-          </div>
-        </div>
-      `;
-      
-      const onConfirm = () => {
-        const label = pm.root.querySelector<HTMLInputElement>("#mod-label")?.value.trim();
-        const group = pm.root.querySelector<HTMLInputElement>("#mod-group")?.value.trim() || "Custom";
-        const desc = pm.root.querySelector<HTMLInputElement>("#mod-desc")?.value.trim() || "";
-        const instruction = pm.root.querySelector<HTMLTextAreaElement>("#mod-instruction")?.value.trim();
-        const outputMode = pm.root.querySelector<HTMLSelectElement>("#mod-output-mode")?.value as "cards" | "bullets" | "chips" | "gauge";
-        const maxItems = Number(pm.root.querySelector<HTMLInputElement>("#mod-max")?.value || 6);
-        
-        if (!label || !instruction) return;
-        
-        const validated = CustomModuleSchema.parse({
-          id: original ? original.id : "cmod_" + crypto.randomUUID().replace(/-/g, "").substring(0, 12),
-          label,
-          group,
-          description: desc,
-          enabled: original ? original.enabled : true,
-          display: original ? original.display : true,
-          inject: original ? original.inject : true,
-          compilerInstruction: instruction,
-          outputMode,
-          maxItems
-        });
-        
-        if (isEdit) {
-          settings.customModules = customMods.map(m => m.id === moduleId ? validated : m);
-        } else {
-          settings.customModules = [...customMods, validated];
-        }
-        
-        send({ type: "save_settings", requestId: requestId("custom-mod"), settings });
-        status = isEdit ? `Custom module "${label}" updated` : `Custom module "${label}" added`;
-        pm.dismiss();
-        renderAll();
-      };
-      
-      pm.root.querySelector("#mod-confirm")?.addEventListener("click", onConfirm);
-      pm.root.querySelector("#mod-cancel")?.addEventListener("click", () => pm.dismiss());
+      const original = action === "edit" ? customMods.find((m) => m.id === moduleId) : undefined;
+      if (action === "edit" && !original) return;
+      await openCustomModuleEditor(original, customMods);
+      return;
     }
-    
+
     if (action === "duplicate" && moduleId) {
       const original = customMods.find(m => m.id === moduleId);
       if (original) {
@@ -1827,7 +2066,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     };
 
     if (action === "enable-display") {
-      for (const m of MODULE_CATALOG) {
+      for (const m of getEffectiveModuleCatalog(settings)) {
         if (matchesQuery(m.label, m.group, m.description)) {
           settings.moduleSettings[m.key].display = true;
         }
@@ -1843,7 +2082,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     }
     
     if (action === "disable-display") {
-      for (const m of MODULE_CATALOG) {
+      for (const m of getEffectiveModuleCatalog(settings)) {
         if (matchesQuery(m.label, m.group, m.description)) {
           settings.moduleSettings[m.key].display = false;
         }
@@ -1859,8 +2098,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     }
     
     if (action === "inject-recommended") {
-      for (const m of MODULE_CATALOG) {
-        settings.moduleSettings[m.key].inject = BALANCED_MODULE_SETTINGS[m.key].inject;
+      for (const m of getEffectiveModuleCatalog(settings)) {
+        settings.moduleSettings[m.key].inject = m.defaultControl.inject;
       }
       status = "Reset injection to recommended modules";
     }
@@ -2004,6 +2243,12 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       if (action === "delete") void deleteCurrentState();
       if (action === "permissions") void requestPermissions();
       if (action === "what-changed" && state) void showWhatChangedModal();
+      if (action === "copy-debug-report" && pipeline?.debugReport) {
+        void navigator.clipboard.writeText(pipeline.debugReport).then(() => {
+          status = "Debug report copied";
+          renderAll();
+        });
+      }
       if (action === "clear-search") {
         const searchInput = tab.root.querySelector<HTMLInputElement>("[data-module-search]");
         if (searchInput) {

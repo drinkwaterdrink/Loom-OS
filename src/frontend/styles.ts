@@ -1015,4 +1015,138 @@ export const LOOMOS_STYLES = `
   .loomos-root[data-view="drawer"] .loomos-stat-grid {
     grid-template-columns: 1fr !important;
   }
+
+  .loomos-module-editor {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+  }
+  .loomos-editor-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .loomos-full-span {
+    grid-column: 1 / -1;
+  }
+  .loomos-editor-textarea {
+    min-height: 90px;
+  }
+  .loomos-editor-section {
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .loomos-editor-section > summary {
+    align-items: center;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 10px;
+  }
+  .loomos-editor-section-body {
+    border-top: 1px solid var(--loomos-border);
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    padding: 10px;
+  }
+  .loomos-schema-field-list {
+    display: grid;
+    gap: 6px;
+  }
+  .loomos-schema-field-row {
+    align-items: center;
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    min-width: 0;
+    padding: 8px;
+  }
+  .loomos-schema-field-row small {
+    color: var(--loomos-muted);
+    display: block;
+    font-size: 10px;
+    margin-top: 2px;
+    overflow-wrap: anywhere;
+  }
+  .loomos-icon-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: flex-end;
+  }
+  .loomos-icon-button {
+    align-items: center;
+    background: var(--loomos-panel);
+    border: 1px solid var(--loomos-border);
+    border-radius: 6px;
+    color: var(--loomos-ink);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 10px;
+    min-height: 30px;
+    padding: 4px 7px;
+  }
+  .loomos-icon-button:disabled {
+    cursor: not-allowed;
+    opacity: .45;
+  }
+  .loomos-shape-preview,
+  .loomos-code-editor {
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+    max-width: 100%;
+    min-width: 0;
+    overflow: auto;
+    padding: 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .loomos-code-editor {
+    min-height: 120px;
+    resize: vertical;
+  }
+  .loomos-template-preview {
+    background: var(--loomos-bg);
+    border: 1px dashed var(--loomos-border);
+    border-radius: 8px;
+    min-height: 60px;
+    overflow: hidden;
+    padding: 8px;
+  }
+  .loomos-custom-fields {
+    display: grid;
+    gap: 6px;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    margin: 0 0 10px;
+  }
+  .loomos-custom-fields div {
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    min-width: 0;
+    padding: 7px;
+  }
+  .loomos-custom-fields dt {
+    color: var(--loomos-muted);
+    font-size: 9px;
+    text-transform: uppercase;
+  }
+  .loomos-custom-fields dd {
+    margin: 2px 0 0;
+    overflow-wrap: anywhere;
+  }
+  .loomos-custom-template {
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
 `;

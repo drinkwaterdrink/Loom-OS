@@ -102,7 +102,10 @@ const seededState = {
       identitySummary: "An investigator hiding the identity of her patron.",
       clothingSummary: "Dark wool coat, leather gloves, soot on the left sleeve.",
       goals: ["Recover the ledger", "Keep her patron secret"],
-      relationships: ["Distrusts Iven", "Depends on Iven's knowledge of the tower"],
+      relationships: [
+        { target: "Iven", axis: "trust", value: -45 },
+        { target: "Iven", axis: "dependence", value: 60 },
+      ],
       leverage: ["Knows the guard rotation"],
       pockets: [{ name: "Brass telescope key", type: "key", qty: 1, condition: "Good", known: true }],
       stableFacts: ["Mara cannot reveal who sent her."],
@@ -119,7 +122,7 @@ const seededState = {
       identitySummary: "A compromised ally withholding evidence.",
       clothingSummary: "Weathered coat, one soot-marked glove.",
       goals: ["Escape unseen", "Keep the torn page"],
-      relationships: ["Protective of Mara despite himself"],
+      relationships: [{ target: "Mara", axis: "protectiveness", value: 55 }],
       leverage: ["Possesses a torn page"],
       pockets: [{ name: "Torn ledger page", type: "evidence", qty: 1, condition: "Soot-stained", known: false }],
       stableFacts: ["Iven found the page before Mara entered the gallery."],
@@ -203,6 +206,9 @@ const defaultSettings = {
   connectionId: "",
   modulePreset: "balanced",
   moduleSettings,
+  customModulePresets: [],
+  customModules: [],
+  stockModuleOverrides: [],
 };
 
 const eventHandlers = new Map();

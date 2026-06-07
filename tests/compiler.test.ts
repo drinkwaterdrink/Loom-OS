@@ -33,7 +33,7 @@ test("compiler retries exactly once and accepts repaired JSON", async () => {
   }
 });
 
-test("invalid output never replaces an existing valid state", async () => {
+test("double invalid output saves a valid minimal fallback exact-swipe state", async () => {
   const existing = makeState();
   let calls = 0;
   const result = await compileStateWithRepair({
@@ -48,13 +48,17 @@ test("invalid output never replaces an existing valid state", async () => {
     signal: new AbortController().signal,
     generate: async () => {
       calls += 1;
-      return calls === 1 ? "{}" : '{"kernel":null}';
+      return calls === 1 ? "not json" : "still not json";
     },
   });
 
   assert.equal(calls, 2);
-  assert.equal(result.ok, false);
-  if (!result.ok) {
-    assert.equal(result.state, existing);
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.fallbackSaved, true);
+    assert.equal(result.state.source.repaired, true);
+    assert.deepEqual(result.state.identity, identity);
+    assert.equal(result.state.delta.headline, "Compiler output was invalid; saved minimal fallback state.");
+    assert.equal(result.state.auditLog[0]?.result, "fallback_state_saved");
   }
 });

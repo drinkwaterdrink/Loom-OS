@@ -2,6 +2,27 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.5] - 2026-06-07
+
+### Added
+
+- Normalization V2 fallback saving: if first and repair compiler outputs are still invalid, LoomOS saves a minimal valid exact-swipe fallback state with an audit marker and visible recovery headline.
+- Custom module schema builder with typed fields, field reorder/edit/delete, default values, enum options, numeric bounds, max item limits, display hints, and copyable expected JSON shape.
+- Safe custom HTML/CSS template mode with starter templates, live preview, reset/copy controls, escaped data interpolation, HTML sanitization, CSS sanitization, and scoped selectors.
+- Duplicate-as-custom action for stock modules.
+- Copyable compiler debug report with normalization, fallback, and validation issue details.
+
+### Changed
+
+- Effective stock module catalog now merges override metadata for UI grouping/search/order, inspector labels, default Display/Inject preferences, prompt guidance, and duplicate-as-custom creation without mutating stock definitions.
+- Compiler prompts now include effective stock schema summaries and custom field contracts, and explicitly require custom template modules to output data only.
+- Normalization preserves the expanded character ledger fields while coercing common malformed provider shapes.
+
+### Fixed
+
+- Generation no longer loses the exact-swipe tracker state solely because cast goals, pockets, relationships, impossible moves, scene rows, pending consequences, or custom fields came back in shorthand or malformed shapes.
+- Custom template output cannot execute model-authored scripts, event handlers, URLs, embedded frames, forms, external assets, or global CSS.
+
 ## [0.1.4] - 2026-06-07
 
 ### Added

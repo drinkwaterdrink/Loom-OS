@@ -11,12 +11,15 @@ import type {
   CustomModulePresetSchema,
   CustomModuleItemSchema,
   CustomModuleDataSchema,
+  CustomModuleFieldSchema,
   StateHistoryItemSchema,
 } from "./schemas";
 export type {
+  ModuleCatalogEntry,
   ModuleControl,
   ModuleKey,
   ModulePreset,
+  StockModuleOverride,
 } from "./modules";
 
 export type LoomOSSkin = z.infer<typeof LoomOSSkinSchema>;
@@ -30,6 +33,7 @@ export type CustomModule = z.infer<typeof CustomModuleSchema>;
 export type CustomModulePreset = z.infer<typeof CustomModulePresetSchema>;
 export type CustomModuleItem = z.infer<typeof CustomModuleItemSchema>;
 export type CustomModuleData = z.infer<typeof CustomModuleDataSchema>;
+export type CustomModuleField = z.infer<typeof CustomModuleFieldSchema>;
 export type StateHistoryItem = z.infer<typeof StateHistoryItemSchema>;
 
 export interface PermissionSnapshot {
@@ -62,6 +66,10 @@ export interface GenerationPipelineReport {
   elapsedMs: number;
   connectionId: string;
   message: string;
+  normalized?: boolean;
+  fallbackSaved?: boolean;
+  issues?: string[];
+  debugReport?: string;
 }
 
 export interface InjectionPreview {

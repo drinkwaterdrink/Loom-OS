@@ -543,14 +543,6 @@ async function generateState(
       existingState,
     );
     const enabledModules = trackedModuleKeys(settings);
-    const stockModuleOverrides = settings.stockModuleOverrides
-      ? Object.fromEntries(
-          Object.entries(settings.stockModuleOverrides)
-            .filter(([_, v]) => v?.compilerGuidanceAddendum)
-            .map(([k, v]) => [k, { compilerGuidanceAddendum: v!.compilerGuidanceAddendum! }])
-        )
-      : undefined;
-
     const compiled = await compileStateWithRepair({
       identity,
       transcript: transcriptResult.transcript,
@@ -560,7 +552,7 @@ async function generateState(
       seedText: seed.text,
       enabledModules,
       customModules: settings.customModules,
-      stockModuleOverrides,
+      stockModuleOverrides: settings.stockModuleOverrides,
       connectionId: connection.id,
       signal: controller.signal,
       onPhase: progress,
@@ -595,15 +587,23 @@ async function generateState(
       requestId,
       status: "completed",
       identity,
-      message: compiled.repaired
+      message: compiled.fallbackSaved
+        ? "Compiler output stayed invalid; a minimal valid fallback state was saved."
+        : compiled.repaired
         ? "State compiled after one repair pass."
+        : compiled.normalized
+        ? "State normalized, validated, and saved."
         : "State compiled and saved.",
       report: {
         phase: "saving",
         attempt: compiled.repaired ? 2 : 1,
         elapsedMs: Date.now() - startedAt,
         connectionId: connection.id,
-        message: "Validated state saved.",
+        message: compiled.fallbackSaved ? "Minimal fallback state saved." : "Validated state saved.",
+        normalized: compiled.normalized,
+        fallbackSaved: compiled.fallbackSaved,
+        issues: compiled.issues.slice(0, 8),
+        debugReport: compiled.debugReport,
       },
     }, userId);
   } catch (error) {
