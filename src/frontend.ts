@@ -118,6 +118,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   let activeGenerationRequestId: string | null = null;
   let generationStartedAt = 0;
   let elapsedTimer: ReturnType<typeof setInterval> | null = null;
+  let hostSyncTimeout: ReturnType<typeof setTimeout> | null = null;
   const messageWidgetCleanups = new Map<string, () => void>();
   let chatStates: Array<{ messageId: string; swipeId: number }> = [];
   let historyItems: StateHistoryItem[] = [];
@@ -338,15 +339,27 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
     const latestId = ctx.messages.getLatestMessageId();
 
-    // 1. Render widgets for all historical messages that have state
-    for (const item of chatStates) {
-      if (item.messageId === latestId) continue;
+    const historyByMessage = new Map<string, StateHistoryItem[]>();
+    for (const item of historyItems) {
+      if (item.identity.messageId === latestId) continue;
+      const entries = historyByMessage.get(item.identity.messageId) ?? [];
+      entries.push(item);
+      historyByMessage.set(item.identity.messageId, entries);
+    }
 
-      const widgetKey = `${item.messageId}-sw${item.swipeId}`;
+    // 1. Render one history control on each previous message with stored trackers.
+    for (const [messageId, entries] of historyByMessage) {
+      const widgetKey = `history:${messageId}`;
+      const widgetId = `loomos-history-${messageId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64)}`;
+      const buttons = entries.map((item) => `
+        <button type="button" data-swipe="${item.identity.swipeId}" title="Open tracker for swipe ${item.identity.swipeId}">
+          ${entries.length === 1 ? "Open Tracker" : `Swipe ${item.identity.swipeId}`}
+        </button>
+      `).join("");
 
       const cleanup = ctx.messages.renderWidget({
-        messageId: item.messageId,
-        widgetId: `loomos-history-${item.swipeId}`,
+        messageId,
+        widgetId,
         html: `
           <style>
             :root { color-scheme: light dark; }
@@ -366,7 +379,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
               border-radius: 6px;
               padding: 3px 6px;
               max-width: 100%;
-              flex-wrap: nowrap;
+              flex-wrap: wrap;
             }
             button {
               background: var(--lumiverse-fill, rgba(255, 255, 255, 0.05));
@@ -398,24 +411,33 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           </style>
           <div class="bar">
             <div class="label-wrapper">
-              <span>📝 Tracker (swipe ${item.swipeId})</span>
+              <span>Tracker history${entries.length > 1 ? ` (${entries.length})` : ""}</span>
             </div>
-            <button id="open" type="button">Open Tracker</button>
+            ${buttons}
           </div>
           <script>
-            document.getElementById("open").addEventListener("click",()=>window.spindleSandbox.postMessage({type:"open"}));
+            document.querySelectorAll("[data-swipe]").forEach((button) => {
+              button.addEventListener("click", () => window.spindleSandbox.postMessage({
+                type: "open",
+                swipeId: Number(button.dataset.swipe)
+              }));
+            });
           </script>
         `,
-        minHeight: 24,
-        maxHeight: 40,
+        minHeight: 28,
+        maxHeight: 96,
       }, (payload) => {
-        if (isRecord(payload) && payload.type === "open") {
+        if (isRecord(payload) && payload.type === "open" && typeof payload.swipeId === "number") {
+          const selectedState = entries.find((item) =>
+            item.identity.swipeId === payload.swipeId
+          );
+          if (!selectedState) return;
           activeIdentity = {
             chatId: activeChat.chatId!,
-            messageId: item.messageId,
-            swipeId: item.swipeId
+            messageId,
+            swipeId: selectedState.identity.swipeId,
           };
-          status = `Loaded historical state for swipe ${item.swipeId}`;
+          status = `Loaded historical state for swipe ${selectedState.identity.swipeId}`;
           send({ type: "get_state", requestId: requestId("state-hist"), identity: activeIdentity });
           openViewer();
         }
@@ -680,6 +702,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         <div class="loomos-perf-details">
           <p><strong>Inject Budget (${settings.injectionTokenBudget} tokens)</strong>: Caps how much compiled state LoomOS may add to future roleplay prompts. Higher values preserve more enabled Inject modules but consume more model context.</p>
           <p><strong>Seed Budget (${settings.compilerSeedTokenBudget} tokens)</strong>: Caps the nearest prior state supplied to the tracker compiler. Higher values improve long-form continuity but leave less context room for transcript messages.</p>
+          <p><strong>History Retention (${settings.historyRetentionLimit} trackers)</strong>: Keeps the newest exact-swipe trackers in this chat and permanently trims older stored trackers after saves.</p>
         </div>
       </div>
     `;
@@ -970,6 +993,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           <label class="loomos-check"><input type="checkbox" data-setting="showInjectionPreview"${checked(settings.showInjectionPreview)}><span>Show injection preview</span></label>
           <label class="loomos-field"><span>Injection token budget</span><input class="loomos-input" type="number" min="80" max="10000" step="20" data-setting="injectionTokenBudget" value="${settings.injectionTokenBudget}"></label>
           <label class="loomos-field"><span>Recent messages</span><input class="loomos-input" type="number" min="4" max="80" data-setting="recentMessageLimit" value="${settings.recentMessageLimit}"></label>
+          <label class="loomos-field"><span>History trackers kept</span><input class="loomos-input" type="number" min="1" max="1000" data-setting="historyRetentionLimit" value="${settings.historyRetentionLimit}"></label>
           <label class="loomos-field"><span>Seed token budget</span><input class="loomos-input" type="number" min="200" max="10000" step="50" data-setting="compilerSeedTokenBudget" value="${settings.compilerSeedTokenBudget}"></label>
           <label class="loomos-field"><span>Generation timeout (seconds)</span><input class="loomos-input" type="number" min="30" max="300" step="10" data-setting="generationTimeoutSeconds" value="${settings.generationTimeoutSeconds}"></label>
           
@@ -982,7 +1006,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function diagnosticText(): string {
     const lines = [
-      `version: 0.1.7`,
+      `version: 0.1.8`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -1166,6 +1190,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       injectionTokenBudget: Number(root.querySelector<HTMLInputElement>('[data-setting="injectionTokenBudget"]')?.value),
       compilerSeedTokenBudget: Number(root.querySelector<HTMLInputElement>('[data-setting="compilerSeedTokenBudget"]')?.value),
       recentMessageLimit: Number(root.querySelector<HTMLInputElement>('[data-setting="recentMessageLimit"]')?.value),
+      historyRetentionLimit: Number(root.querySelector<HTMLInputElement>('[data-setting="historyRetentionLimit"]')?.value),
       generationTimeoutSeconds: Number(root.querySelector<HTMLInputElement>('[data-setting="generationTimeoutSeconds"]')?.value),
       moduleSettings,
       customModules,
@@ -1331,6 +1356,14 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       send({ type: "preview_injection", requestId: requestId("preview-sync"), chatId: active.chatId });
     }
     renderAll();
+  }
+
+  function scheduleHostSync(): void {
+    if (hostSyncTimeout) clearTimeout(hostSyncTimeout);
+    hostSyncTimeout = setTimeout(() => {
+      hostSyncTimeout = null;
+      syncFromHost(false);
+    }, 75);
   }
 
   function identityFromEvent(payload: unknown): IdentityRequest | null {
@@ -2274,6 +2307,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       case "settings":
         settings = response.settings;
         status = "Settings saved";
+        if (activeIdentity?.chatId) {
+          send({ type: "get_chat_states", requestId: requestId("chat-states-settings"), chatId: activeIdentity.chatId });
+          send({ type: "list_state_history", requestId: requestId("history-settings"), chatId: activeIdentity.chatId });
+        }
         break;
       case "connections":
         connections = response.connections;
@@ -2309,6 +2346,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           
           if (activeIdentity?.chatId) {
             send({ type: "get_chat_states", requestId: requestId("chat-states"), chatId: activeIdentity.chatId });
+            send({ type: "list_state_history", requestId: requestId("history-generation"), chatId: activeIdentity.chatId });
           }
         }
         break;
@@ -2320,6 +2358,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         break;
       case "state_history":
         historyItems = response.items;
+        refreshAllMessageWidgets();
         break;
       case "injection_preview":
         injectionPreview = response.preview;
@@ -2510,7 +2549,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       send({ type: "list_state_history", requestId: requestId("history-swipe-edit"), chatId: identity.chatId });
     }
   }));
-  cleanups.push(ctx.events.on("CHARACTER_MESSAGE_RENDERED", refreshAllMessageWidgets));
+  cleanups.push(ctx.events.on("CHARACTER_MESSAGE_RENDERED", scheduleHostSync));
   cleanups.push(ctx.events.on("USER_MESSAGE_RENDERED", refreshAllMessageWidgets));
 
   renderAll();
@@ -2525,6 +2564,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     }
     disposed = true;
     stopElapsedTimer();
+    if (hostSyncTimeout) clearTimeout(hostSyncTimeout);
     clearAllMessageWidgets();
     modalListenerCleanup?.();
     modalListenerCleanup = null;

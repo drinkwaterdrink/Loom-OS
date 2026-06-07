@@ -185,7 +185,7 @@ const seededState = {
 
 const moduleKeys = [
   "sceneKernel", "deltas", "meters", "castCore", "castVisuals", "clothing",
-  "relationships", "inventory", "worldSpace", "storyThreads", "continuity",
+  "appearance", "relationships", "inventory", "worldSpace", "storyThreads", "continuity",
   "secretsRumors", "actionResolver", "dialogueState", "directorStyle",
   "closenessState", "imagePrompt", "auditLog",
 ];
@@ -202,6 +202,7 @@ const defaultSettings = {
   injectionTokenBudget: 320,
   compilerSeedTokenBudget: 900,
   recentMessageLimit: 24,
+  historyRetentionLimit: 100,
   generationTimeoutSeconds: 180,
   connectionId: "",
   modulePreset: "balanced",

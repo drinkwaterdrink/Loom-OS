@@ -1,6 +1,7 @@
 import type {
   ChatMessageDTO,
   ConnectionProfileDTO,
+  GenerationEndedPayloadDTO,
   LlmMessageDTO,
   MessageSwipedPayloadDTO,
   SwipeEditedPayloadDTO,
@@ -26,6 +27,8 @@ import { buildStateSeedForCompiler } from "./shared/seed";
 import {
   encodeStorageSegment,
   messageStatePrefix,
+  parseChatStateStoragePath,
+  resolveStorageListPath,
   SETTINGS_PATH,
   stateStoragePath,
 } from "./shared/storage";
@@ -49,6 +52,7 @@ const activeChatByUser = new Map<string, string>();
 const usersByChat = new Map<string, Set<string>>();
 const jobs = new Map<string, { controller: AbortController; identityKey: string }>();
 const jobByIdentity = new Map<string, string>();
+const automaticGenerationKeys = new Set<string>();
 
 let interceptorRegistered = false;
 let interceptorEnabled = spindle.permissions.has("interceptor");
@@ -124,6 +128,10 @@ async function saveSettings(
 ): Promise<LoomOSSettings> {
   const parsed = LoomOSSettingsSchema.parse(settings);
   await spindle.userStorage.setJson(SETTINGS_PATH, parsed, { indent: 2, userId });
+  const activeChatId = activeChatByUser.get(userId);
+  if (activeChatId) {
+    await trimStateHistory(activeChatId, userId, parsed.historyRetentionLimit);
+  }
   return parsed;
 }
 
@@ -176,12 +184,18 @@ async function loadState(
   return state;
 }
 
-async function persistState(state: LoomOSState, userId: string): Promise<LoomOSState> {
+async function persistState(
+  state: LoomOSState,
+  userId: string,
+  historyRetentionLimit?: number,
+): Promise<LoomOSState> {
   const parsed = LoomOSStateSchema.parse(state);
   await spindle.userStorage.setJson(stateStoragePath(parsed.identity), parsed, {
     indent: 2,
     userId,
   });
+  const limit = historyRetentionLimit ?? (await getSettings(userId)).historyRetentionLimit;
+  await trimStateHistory(parsed.identity.chatId, userId, limit, parsed.identity);
   return parsed;
 }
 
@@ -197,8 +211,11 @@ async function invalidateMessageStates(
   messageId: string,
   userId: string,
 ): Promise<void> {
-  const paths = await spindle.userStorage.list(messageStatePrefix(chatId, messageId), userId);
-  await Promise.all(paths.map((path) => spindle.userStorage.delete(path, userId)));
+  const prefix = messageStatePrefix(chatId, messageId);
+  const paths = await spindle.userStorage.list(prefix, userId);
+  await Promise.all(paths.map((path) =>
+    spindle.userStorage.delete(resolveStorageListPath(prefix, path), userId)
+  ));
 }
 
 async function listChatStates(
@@ -210,15 +227,8 @@ async function listChatStates(
     const files = await spindle.userStorage.list(prefix, userId);
     const results: Array<{ messageId: string; swipeId: number }> = [];
     for (const file of files) {
-      const parts = file.split("/");
-      if (parts.length >= 6 && parts[4] === "swipes" && parts[5]?.endsWith(".json")) {
-        const messageId = decodeURIComponent(parts[3]!);
-        const swipeIdStr = parts[5].replace(".json", "");
-        const swipeId = parseInt(swipeIdStr, 10);
-        if (messageId && !isNaN(swipeId)) {
-          results.push({ messageId, swipeId });
-        }
-      }
+      const parsed = parseChatStateStoragePath(file, chatId);
+      if (parsed) results.push(parsed);
     }
     return results;
   } catch (error) {
@@ -265,6 +275,28 @@ async function buildStateHistory(
     spindle.log.warn(`LoomOS could not build state history: ${errorMessage(error)}`);
   }
   return items;
+}
+
+async function trimStateHistory(
+  chatId: string,
+  userId: string,
+  limit: number,
+  protectedIdentity?: StateIdentity,
+): Promise<void> {
+  let history = await buildStateHistory(chatId, userId);
+  if (protectedIdentity) {
+    const protectedPath = stateStoragePath(protectedIdentity);
+    const protectedItem = history.find((item) => stateStoragePath(item.identity) === protectedPath);
+    if (protectedItem) {
+      history = [
+        protectedItem,
+        ...history.filter((item) => stateStoragePath(item.identity) !== protectedPath),
+      ];
+    }
+  }
+  const excess = history.slice(limit);
+  if (excess.length === 0) return;
+  await Promise.all(excess.map((item) => deleteState(item.identity, userId)));
 }
 
 async function buildInjectionPreview(
@@ -580,7 +612,11 @@ async function generateState(
     }
 
     progress("saving", compiled.repaired ? 2 : 1, "Saving validated exact-swipe state.");
-    const state = await persistState(compiled.state, userId);
+    const state = await persistState(
+      compiled.state,
+      userId,
+      settings.historyRetentionLimit,
+    );
     send({ type: "state", requestId, identity, state }, userId);
     send({
       type: "generation_status",
@@ -740,8 +776,8 @@ async function handleFrontendRequest(payload: unknown, userId: string): Promise<
 }
 
 function eventMessage(payload: unknown): ChatMessageDTO | null {
-  if (!isRecord(payload) || !isRecord(payload.message)) return null;
-  const message = payload.message;
+  if (!isRecord(payload)) return null;
+  const message = isRecord(payload.message) ? payload.message : payload;
   if (
     typeof message.id !== "string"
     || typeof message.chat_id !== "string"
@@ -749,6 +785,46 @@ function eventMessage(payload: unknown): ChatMessageDTO | null {
     || !Array.isArray(message.swipes)
   ) return null;
   return message as unknown as ChatMessageDTO;
+}
+
+async function queueAutomaticGeneration(
+  identity: StateIdentity,
+  userId: string,
+): Promise<void> {
+  const key = identityJobKey(userId, identity);
+  if (automaticGenerationKeys.has(key)) return;
+  automaticGenerationKeys.add(key);
+  try {
+    await generateState(
+      `auto:${identity.messageId}:${identity.swipeId}:${Date.now()}`,
+      identity,
+      userId,
+    );
+  } finally {
+    automaticGenerationKeys.delete(key);
+  }
+}
+
+async function handleAutomaticMessage(
+  message: ChatMessageDTO,
+  eventUserId?: string,
+): Promise<void> {
+  const identity = StateIdentitySchema.parse({
+    chatId: message.chat_id,
+    messageId: message.id,
+    swipeId: message.swipe_id,
+  });
+  for (const userId of eventUsers(message.chat_id, eventUserId)) {
+    await sendExactState(userId, identity);
+    const settings = await getSettings(userId);
+    const shouldGenerate = settings.autoGeneration === "every"
+      || (settings.autoGeneration === "assistant" && !message.is_user);
+    if (shouldGenerate && spindle.permissions.has("generation")) {
+      void queueAutomaticGeneration(identity, userId).catch((error) => {
+        spindle.log.warn(`LoomOS automatic generation skipped: ${errorMessage(error)}`);
+      });
+    }
+  }
 }
 
 async function handleMessageEdited(payload: unknown, eventUserId?: string): Promise<void> {
@@ -813,26 +889,31 @@ async function handleMessageDeleted(payload: unknown, eventUserId?: string): Pro
 async function handleMessageSent(payload: unknown, eventUserId?: string): Promise<void> {
   const message = eventMessage(payload);
   if (!message) return;
-  const identity = StateIdentitySchema.parse({
-    chatId: message.chat_id,
-    messageId: message.id,
-    swipeId: message.swipe_id,
-  });
-  for (const userId of eventUsers(message.chat_id, eventUserId)) {
-    await sendExactState(userId, identity);
-    const settings = await getSettings(userId);
-    const shouldGenerate = settings.autoGeneration === "every"
-      || (settings.autoGeneration === "assistant" && !message.is_user);
-    if (shouldGenerate && spindle.permissions.has("generation")) {
-      void generateState(
-        `auto:${message.id}:${message.swipe_id}:${Date.now()}`,
-        identity,
-        userId,
-      ).catch((error) => {
-        spindle.log.warn(`LoomOS automatic generation skipped: ${errorMessage(error)}`);
-      });
+  await handleAutomaticMessage(message, eventUserId);
+}
+
+async function handleGenerationEnded(
+  payload: GenerationEndedPayloadDTO,
+  eventUserId?: string,
+): Promise<void> {
+  if (payload.error || !payload.messageId) return;
+  let message: ChatMessageDTO | undefined;
+  for (const delay of [0, 75, 200]) {
+    if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+    try {
+      message = (await getMessages(payload.chatId))
+        .find((candidate) => candidate.id === payload.messageId);
+    } catch (error) {
+      spindle.log.warn(`LoomOS could not resolve completed generation: ${errorMessage(error)}`);
+      return;
     }
+    if (message) break;
   }
+  if (!message) {
+    spindle.log.warn(`LoomOS could not find saved generated message ${payload.messageId}.`);
+    return;
+  }
+  await handleAutomaticMessage(message, eventUserId);
 }
 
 function tryRegisterInterceptor(): void {
@@ -886,6 +967,7 @@ function disposeBackend(): void {
   for (const { controller } of jobs.values()) controller.abort();
   jobs.clear();
   jobByIdentity.clear();
+  automaticGenerationKeys.clear();
   for (const dispose of disposers.splice(0).reverse()) {
     try {
       dispose();
@@ -902,6 +984,9 @@ disposers.push(spindle.onFrontendMessage((payload, userId) => {
 }));
 disposers.push(spindle.on("MESSAGE_SENT", (payload, userId) => {
   void handleMessageSent(payload, userId);
+}));
+disposers.push(spindle.on("GENERATION_ENDED", (payload, userId) => {
+  void handleGenerationEnded(payload, userId);
 }));
 disposers.push(spindle.on("MESSAGE_EDITED", (payload, userId) => {
   void handleMessageEdited(payload, userId);

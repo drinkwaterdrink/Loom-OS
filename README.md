@@ -1,15 +1,17 @@
 # LoomOS Command Deck
 
-Current release: **0.1.7**
+Current release: **0.1.8**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.7
+## Key Features & Upgrades in 0.1.8
 
-- **Larger context controls**: Injection and compiler seed token budgets now support values up to `10,000`.
-- **Comprehensive settings guide**: The Settings Reference now explains when every setting is used, what it changes, and the practical tradeoffs of raising, lowering, enabling, or disabling it.
+- **Reliable automatic tracking**: Assistant-message automation now follows Lumiverse's completed-generation lifecycle and resolves the exact saved message and active swipe before compiling.
+- **Working history discovery**: Storage listings are normalized whether Lumiverse returns full paths or paths relative to the requested prefix.
+- **Previous-message tracker controls**: Earlier chat messages with saved trackers receive an inline Tracker History control, including separate swipe buttons when multiple swipe trackers exist.
+- **Configurable retention**: Keep the newest 1-1,000 exact-swipe trackers per chat; older trackers are trimmed automatically after saves and when the limit is lowered.
 - **Clearer in-app budget guidance**: Token diagnostics explain that injection consumes future roleplay context, while the seed budget controls how much prior tracker state is supplied during compilation.
 
 ---
@@ -85,7 +87,7 @@ The **State History Timeline** shows every state snapshot generated for the acti
 - Cast, thread, and risk counts
 - Delta headline
 
-Use the search bar to filter by scene, focus, location, or message ID. Click **Load** to inspect any historical snapshot. The currently active state is highlighted. Delete buttons remove unwanted snapshots from storage.
+Use the search bar to filter by scene, focus, location, or message ID. Click **Load** to inspect any historical snapshot. The currently active state is highlighted. Delete buttons remove unwanted snapshots from storage. Previous chat messages also receive an inline **Tracker history** control when they have stored state, with one button per saved swipe.
 
 ---
 
@@ -107,7 +109,7 @@ A sticky command bar pins to the top of both the drawer and viewer modal:
 
 Accessed via the **History** tab. All states are listed newest-first with full metadata. The search bar supports real-time filtering across scene, focus, location, and message ID fields. Click **Load** to replace the current dashboard view with the selected historical state. The actively-loaded state is visually distinguished. The **Delete** button on each entry removes the snapshot from storage (no confirmation dialog — use with care).
 
-The history is fetched on every state sync and stored in memory for the session.
+The history is fetched on every state sync and stored in memory for the session. LoomOS stores one current tracker per exact `chatId + messageId + swipeId` identity. The `historyRetentionLimit` setting keeps the newest trackers for the chat and permanently deletes older entries after a tracker save or when the configured limit is reduced.
 
 ---
 
@@ -246,6 +248,7 @@ All settings are stored per user in `settings.json` inside `spindle.userStorage`
 | `injectionTokenBudget` | `320` | 80–10,000 | Maximum estimated tokens LoomOS may use for compact state injection. Raising it allows more enabled Inject modules and details to reach future roleplay responses. Lowering it favors only the highest-priority continuity fragments. Very large values can crowd out character cards, world info, chat history, and other prompt content within the model's context window. |
 | `compilerSeedTokenBudget` | `900` | 200–10,000 | Maximum approximate size of the nearest prior tracker state passed to the quiet state compiler. Raising it preserves more cast, appearance, inventory, thread, continuity, world, and custom-module history between snapshots. Lowering it reduces compiler input cost but may discard older detail. This budget affects tracker compilation, not normal roleplay injection. |
 | `recentMessageLimit` | `24` | 4–80 | Number of recent chat messages supplied to the state compiler. Higher values give the compiler more transcript evidence but increase input size and generation latency. Lower values are faster but may miss facts that were stated farther back unless they survived in the prior state seed. |
+| `historyRetentionLimit` | `100` | 1–1,000 | Maximum number of exact-swipe tracker files retained for each chat. After a tracker is saved, LoomOS sorts the chat's trackers by generation time and permanently deletes the oldest entries above this limit. Lowering the setting trims the active chat immediately. This controls extension storage and history length, not model context. |
 | `generationTimeoutSeconds` | `180` | 30–300 | Maximum time allowed for a quiet compiler or repair generation before LoomOS aborts it. Increase this for slow providers or large prompts. Decrease it for faster failure recovery. It does not control normal Lumiverse roleplay generation time. |
 | `connectionId` | `""` | string, max 200 | Selects the Lumiverse connection/profile used for quiet tracker compilation. Empty means LoomOS chooses an available ready connection. The selected provider, model, and connection profile can affect JSON reliability, speed, cost, and tracker detail. |
 | `modulePreset` | `"balanced"` | built-in or custom preset ID | Selects a saved Track/Display/Inject configuration. Changing it updates module controls together; it does not delete previously stored state fields. Manual module changes switch the active configuration to custom. |
@@ -407,7 +410,7 @@ chats/{chatId}/messages/{messageId}/swipes/{swipeId}.json
 
 ### History Timeline
 
-The State History Timeline (`list_state_history`) loads all state files for the current chat, extracts a summary from each, and returns them sorted by `generatedAt` descending. The frontend caches these in memory and supports search filtering and per-entry deletion.
+The State History Timeline (`list_state_history`) normalizes both full and prefix-relative `spindle.userStorage.list()` results, loads all retained state files for the current chat, extracts a summary from each, and returns them sorted by `generatedAt` descending. The frontend caches these in memory, supports search filtering and per-entry deletion, and mounts Tracker History controls on previous messages. Retention trimming keeps only the newest `historyRetentionLimit` exact-swipe trackers.
 
 ---
 

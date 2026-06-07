@@ -10,6 +10,7 @@ test("settings defaults are complete and conservative", () => {
   assert.equal(DEFAULT_SETTINGS.autoGeneration, "manual");
   assert.equal(DEFAULT_SETTINGS.injectionEnabled, false);
   assert.equal(DEFAULT_SETTINGS.injectionTokenBudget, 320);
+  assert.equal(DEFAULT_SETTINGS.historyRetentionLimit, 100);
   assert.equal(DEFAULT_SETTINGS.moduleSettings.sceneKernel.track, true);
   assert.equal(DEFAULT_SETTINGS.moduleSettings.appearance.track, true);
   assert.equal(DEFAULT_SETTINGS.moduleSettings.dialogueState.track, false);
@@ -49,6 +50,14 @@ test("invalid thread urgency is rejected", () => {
   const state = makeState();
   state.storyState.threadLoom[0]!.urgency = 9;
   assert.equal(LoomOSStateSchema.safeParse(state).success, false);
+});
+
+test("history retention accepts 1 through 1000 trackers", async () => {
+  const { LoomOSSettingsSchema } = await import("../src/shared/schemas");
+  assert.equal(LoomOSSettingsSchema.safeParse({ historyRetentionLimit: 1 }).success, true);
+  assert.equal(LoomOSSettingsSchema.safeParse({ historyRetentionLimit: 1000 }).success, true);
+  assert.equal(LoomOSSettingsSchema.safeParse({ historyRetentionLimit: 0 }).success, false);
+  assert.equal(LoomOSSettingsSchema.safeParse({ historyRetentionLimit: 1001 }).success, false);
 });
 
 test("expanded immutable appearance fields validate", () => {

@@ -2,6 +2,27 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.8] - 2026-06-07
+
+### Added
+
+- Automatic assistant tracker compilation from Lumiverse's `GENERATION_ENDED` event, resolving the exact saved message and active swipe before generation.
+- Inline Tracker History controls on previous messages, with separate buttons for every stored swipe tracker on that message.
+- `historyRetentionLimit`, configurable from 1 to 1,000 trackers per chat with a default of 100.
+- Runtime coverage for completed assistant generations, prefix-relative storage listings, and retention trimming.
+
+### Changed
+
+- History discovery now accepts both full storage paths and paths returned relative to the requested `spindle.userStorage.list()` prefix.
+- Lowering the history retention setting trims the active chat immediately; every later tracker save reapplies the configured limit.
+- Character-message rendering now schedules a full exact-state and history sync after Lumiverse finishes mounting the new response.
+
+### Fixed
+
+- Assistant-message automatic mode no longer depends on the user-message-oriented `MESSAGE_SENT` lifecycle alone.
+- State History Timeline and previous-message tracker controls no longer disappear when Lumiverse returns relative storage-list entries.
+- Duplicate assistant lifecycle notifications no longer launch competing tracker compilations for the same exact swipe.
+
 ## [0.1.7] - 2026-06-07
 
 ### Changed

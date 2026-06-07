@@ -27,6 +27,7 @@ test("legacy settings receive V2 module defaults and panel visibility", () => {
   assert.equal(settings.moduleSettings.sceneKernel.track, true);
   assert.equal(settings.moduleSettings.castCore.display, false);
   assert.equal(settings.moduleSettings.actionResolver.track, true);
+  assert.equal(settings.historyRetentionLimit, 100);
 });
 
 test("legacy State V1 migrates without losing exact identity", () => {

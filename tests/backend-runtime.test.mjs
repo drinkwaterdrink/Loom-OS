@@ -9,6 +9,23 @@ test("built backend compiles, repairs, and stores exact swipe State V2", async (
   const frontendMessages = [];
   const logs = [];
   const userFiles = new Map();
+  let chatMessages = [{
+    id: "message-1",
+    chat_id: "chat-1",
+    index_in_chat: 0,
+    is_user: false,
+    name: "Mara",
+    content: "Second swipe",
+    send_date: 1,
+    swipe_id: 1,
+    swipes: ["First swipe", "Second swipe"],
+    swipe_dates: [1, 2],
+    extra: {},
+    metadata: {},
+    parent_message_id: null,
+    branch_id: null,
+    created_at: 1,
+  }];
   let generationCalls = 0;
 
   const onEvent = (name, handler) => {
@@ -50,26 +67,12 @@ test("built backend compiles, repairs, and stores exact swipe State V2", async (
       setJson: async (path, value) => userFiles.set(path, value),
       exists: async (path) => userFiles.has(path),
       delete: async (path) => userFiles.delete(path),
-      list: async (prefix = "") => [...userFiles.keys()].filter((path) => path.startsWith(prefix)),
+      list: async (prefix = "") => [...userFiles.keys()]
+        .filter((path) => path.startsWith(prefix))
+        .map((path) => path.slice(prefix.length).replace(/^\/+/, "")),
     },
     chat: {
-      getMessages: async () => [{
-        id: "message-1",
-        chat_id: "chat-1",
-        index_in_chat: 0,
-        is_user: false,
-        name: "Mara",
-        content: "Second swipe",
-        send_date: 1,
-        swipe_id: 1,
-        swipes: ["First swipe", "Second swipe"],
-        swipe_dates: [1, 2],
-        extra: {},
-        metadata: {},
-        parent_message_id: null,
-        branch_id: null,
-        created_at: 1,
-      }],
+      getMessages: async () => chatMessages,
     },
     connections: {
       list: async () => [{
@@ -155,6 +158,72 @@ test("built backend compiles, repairs, and stores exact swipe State V2", async (
   assert.ok(frontendMessages.some(({ payload }) =>
     payload.type === "bootstrap" && payload.connections.length === 1
   ));
+  assert.equal(eventHandlers.get("GENERATION_ENDED")?.length, 1);
+
+  const bootstrap = frontendMessages.find(({ payload }) => payload.type === "bootstrap")?.payload;
+  assert.ok(bootstrap && bootstrap.type === "bootstrap");
+  await frontendHandlers[0]({
+    type: "save_settings",
+    requestId: "settings-auto",
+    settings: {
+      ...bootstrap.settings,
+      autoGeneration: "assistant",
+      historyRetentionLimit: 1,
+    },
+  }, "user-1");
+
+  chatMessages = [...chatMessages, {
+    id: "message-2",
+    chat_id: "chat-1",
+    index_in_chat: 1,
+    is_user: false,
+    name: "Mara",
+    content: "A newly generated assistant response.",
+    send_date: 3,
+    swipe_id: 0,
+    swipes: ["A newly generated assistant response."],
+    swipe_dates: [3],
+    extra: {},
+    metadata: {},
+    parent_message_id: "message-1",
+    branch_id: null,
+    created_at: 3,
+  }];
+  eventHandlers.get("GENERATION_ENDED")[0]({
+    generationId: "roleplay-generation-1",
+    chatId: "chat-1",
+    messageId: "message-2",
+    content: "A newly generated assistant response.",
+    generationType: "normal",
+  }, "user-1");
+
+  const autoDeadline = Date.now() + 3000;
+  while (
+    !userFiles.has("chats/chat-1/messages/message-2/swipes/0.json")
+    && Date.now() < autoDeadline
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(generationCalls, 3);
+  assert.ok(userFiles.has("chats/chat-1/messages/message-2/swipes/0.json"));
+  assert.equal(userFiles.has("chats/chat-1/messages/message-1/swipes/1.json"), false);
+
+  await frontendHandlers[0]({
+    type: "list_state_history",
+    requestId: "history-relative-list",
+    chatId: "chat-1",
+  }, "user-1");
+  const historyDeadline = Date.now() + 1000;
+  let historyResponse;
+  while (!historyResponse && Date.now() < historyDeadline) {
+    historyResponse = frontendMessages.find(({ payload }) =>
+      payload.type === "state_history" && payload.requestId === "history-relative-list"
+    )?.payload;
+    if (!historyResponse) await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.ok(historyResponse && historyResponse.type === "state_history");
+  assert.equal(historyResponse.items.length, 1);
+  assert.equal(historyResponse.items[0].identity.messageId, "message-2");
 
   backend.disposeBackend();
   assert.equal(frontendHandlers.length, 0);
