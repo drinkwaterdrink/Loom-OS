@@ -4074,24 +4074,222 @@ var CORE_TRACKING_MODULES = /* @__PURE__ */ new Set([
   "continuity"
 ]);
 var MODULE_CATALOG = [
-  { key: "sceneKernel", label: "Scene Kernel", group: "Core", description: "Scene, time, tone, focus, objective, and constraints." },
-  { key: "deltas", label: "Turn Deltas", group: "Core", description: "Meaningful changes from the previous compiled state." },
-  { key: "meters", label: "Diagnostic Meters", group: "Scene", description: "Tension, danger, coherence, hidden information, and omen." },
-  { key: "castCore", label: "Cast Core", group: "Cast", description: "Presence, intent, status, awareness, goals, and anchors." },
-  { key: "castVisuals", label: "Cast Visuals", group: "Cast", description: "Pose, proximity, hands, visual anchor, and spotlight." },
-  { key: "clothing", label: "Clothing", group: "Cast", description: "Compact grounded clothing continuity." },
-  { key: "relationships", label: "Relationships", group: "Cast", description: "Relationship state, leverage, and social pressure." },
-  { key: "inventory", label: "Inventory", group: "World", description: "Pockets, ownership, condition, and important room items." },
-  { key: "worldSpace", label: "World & Space", group: "World", description: "Privacy, observers, light, blocking, exits, and hazards." },
-  { key: "storyThreads", label: "Story Threads", group: "Story", description: "Goals, conflicts, threads, stakes, countdowns, and autonomy." },
-  { key: "continuity", label: "Continuity Firewall", group: "Story", description: "Facts, anchors, consequences, impossible moves, and risks." },
-  { key: "secretsRumors", label: "Secrets & Rumors", group: "World", description: "Rumors, secrets, hints, and loaded signs." },
-  { key: "actionResolver", label: "Action Resolver", group: "Tools", description: "Current action, world response, blockers, and risk." },
-  { key: "dialogueState", label: "Dialogue State", group: "Tools", description: "Open thread, masks, levers, and taboos." },
-  { key: "directorStyle", label: "Director Style", group: "Tools", description: "Optional scene direction and voice cues." },
-  { key: "closenessState", label: "Closeness State", group: "Tools", description: "Non-explicit emotional and physical closeness." },
-  { key: "imagePrompt", label: "Image Prompt", group: "Tools", description: "Optional compact visual prompt assembly." },
-  { key: "auditLog", label: "Audit Log", group: "System", description: "Compact compiler and repair diagnostics." }
+  {
+    key: "sceneKernel",
+    label: "Scene Kernel",
+    group: "Core",
+    core: true,
+    intensity: "medium",
+    description: "Scene, time, tone, focus, objective, and constraints.",
+    schemaSummary: "scene, location, timeframe, date, time, elapsed, weather, pov, tone, topic, theme, objective, summary, currentFocus, nextFocus, currentRisk, stopMode, stopWhy, constraints[]",
+    compilerInstruction: "Scene metadata, focus, and constraints from transcript and seed. Ground in transcript evidence; carry forward stable scene context.",
+    injectionBehavior: "Injected as scene: location, time, focus line. Always included when enabled.",
+    renderBehavior: "Overview tab \u2014 hero block with scene name, focus, summary, constraints, facts list."
+  },
+  {
+    key: "deltas",
+    label: "Turn Deltas",
+    group: "Core",
+    core: true,
+    intensity: "medium",
+    description: "Meaningful changes from the previous compiled state.",
+    schemaSummary: "headline, changedModules[], changes[{text, age, module, importance}], carriedForward[], newlyEstablished[]",
+    compilerInstruction: "Compare prior seed state with newest transcript evidence. Output real diffs with importance labels. Carry forward unchanged facts.",
+    injectionBehavior: "Injected first as delta: headline and top 4 changes. Highest injection priority.",
+    renderBehavior: "Overview tab \u2014 headline callout, change list with importance badges, two-column carried/newly."
+  },
+  {
+    key: "meters",
+    label: "Diagnostic Meters",
+    group: "Scene",
+    core: false,
+    intensity: "light",
+    description: "Tension, danger, coherence, hidden information, and omen.",
+    schemaSummary: "id (enum), label, value 0-100, pct, band, color, trend (enum), note",
+    compilerInstruction: "Diagnose scene tension, danger, social heat, coherence, hidden info, and omen based on current narrative pressure. Never command escalation.",
+    injectionBehavior: "Not injected by default. Moderate value for scene awareness.",
+    renderBehavior: "Overview tab \u2014 meter grid with bar visualization, trend icons, band labels."
+  },
+  {
+    key: "castCore",
+    label: "Cast Core",
+    group: "Cast",
+    core: true,
+    intensity: "heavy",
+    description: "Presence, intent, status, awareness, goals, anchors, appearance, clothing, current state, uncertainty.",
+    schemaSummary: "id, name, kind, role, location, status, awareness, threat, spotlight, appearance{}, clothing{}, currentState{}, goals[], stableFacts[], continuity{}, changed, changeNote",
+    compilerInstruction: "Track all named characters appearing in the scene. Include appearance, clothing state, current pose/hands/proximity, emotional state, intent, relationships, pocket items, stable facts, and uncertainty. Mark changed=true and add changeNote when any field updates. Carry forward stable visual identity. Crowd/background groups summarized compactly.",
+    injectionBehavior: "Injected as cast.Name: status; intent; goal for POV/main/high-spotlight characters. Up to 6 entries.",
+    renderBehavior: "Cast tab \u2014 full character ledger with search, filters, expandable detail panels. Overview tab \u2014 compact cast cards."
+  },
+  {
+    key: "castVisuals",
+    label: "Cast Visuals",
+    group: "Cast",
+    core: false,
+    intensity: "light",
+    description: "Pose, proximity, hands, visual anchor, and spotlight.",
+    schemaSummary: "pose, proximity, hands, visualAnchor, spotlight{gauge}",
+    compilerInstruction: "Update pose, proximity, hands, and spotlight from transcript evidence. Spotlight reflects narrative focus weight.",
+    injectionBehavior: "Injected only if budget allows and imagePrompt or castVisuals inject is enabled.",
+    renderBehavior: "Cast tab \u2014 shown in Current State section of character card. Visual anchor in Appearance section."
+  },
+  {
+    key: "clothing",
+    label: "Clothing",
+    group: "Cast",
+    core: false,
+    intensity: "light",
+    description: "Compact grounded clothing continuity with layers and condition.",
+    schemaSummary: "summary, silhouette, palette, fabric, fit, condition, notable, layerCount, layers[{slot, text, state, color}]",
+    compilerInstruction: "Track clothing state per character. Persist until changed by transcript evidence. Include silhouette, palette, notable items. Mark changed when clothing updates.",
+    injectionBehavior: "Included only if changed or currently plot-relevant. Budget-aware.",
+    renderBehavior: "Cast tab \u2014 Clothing section in expandable details. Shows layers with slot labels."
+  },
+  {
+    key: "relationships",
+    label: "Relationships",
+    group: "Cast",
+    core: false,
+    intensity: "medium",
+    description: "Relationship targets, emotional axes, trends, and evidence.",
+    schemaSummary: "relSummary, relationships[{target, axis, value -100..100, pct, label, color, trend, evidence}]",
+    compilerInstruction: "Track character relationships on axes (Trust, Fear, Attraction, Rivalry, etc.). Value -100 (hostile) to 100 (devoted). Include evidence from transcript. Update trends on each turn.",
+    injectionBehavior: "Included only if active in the current scene. Budget-aware.",
+    renderBehavior: "Cast tab \u2014 Relationships section with value bars, trend indicators, evidence text."
+  },
+  {
+    key: "inventory",
+    label: "Inventory",
+    group: "World",
+    core: false,
+    intensity: "medium",
+    description: "Pockets, ownership, condition, and important room items.",
+    schemaSummary: "pockets[{name, type: consumable/concealed/tool/key/evidence/misc, qty, condition, known, color, changed, changeNote}]",
+    compilerInstruction: "Track known pocket inventory per character. Type categorizes the item. Mark changed when items are acquired, used, or transferred. Only known items visible to the POV.",
+    injectionBehavior: "Injected as item.Name: name x qty; condition. Budget-aware, only known items.",
+    renderBehavior: "Cast tab \u2014 Pockets section in expandable details. Scene items in World tab."
+  },
+  {
+    key: "worldSpace",
+    label: "World & Space",
+    group: "World",
+    core: false,
+    intensity: "medium",
+    description: "Privacy, observers, light, blocking, exits, and hazards.",
+    schemaSummary: "privacy, observerCount, observerPressure{gauge}, crowdNoise, crowdFlow, light{primary,secondary,quality,color}, spatial[], access{exit,lineOfSight,noiseMask,items[],people[]}, carryover{body[],room[],social[]}, items[]",
+    compilerInstruction: "Update spatial scene state each turn. Exit accessibility, light, crowd dynamics, and spatial facts. Carry over body/room/social context.",
+    injectionBehavior: "Injected as access: exit; sight; noise plus spatial facts. Medium priority.",
+    renderBehavior: "World tab \u2014 scene facts grid, spatial chips, carryover columns, scene items."
+  },
+  {
+    key: "storyThreads",
+    label: "Story Threads",
+    group: "Story",
+    core: true,
+    intensity: "heavy",
+    description: "Goals, conflicts, threads, stakes, countdowns, spotlight queue, and autonomy.",
+    schemaSummary: "goals[]{who, goal, status, note}, conflicts[]{a, b, label, severity}, threadLoom[], stakes[], countdowns[], spotlightQueue[], autonomyQueue[]",
+    compilerInstruction: "Track narrative threads with urgency, progress, and next pressure. Goals track character objectives. Spotlight queue tracks which characters need narrative attention. Countdowns tick toward consequences.",
+    injectionBehavior: "Injected as thread.title: status/urgency + next pressure. Top urgent threads first. Stakes included for active parties.",
+    renderBehavior: "Story tab \u2014 thread loom list, goals, stakes, countdowns, spotlight queue card, autonomy queue."
+  },
+  {
+    key: "continuity",
+    label: "Continuity Firewall",
+    group: "Story",
+    core: true,
+    intensity: "heavy",
+    description: "Facts, anchors, consequences, avoided moves, terms, and risks.",
+    schemaSummary: "establishedFacts[], antiRetconAnchors[], pendingConsequences[{cause, pending, trigger, urgency, status, evidence, changed}], offscreenState[], bannedNext[{text, reason, scope, color, source}], impossibleNext[], risks[]{severity, issue, evidence, recommendation}, terms[{party, term, risk, status, binding, evidence}]",
+    compilerInstruction: "Protect story coherence. Maintain established facts and anti-retcon anchors. Track pending narrative consequences with urgency and trigger conditions. Log avoided moves with reason and scope. Track character agreements/terms. Detect continuity conflicts as risks.",
+    injectionBehavior: "Injected as anchor:, pending:, and risk. entries. High priority for continuity safety.",
+    renderBehavior: "Continuity tab \u2014 explainer, metrics bar, risk cards, facts/anchors/consequences/terms/avoid lists."
+  },
+  {
+    key: "secretsRumors",
+    label: "Secrets & Rumors",
+    group: "World",
+    core: false,
+    intensity: "light",
+    description: "Rumors, secrets, hints, and loaded signs/setups.",
+    schemaSummary: "rumors[]{rumor, source, credibility, pct, color}, secrets[]{secret, visibleHint, knownBy[]}, loadedSigns[]{thing, plantedBy, payoffWhen, state, evidence, payoffHint, changed}",
+    compilerInstruction: "Track rumors with credibility scores and sources. Secrets are reader-visible dramatic state. Loaded signs/setups track planted story elements with payoff conditions.",
+    injectionBehavior: "Not injected by default. Low priority within budget.",
+    renderBehavior: "World tab \u2014 rumors grid, secrets list, loaded signs with state badges."
+  },
+  {
+    key: "actionResolver",
+    label: "Action Resolver",
+    group: "Tools",
+    core: false,
+    intensity: "medium",
+    description: "Current action, world response, blockers, and risk.",
+    schemaSummary: "userAction, worldResponse, risk, blockers[]",
+    compilerInstruction: "Track the user's current action, its expected world response, risk assessment, and mechanical blockers.",
+    injectionBehavior: "Injected as action: action; response; risk. Medium-high priority.",
+    renderBehavior: "Overview tab \u2014 action card with response, risk, blocker chips."
+  },
+  {
+    key: "dialogueState",
+    label: "Dialogue State",
+    group: "Tools",
+    core: false,
+    intensity: "experimental",
+    description: "Open thread, masks, levers, and taboos.",
+    schemaSummary: "openThread, socialMask, levers[], taboos[]",
+    compilerInstruction: "Track active dialogue threads, social masks characters are wearing, conversational levers, and established taboos.",
+    injectionBehavior: "Experimental \u2014 not injected by default.",
+    renderBehavior: "Overview tab \u2014 dialogue card (only when enabled)."
+  },
+  {
+    key: "directorStyle",
+    label: "Director Style",
+    group: "Tools",
+    core: false,
+    intensity: "experimental",
+    description: "Optional scene direction and voice cues.",
+    schemaSummary: "primary, mask, push, voiceCues[]",
+    compilerInstruction: "Track optional director-style scene framing, narrative mask, push direction, and voice cues for the writer.",
+    injectionBehavior: "Experimental \u2014 not injected by default.",
+    renderBehavior: "Overview tab \u2014 director card (only when enabled)."
+  },
+  {
+    key: "closenessState",
+    label: "Closeness State",
+    group: "Tools",
+    core: false,
+    intensity: "experimental",
+    description: "Non-explicit emotional and physical closeness.",
+    schemaSummary: "emotional, physical, consentSignals[], boundaries[]",
+    compilerInstruction: "Track non-explicit emotional and physical closeness between characters. Always PG. Focus on consent signals and established boundaries.",
+    injectionBehavior: "Experimental \u2014 not injected by default.",
+    renderBehavior: "Overview tab \u2014 closeness card (only when enabled)."
+  },
+  {
+    key: "imagePrompt",
+    label: "Image Prompt",
+    group: "Tools",
+    core: false,
+    intensity: "experimental",
+    description: "Optional compact visual prompt assembly.",
+    schemaSummary: "aspect, shot, medium, subject, positive, negative, full, hint",
+    compilerInstruction: "Assemble a compact text-to-image prompt from the current scene if visually distinctive. Aspect, shot type, medium, subject, and style cues.",
+    injectionBehavior: "Not injected by default. Consumes significant budget if enabled.",
+    renderBehavior: "Overview tab \u2014 image prompt card with shot/medium, subject, hint."
+  },
+  {
+    key: "auditLog",
+    label: "Audit Log",
+    group: "System",
+    core: false,
+    intensity: "light",
+    description: "Compact compiler and repair diagnostics.",
+    schemaSummary: "system, marker, result, repaired, notes",
+    compilerInstruction: "Log each compiler run: system name, identity marker, validation result, repair flag, and notes. Minimum verbosity.",
+    injectionBehavior: "Not injected.",
+    renderBehavior: "Continuity tab \u2014 audit log list."
+  }
 ];
 function control(track, display = track, inject = false) {
   return { track, display, inject };
@@ -4188,7 +4386,9 @@ var CustomModuleSchema = external_exports.object({
   inject: external_exports.boolean().default(true),
   compilerInstruction: external_exports.string().trim().max(1600),
   outputMode: external_exports.enum(["cards", "bullets", "chips", "gauge"]).default("cards"),
-  maxItems: external_exports.number().int().min(1).max(24).default(6)
+  maxItems: external_exports.number().int().min(1).max(24).default(6),
+  intensity: external_exports.enum(["light", "medium", "heavy", "experimental"]).default("medium"),
+  displayOrder: external_exports.number().int().optional()
 }).strict();
 var StateIdentitySchema = external_exports.object({
   chatId: external_exports.string().min(1).max(300),
@@ -4224,6 +4424,23 @@ var RawSettingsSchema = external_exports.object({
   connectionId: external_exports.string().trim().max(200).default(""),
   modulePreset: ModulePresetSchema.default("balanced"),
   moduleSettings: ModuleSettingsSchema.default(BALANCED_MODULE_SETTINGS),
+  stockModuleOverrides: external_exports.record(
+    external_exports.string(),
+    external_exports.object({
+      label: external_exports.string().max(160).optional(),
+      description: external_exports.string().max(500).optional(),
+      group: external_exports.string().max(160).optional(),
+      icon: external_exports.string().max(20).optional(),
+      displayOrder: external_exports.number().int().optional(),
+      intensityLabel: external_exports.string().max(40).optional(),
+      defaultDisplay: external_exports.boolean().optional(),
+      defaultInject: external_exports.boolean().optional(),
+      compilerGuidanceAddendum: external_exports.string().max(1e3).optional(),
+      injectionPriority: external_exports.number().int().optional(),
+      renderHint: external_exports.string().max(200).optional(),
+      hiddenFromSettings: external_exports.boolean().optional()
+    }).strict()
+  ).default({}),
   customModulePresets: external_exports.array(CustomModulePresetSchema).default([]),
   customModules: external_exports.array(CustomModuleSchema).default([])
 }).strict();
@@ -4260,6 +4477,7 @@ function settingsInput(value) {
     connectionId: source.connectionId,
     modulePreset: source.modulePreset,
     moduleSettings,
+    stockModuleOverrides: source.stockModuleOverrides,
     customModulePresets: source.customModulePresets,
     customModules: source.customModules
   };
@@ -4355,10 +4573,80 @@ var SceneSchema = external_exports.object({
 }).strict();
 var PocketItemSchema = external_exports.object({
   name: TinyText,
-  type: TinyText,
+  type: external_exports.enum(["consumable", "concealed", "tool", "key", "evidence", "misc"]).default("misc"),
   qty: external_exports.number().int().nonnegative().max(9999),
   condition: ShortText,
-  known: external_exports.boolean()
+  known: external_exports.boolean(),
+  color: ColorText.optional(),
+  changed: external_exports.boolean().optional().default(false),
+  changeNote: ShortText.optional()
+}).strict();
+var LayerSchema = external_exports.object({
+  slot: external_exports.enum(["outer", "upper", "lower", "feet", "accessory", "other"]),
+  text: ShortText,
+  state: ShortText.optional(),
+  color: ColorText.optional()
+}).strict();
+var RelationshipEntrySchema = external_exports.object({
+  target: TinyText,
+  axis: ShortText,
+  value: external_exports.number().min(-100).max(100),
+  pct: PercentText.optional(),
+  label: TinyText.optional(),
+  color: ColorText.optional(),
+  trend: TrendSchema.optional(),
+  evidence: MediumText.optional()
+}).strict();
+var UncertaintyEntrySchema = external_exports.object({
+  claim: MediumText,
+  confidence: external_exports.number().min(0).max(10),
+  label: external_exports.enum(["UNKNOWN", "DOUBTFUL", "POSSIBLE", "LIKELY", "CONFIRMED"]).default("UNKNOWN"),
+  handling: ShortText.optional()
+}).strict();
+var AppearanceSchema = external_exports.object({
+  species: ShortText.optional(),
+  ageBand: ShortText.optional(),
+  genderPresentation: ShortText.optional(),
+  height: ShortText.optional(),
+  build: ShortText.optional(),
+  skin: ShortText.optional(),
+  face: ShortText.optional(),
+  facialStructure: ShortText.optional(),
+  hair: ShortText.optional(),
+  eyes: ShortText.optional(),
+  voice: ShortText.optional(),
+  movement: ShortText.optional(),
+  distinguishingMarks: MediumText.optional(),
+  presence: ShortText.optional(),
+  fullDescription: MediumText.optional(),
+  anchor: MediumText.optional()
+}).strict();
+var ClothingSchema = external_exports.object({
+  summary: ShortText.optional(),
+  silhouette: ShortText.optional(),
+  palette: ShortText.optional(),
+  fabric: ShortText.optional(),
+  fit: ShortText.optional(),
+  condition: ShortText.optional(),
+  notable: ShortText.optional(),
+  layerCount: external_exports.number().int().min(0).max(5).optional().default(0),
+  layers: external_exports.array(LayerSchema).max(5).optional().default([])
+}).strict();
+var CurrentStateSchema = external_exports.object({
+  injury: ShortText.optional(),
+  pose: ShortText.optional(),
+  proximity: ShortText.optional(),
+  leftHand: ShortText.optional(),
+  rightHand: ShortText.optional(),
+  emotion: ShortText.optional(),
+  intent: MediumText.optional(),
+  physicalTell: ShortText.optional(),
+  socialPosition: ShortText.optional()
+}).strict();
+var CastContinuitySchema = external_exports.object({
+  lastConfirmed: ShortText.optional(),
+  sourceHint: ShortText.optional(),
+  uncertainty: external_exports.array(UncertaintyEntrySchema).max(4).optional().default([])
 }).strict();
 var CastMemberSchema = external_exports.object({
   id: external_exports.string().trim().min(1).max(160),
@@ -4368,24 +4656,41 @@ var CastMemberSchema = external_exports.object({
   role: ShortText,
   location: ShortText,
   status: ShortText,
-  emotionalState: ShortText,
-  intent: MediumText,
-  pose: ShortText,
-  proximity: ShortText,
-  hands: ShortText,
   awareness: external_exports.enum(["none", "ambient", "watching", "alerted", "hostile"]),
   threat: GaugeSchema.omit({ value: true, trend: true }).extend({
     value: external_exports.number().min(0).max(10)
   }).strict(),
   spotlight: GaugeSchema,
-  visualAnchor: MediumText,
-  identitySummary: MediumText,
-  clothingSummary: MediumText,
-  goals: external_exports.array(ShortText).max(6),
-  relationships: external_exports.array(ShortText).max(8),
-  leverage: external_exports.array(ShortText).max(6),
-  pockets: external_exports.array(PocketItemSchema).max(6),
-  stableFacts: external_exports.array(ShortText).max(6)
+  changed: external_exports.boolean().optional().default(false),
+  changeNote: ShortText.optional(),
+  appearance: AppearanceSchema.optional().default({}),
+  clothing: ClothingSchema.optional().default({}),
+  currentState: CurrentStateSchema.optional().default({}),
+  emotionalState: ShortText.optional().default(""),
+  intent: MediumText.optional().default(""),
+  pose: ShortText.optional().default(""),
+  proximity: ShortText.optional().default(""),
+  hands: ShortText.optional().default(""),
+  visualAnchor: MediumText.optional().default(""),
+  identitySummary: MediumText.optional().default(""),
+  clothingSummary: MediumText.optional().default(""),
+  relSummary: ShortText.optional(),
+  relationships: external_exports.array(RelationshipEntrySchema).max(6).optional().default([]),
+  leverage: external_exports.array(ShortText).max(6).optional().default([]),
+  pockets: external_exports.array(PocketItemSchema).max(6).optional().default([]),
+  goals: external_exports.array(ShortText).max(6).optional().default([]),
+  stableFacts: external_exports.array(ShortText).max(8).optional().default([]),
+  continuity: CastContinuitySchema.optional().default({})
+}).strict();
+var SetupEntrySchema = external_exports.object({
+  thing: ShortText,
+  plantedBy: ShortText.optional(),
+  payoffWhen: MediumText.optional(),
+  state: external_exports.enum(["LOADED", "HEATING", "FIRED", "DORMANT"]).default("LOADED"),
+  evidence: MediumText.optional(),
+  payoffHint: ShortText.optional(),
+  changed: external_exports.boolean().optional().default(false),
+  changeNote: ShortText.optional()
 }).strict();
 var WorldStateSchema = external_exports.object({
   recentEnvironmentalChanges: external_exports.array(MediumText).max(6),
@@ -4402,12 +4707,7 @@ var WorldStateSchema = external_exports.object({
     visibleHint: MediumText,
     knownBy: external_exports.array(TinyText).max(6)
   }).strict()).max(8),
-  loadedSigns: external_exports.array(external_exports.object({
-    thing: ShortText,
-    loadedBy: MediumText,
-    firesWhen: MediumText,
-    state: external_exports.enum(["LOADED", "HEATING", "FIRED", "DORMANT"])
-  }).strict()).max(8)
+  loadedSigns: external_exports.array(SetupEntrySchema).max(8).optional().default([])
 }).strict();
 var StoryThreadSchema = external_exports.object({
   title: external_exports.string().trim().min(1).max(240),
@@ -4421,6 +4721,14 @@ var StoryThreadSchema = external_exports.object({
   summary: MediumText,
   nextPressure: MediumText,
   participants: external_exports.array(TinyText).max(12)
+}).strict();
+var SpotlightQueueEntrySchema = external_exports.object({
+  name: TinyText,
+  turnsSince: external_exports.number().int().nonnegative().default(0),
+  pct: PercentText.optional(),
+  color: ColorText.optional(),
+  need: external_exports.enum(["active", "soon", "okay", "quiet", "background"]).default("okay"),
+  reason: ShortText.optional()
 }).strict();
 var StoryStateSchema = external_exports.object({
   goals: external_exports.array(external_exports.object({
@@ -4452,7 +4760,8 @@ var StoryStateSchema = external_exports.object({
     who: TinyText,
     action: MediumText,
     unlessInterruptedBy: MediumText
-  }).strict()).max(8)
+  }).strict()).max(8),
+  spotlightQueue: external_exports.array(SpotlightQueueEntrySchema).max(12).optional().default([])
 }).strict();
 var ContinuityRiskSchema = external_exports.object({
   severity: external_exports.enum(["low", "medium", "high", "critical"]),
@@ -4460,17 +4769,43 @@ var ContinuityRiskSchema = external_exports.object({
   evidence: MediumText,
   recommendation: MediumText
 }).strict();
+var AvoidNextSchema = external_exports.object({
+  text: MediumText,
+  reason: ShortText.optional(),
+  scope: external_exports.enum(["turn", "scene", "persistent"]).default("turn"),
+  color: ColorText.optional(),
+  source: external_exports.enum(["user", "system", "compiler"]).default("compiler")
+}).strict();
+var ConsequenceEntrySchema = external_exports.object({
+  cause: ShortText,
+  pending: MediumText,
+  trigger: ShortText.optional(),
+  urgency: external_exports.number().min(0).max(10).default(5),
+  pct: PercentText.optional(),
+  status: external_exports.enum(["PENDING", "ACTIVE", "FIRED", "RESOLVED", "DORMANT"]).default("PENDING"),
+  evidence: MediumText.optional(),
+  changed: external_exports.boolean().optional().default(false),
+  changeNote: ShortText.optional()
+}).strict();
+var TermEntrySchema = external_exports.object({
+  party: TinyText,
+  term: MediumText,
+  risk: ShortText.optional(),
+  status: external_exports.enum(["PENDING", "ACCEPTED", "REJECTED", "BROKEN", "EXPIRED", "UNKNOWN"]).default("UNKNOWN"),
+  binding: external_exports.boolean().optional().default(false),
+  evidence: MediumText.optional(),
+  changed: external_exports.boolean().optional().default(false),
+  changeNote: ShortText.optional()
+}).strict();
 var ContinuityFirewallSchema = external_exports.object({
   establishedFacts: external_exports.array(MediumText).max(40),
   antiRetconAnchors: external_exports.array(MediumText).max(30),
-  pendingConsequences: external_exports.array(MediumText).max(30),
+  pendingConsequences: external_exports.array(ConsequenceEntrySchema).max(30).optional().default([]),
   offscreenState: external_exports.array(MediumText).max(24),
-  bannedNext: external_exports.array(external_exports.object({
-    text: MediumText,
-    persistent: external_exports.boolean()
-  }).strict()).max(12),
+  bannedNext: external_exports.array(AvoidNextSchema).max(12).optional().default([]),
   impossibleNext: external_exports.array(MediumText).max(12),
-  risks: external_exports.array(ContinuityRiskSchema).max(24)
+  risks: external_exports.array(ContinuityRiskSchema).max(24),
+  terms: external_exports.array(TermEntrySchema).max(10).optional().default([])
 }).strict();
 var ToolsSchema = external_exports.object({
   actionResolver: external_exports.object({
@@ -4519,7 +4854,9 @@ var CustomModuleItemSchema = external_exports.object({
   title: ShortText,
   text: MediumText,
   importance: external_exports.enum(["low", "medium", "high", "critical"]),
-  color: ColorText.optional()
+  color: ColorText.optional(),
+  changed: external_exports.boolean().optional().default(false),
+  changeNote: ShortText.optional()
 }).strict();
 var CustomModuleDataSchema = external_exports.object({
   moduleId: external_exports.string().min(1).max(160),
@@ -4662,22 +4999,21 @@ Exact JSON field contract (values below are type examples, not story facts):
   },
   "castMatrix": [{
     "id":"","name":"","kind":"npc","qty":1,"role":"","location":"",
-    "status":"","emotionalState":"","intent":"","pose":"","proximity":"",
-    "hands":"","awareness":"ambient",
+    "status":"","awareness":"ambient","changed":false,
     "threat":{"value":0,"pct":"0%","band":"","color":"","note":""},
-    "spotlight":{
-      "value":0,"pct":"0%","band":"","color":"",
-      "trend":"unknown","note":""
-    },
+    "spotlight":{"value":0,"pct":"0%","band":"","color":"","trend":"unknown","note":""},
+    "appearance":{},
+    "clothing":{"summary":"","layerCount":0,"layers":[]},
+    "currentState":{"pose":"","proximity":"","leftHand":"","rightHand":"","emotion":"","intent":"","injury":""},
+    "emotionalState":"","intent":"","pose":"","proximity":"","hands":"",
     "visualAnchor":"","identitySummary":"","clothingSummary":"",
-    "goals":[],"relationships":[],"leverage":[],"pockets":[],
-    "stableFacts":[]
+    "goals":[],"relationships":[],"leverage":[],"pockets":[],"stableFacts":[],"continuity":{}
   }],
   "worldState": {
     "recentEnvironmentalChanges":[],"activeHazards":[],
     "rumors":[{"rumor":"","source":"","credibility":0,"pct":"0%","color":""}],
     "secrets":[{"secret":"","visibleHint":"","knownBy":[]}],
-    "loadedSigns":[{"thing":"","loadedBy":"","firesWhen":"","state":"DORMANT"}]
+    "loadedSigns":[{"thing":"","plantedBy":"","payoffWhen":"","state":"LOADED","payoffHint":""}]
   },
   "storyState": {
     "goals":[{"who":"","goal":"","status":"ACTIVE","note":""}],
@@ -4689,16 +5025,16 @@ Exact JSON field contract (values below are type examples, not story facts):
     }],
     "stakes":[{"who":"","win":"","lose":""}],
     "countdowns":[{"title":"","left":0,"unit":"","pct":"0%","color":""}],
+    "spotlightQueue":[{"name":"","turnsSince":0,"need":"okay","reason":""}],
     "autonomyQueue":[{"who":"","action":"","unlessInterruptedBy":""}]
   },
   "continuityFirewall": {
-    "establishedFacts":[],"antiRetconAnchors":[],"pendingConsequences":[],
-    "offscreenState":[],
-    "bannedNext":[{"text":"","persistent":false}],
+    "establishedFacts":[],"antiRetconAnchors":[],"offscreenState":[],
+    "pendingConsequences":[{"cause":"","pending":"","urgency":5,"status":"PENDING"}],
+    "bannedNext":[{"text":"","reason":"","scope":"turn","source":"compiler"}],
     "impossibleNext":[],
-    "risks":[{
-      "severity":"medium","issue":"","evidence":"","recommendation":""
-    }]
+    "risks":[{"severity":"medium","issue":"","evidence":"","recommendation":""}],
+    "terms":[{"party":"","term":"","status":"UNKNOWN","binding":false}]
   },
   "tools": {
     "actionResolver": {
@@ -4726,8 +5062,12 @@ Exact JSON field contract (values below are type examples, not story facts):
 For disabled optional modules: meters=[], scene=null, worldState=null, the
 corresponding tools member=null, and auditLog=[]. Empty optional arrays inside an
 enabled object are valid. Do not emit example rows when there is no evidence.`;
-function buildStateCompilerPrompt(enabledModules, customModules) {
-  const enabled = MODULE_CATALOG.filter((module) => enabledModules.includes(module.key)).map((module) => `- ${module.key}: ${module.description}`).join("\n");
+function buildStateCompilerPrompt(enabledModules, customModules, overrides) {
+  const enabled = MODULE_CATALOG.filter((module) => enabledModules.includes(module.key)).map((module) => {
+    const base = `- ${module.key}: ${module.description}`;
+    const addendum = overrides?.[module.key]?.compilerGuidanceAddendum;
+    return addendum ? `${base} [Override: ${addendum}]` : base;
+  }).join("\n");
   const enabledCustom = (customModules || []).filter((m) => m.enabled).map((m) => `- customModuleData[moduleId=${m.id}] (${m.label}): ${m.compilerInstruction} (maxItems: ${m.maxItems || 6})`).join("\n");
   const trackingText = enabled + (enabledCustom ? "\n\nEnabled custom tracking modules:\n" + enabledCustom : "");
   let customContract = "";
@@ -4778,11 +5118,24 @@ Rules:
 - Respect all array limits. Keep prose compact and operational.
 - Precompute pct, label/band, color, and trend fields wherever the contract asks for them.
 - Meters diagnose current state only. They never command escalation.
-- bannedNext entries are { "text": string, "persistent": boolean }; default persistent to false.
 - Keep character tracking non-explicit. When age is unspecified, treat characters as adults and never output minors.
 - Do not reveal hidden chain-of-thought. Secrets are reader-visible dramatic state only.
 - activeModules must contain only enabled module keys.
 - Use numeric ranges exactly as named: percentages 0-100, threat/observer pressure 0-10, urgency 0-5, conflict severity 1-3.
+
+Character depth rules:
+- For each named character, include appearance fields (species, ageBand, height, build, skin, hair, eyes, voice, presence) when transcript evidence exists. Use empty object {} otherwise.
+- Carry forward appearance from seed unless contradicted. Never reset appearance each turn.
+- Clothing persists until transcript explicitly shows change. Track layers (outer/upper/lower/feet/accessory). Mark clothing.changed=true when clothing updates.
+- Update currentState (pose, proximity, leftHand, rightHand, emotion, intent, physicalTell, injury) from latest transcript actions and descriptions.
+- Relationships: use axis labels (Trust, Fear, Attraction, Rivalry, Loyalty, Debt). Value -100 (hostile) to 100 (devoted). Include evidence for changes.
+- Spot trends (up/down/steady) on relationship values.
+- Set changed=true and add changeNote whenever a character's location, clothing, inventory, pose, emotional state, awareness, relationship, or intent changes from the previous turn.
+- Uncertainty: log claims that are not yet fully confirmed with confidence 0-10 and appropriate label.
+- Crowd/background groups: summarize compactly with qty. Do not over-individualize.
+- Never output explicit anatomical details. Focus on grounded, useful continuity.
+- When age is unspecified, assume adult. Never output minors.
+- Spotlight queue: track turnsSince each named character last had narrative focus. Use need: active/soon/okay/quiet/background.
 `;
 }
 var STATE_REPAIR_PROMPT = `Repair a malformed LoomOS State V2 compiler result.
@@ -4957,7 +5310,20 @@ function clean(value, max = 260) {
 function xmlEscape(value, max = 260) {
   return clean(value, max).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
-async function buildCompactInjection(state, settings, countTokens) {
+function memberInjection(member, hasVisuals, hasClothing) {
+  let text = `cast.${xmlEscape(member.name, 80)}: ${xmlEscape(member.status)}; intent=${xmlEscape(member.intent)}; goal=${xmlEscape(member.goals[0] ?? "")}`;
+  if (hasVisuals) {
+    text += `; pose=${xmlEscape(member.currentState?.pose ?? member.pose ?? "")}; emotion=${xmlEscape(member.currentState?.emotion ?? member.emotionalState ?? "")}`;
+  }
+  if (hasClothing && member.clothing?.summary) {
+    text += `; attire=${xmlEscape(member.clothing.summary)}`;
+  }
+  if (member.changed) {
+    text += ` [changed]`;
+  }
+  return text;
+}
+async function buildCompactInjection(state, settings, countTokens, overrides) {
   const open = "<loomos_state>";
   const close = "</loomos_state>";
   const enabled = (key) => settings.moduleSettings[key].track && settings.moduleSettings[key].inject && state.activeModules.includes(key);
@@ -4979,7 +5345,7 @@ async function buildCompactInjection(state, settings, countTokens) {
       (item) => `anchor: ${xmlEscape(item)}`
     ));
     fragments.push(...state.continuityFirewall.pendingConsequences.slice(0, 5).map(
-      (item) => `pending: ${xmlEscape(item)}`
+      (item) => `pending: ${xmlEscape(typeof item === "string" ? item : item.pending)}`
     ));
   }
   if (enabled("actionResolver") && state.tools.actionResolver) {
@@ -4989,9 +5355,9 @@ async function buildCompactInjection(state, settings, countTokens) {
     );
   }
   if (enabled("castCore")) {
-    fragments.push(...state.castMatrix.filter((member) => member.kind === "pov" || member.kind === "main" || member.spotlight.value >= 45).slice(0, 6).map(
-      (member) => `cast.${xmlEscape(member.name, 80)}: ${xmlEscape(member.status)}; intent=${xmlEscape(member.intent)}; goal=${xmlEscape(member.goals[0] ?? "")}`
-    ));
+    const hasVisuals = enabled("castVisuals") || enabled("imagePrompt");
+    const hasClothing = enabled("clothing");
+    fragments.push(...state.castMatrix.filter((member) => member.kind === "pov" || member.kind === "main" || member.spotlight.value >= 45).slice(0, 6).map((member) => memberInjection(member, hasVisuals, hasClothing)));
   }
   if (enabled("worldSpace") && state.scene) {
     fragments.push(
@@ -5016,6 +5382,7 @@ async function buildCompactInjection(state, settings, countTokens) {
   }
   if (enabled("continuity")) {
     fragments.push(...state.continuityFirewall.risks.filter((risk) => risk.severity === "high" || risk.severity === "critical").slice(0, 4).map((risk) => `risk.${risk.severity}: ${xmlEscape(risk.issue)}`));
+    fragments.push(...state.continuityFirewall.bannedNext.filter((item) => item.scope === "persistent" || item.scope === "scene").slice(0, 4).map((item) => `avoid: ${xmlEscape(item.text)}${item.reason ? ` (${xmlEscape(item.reason)})` : ""}`));
   }
   const enabledCustomMods = settings.customModules || [];
   for (const cm of enabledCustomMods) {
@@ -5127,10 +5494,11 @@ function migrateLegacyState(state) {
       identitySummary: `${member.role}; ${member.status}`,
       clothingSummary: "",
       goals: member.goals.slice(0, 6),
-      relationships: member.relationships.slice(0, 8),
+      relationships: member.relationships.slice(0, 6).map((rel) => ({ target: rel, axis: "general", value: 0 })),
       leverage: member.leverage.slice(0, 6),
       pockets: [],
-      stableFacts: []
+      stableFacts: [],
+      changed: false
     })),
     worldState: {
       recentEnvironmentalChanges: [],
@@ -5161,11 +5529,15 @@ function migrateLegacyState(state) {
     continuityFirewall: {
       establishedFacts: state.continuityFirewall.establishedFacts,
       antiRetconAnchors: state.kernel.constraints,
-      pendingConsequences: state.continuityFirewall.pendingConsequences,
+      pendingConsequences: state.continuityFirewall.pendingConsequences.slice(0, 30).map((c) => ({
+        cause: c.slice(0, 500),
+        pending: c.slice(0, 1600)
+      })),
       offscreenState: [],
       bannedNext: [],
       impossibleNext: [],
-      risks: state.continuityFirewall.risks
+      risks: state.continuityFirewall.risks,
+      terms: []
     },
     tools: {
       actionResolver: null,
@@ -5230,16 +5602,46 @@ function buildStateSeedForCompiler(state, settings) {
       location: compactText(member.location),
       status: compactText(member.status),
       intent: compactText(member.intent),
-      clothing: modules.clothing.track ? compactText(member.clothingSummary) : void 0,
+      appearance: modules.castCore.track && member.appearance?.species ? {
+        species: member.appearance.species,
+        height: member.appearance.height,
+        build: member.appearance.build,
+        hair: member.appearance.hair,
+        eyes: member.appearance.eyes,
+        presence: member.appearance.presence
+      } : void 0,
+      clothing: modules.clothing.track ? {
+        summary: compactText(member.clothing?.summary ?? member.clothingSummary ?? ""),
+        layerCount: member.clothing?.layerCount ?? 0,
+        notable: compactText(member.clothing?.notable ?? "")
+      } : void 0,
+      currentState: modules.castVisuals.track && member.currentState ? {
+        pose: compactText(member.currentState.pose ?? member.pose ?? ""),
+        proximity: compactText(member.currentState.proximity ?? member.proximity ?? ""),
+        hands: compactText(member.currentState.leftHand ?? member.hands ?? ""),
+        emotion: compactText(member.currentState.emotion ?? member.emotionalState ?? ""),
+        injury: compactText(member.currentState.injury ?? "")
+      } : void 0,
+      changed: member.changed,
       goals: member.goals.slice(0, 4).map(compactText),
-      relationships: modules.relationships.track ? member.relationships.slice(0, 4).map(compactText) : void 0,
+      relationships: modules.relationships.track ? member.relationships.slice(0, 4).map((rel) => ({
+        target: rel.target,
+        value: rel.value,
+        trend: rel.trend,
+        evidence: rel.evidence ? compactText(rel.evidence) : void 0
+      })) : void 0,
       pockets: modules.inventory.track ? member.pockets.slice(0, 4).map((item) => ({
         name: item.name,
         qty: item.qty,
         condition: compactText(item.condition),
         known: item.known
       })) : void 0,
-      stableFacts: member.stableFacts.slice(0, 4).map(compactText)
+      stableFacts: member.stableFacts.slice(0, 4).map(compactText),
+      uncertainty: member.continuity?.uncertainty?.slice(0, 3).map((u) => ({
+        claim: compactText(u.claim),
+        confidence: u.confidence,
+        label: u.label
+      }))
     })),
     story: {
       threads: state.storyState.threadLoom.filter((thread) => thread.status !== "resolved").slice(0, 8).map((thread) => ({
@@ -5255,9 +5657,16 @@ function buildStateSeedForCompiler(state, settings) {
     continuity: {
       facts: state.continuityFirewall.establishedFacts.slice(0, 12).map(compactText),
       anchors: state.continuityFirewall.antiRetconAnchors.slice(0, 10).map(compactText),
-      pending: state.continuityFirewall.pendingConsequences.slice(0, 10).map(compactText),
+      pending: state.continuityFirewall.pendingConsequences.slice(0, 10).map(
+        (item) => compactText(typeof item === "string" ? item : item.pending)
+      ),
       offscreen: state.continuityFirewall.offscreenState.slice(0, 8).map(compactText),
-      persistentBans: state.continuityFirewall.bannedNext.filter((item) => item.persistent).slice(0, 6).map((item) => compactText(item.text))
+      persistentBans: state.continuityFirewall.bannedNext.filter((item) => item.scope === "persistent").slice(0, 6).map((item) => compactText(item.text)),
+      terms: state.continuityFirewall.terms?.slice(0, 6).map((item) => ({
+        party: item.party,
+        term: compactText(item.term),
+        status: item.status
+      }))
     },
     world: modules.worldSpace.track && state.scene ? {
       privacy: state.scene.privacy,

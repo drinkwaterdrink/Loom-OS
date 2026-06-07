@@ -83,10 +83,11 @@ function migrateLegacyState(state: LegacyLoomOSState): LoomOSState {
       identitySummary: `${member.role}; ${member.status}`,
       clothingSummary: "",
       goals: member.goals.slice(0, 6),
-      relationships: member.relationships.slice(0, 8),
+      relationships: member.relationships.slice(0, 6).map((rel) => ({ target: rel, axis: "general", value: 0 })),
       leverage: member.leverage.slice(0, 6),
       pockets: [],
       stableFacts: [],
+      changed: false,
     })),
     worldState: {
       recentEnvironmentalChanges: [],
@@ -117,11 +118,15 @@ function migrateLegacyState(state: LegacyLoomOSState): LoomOSState {
     continuityFirewall: {
       establishedFacts: state.continuityFirewall.establishedFacts,
       antiRetconAnchors: state.kernel.constraints,
-      pendingConsequences: state.continuityFirewall.pendingConsequences,
+      pendingConsequences: state.continuityFirewall.pendingConsequences.slice(0, 30).map((c) => ({
+        cause: c.slice(0, 500),
+        pending: c.slice(0, 1600),
+      })),
       offscreenState: [],
       bannedNext: [],
       impossibleNext: [],
       risks: state.continuityFirewall.risks,
+      terms: [],
     },
     tools: {
       actionResolver: null,

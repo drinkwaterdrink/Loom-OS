@@ -3,6 +3,7 @@ import type {
   LoomOSState,
   ModuleKey,
 } from "./types";
+import type { StockModuleOverrides } from "./modules";
 
 export type TokenCounter = (text: string) => Promise<number>;
 
@@ -17,10 +18,25 @@ function xmlEscape(value: string, max = 260): string {
     .replaceAll(">", "&gt;");
 }
 
+function memberInjection(member: LoomOSState["castMatrix"][number], hasVisuals: boolean, hasClothing: boolean): string {
+  let text = `cast.${xmlEscape(member.name, 80)}: ${xmlEscape(member.status)}; intent=${xmlEscape(member.intent)}; goal=${xmlEscape(member.goals[0] ?? "")}`;
+  if (hasVisuals) {
+    text += `; pose=${xmlEscape(member.currentState?.pose ?? member.pose ?? "")}; emotion=${xmlEscape(member.currentState?.emotion ?? member.emotionalState ?? "")}`;
+  }
+  if (hasClothing && member.clothing?.summary) {
+    text += `; attire=${xmlEscape(member.clothing.summary)}`;
+  }
+  if (member.changed) {
+    text += ` [changed]`;
+  }
+  return text;
+}
+
 export async function buildCompactInjection(
   state: LoomOSState,
   settings: LoomOSSettings,
   countTokens: TokenCounter,
+  overrides?: StockModuleOverrides,
 ): Promise<string> {
   const open = "<loomos_state>";
   const close = "</loomos_state>";
@@ -47,7 +63,7 @@ export async function buildCompactInjection(
       `anchor: ${xmlEscape(item)}`
     ));
     fragments.push(...state.continuityFirewall.pendingConsequences.slice(0, 5).map((item) =>
-      `pending: ${xmlEscape(item)}`
+      `pending: ${xmlEscape(typeof item === "string" ? item : item.pending)}`
     ));
   }
   if (enabled("actionResolver") && state.tools.actionResolver) {
@@ -57,12 +73,12 @@ export async function buildCompactInjection(
     );
   }
   if (enabled("castCore")) {
+    const hasVisuals = enabled("castVisuals") || enabled("imagePrompt");
+    const hasClothing = enabled("clothing");
     fragments.push(...state.castMatrix
       .filter((member) => member.kind === "pov" || member.kind === "main" || member.spotlight.value >= 45)
       .slice(0, 6)
-      .map((member) =>
-        `cast.${xmlEscape(member.name, 80)}: ${xmlEscape(member.status)}; intent=${xmlEscape(member.intent)}; goal=${xmlEscape(member.goals[0] ?? "")}`
-      ));
+      .map((member) => memberInjection(member, hasVisuals, hasClothing)));
   }
   if (enabled("worldSpace") && state.scene) {
     fragments.push(
@@ -97,6 +113,10 @@ export async function buildCompactInjection(
       .filter((risk) => risk.severity === "high" || risk.severity === "critical")
       .slice(0, 4)
       .map((risk) => `risk.${risk.severity}: ${xmlEscape(risk.issue)}`));
+    fragments.push(...state.continuityFirewall.bannedNext
+      .filter((item) => item.scope === "persistent" || item.scope === "scene")
+      .slice(0, 4)
+      .map((item) => `avoid: ${xmlEscape(item.text)}${item.reason ? ` (${xmlEscape(item.reason)})` : ""}`));
   }
 
   // Inject enabled custom modules

@@ -13,11 +13,31 @@ export const LOOMOS_STYLES = `
     gap: 10px;
     line-height: 1.45;
     padding: 10px;
-    max-width: 100%;
+    max-width: calc(100vw - 16px);
+    width: 100%;
     overflow-x: hidden;
+    overflow-wrap: anywhere;
+    word-break: break-word;
     padding-bottom: 72px !important;
   }
-  .loomos-root *, .loomos-root *::before, .loomos-root *::after { box-sizing: border-box; }
+  .loomos-root[data-view="modal"] {
+    max-width: calc(100vw - 16px);
+    width: 100%;
+    min-width: 0;
+  }
+  .loomos-root *, .loomos-root *::before, .loomos-root *::after {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .loomos-root button, .loomos-root select, .loomos-root input, .loomos-root textarea {
+    max-width: 100%;
+    min-width: 0;
+  }
+  .loomos-root textarea {
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
   .loomos-root[data-skin="dark_academia"] { --loomos-bg:#17130f;--loomos-panel:#241d16;--loomos-ink:#ead9b7;--loomos-muted:#af9c78;--loomos-accent:#ba8b43;--loomos-border:#493a28; }
   .loomos-root[data-skin="cyberpunk"] { --loomos-bg:#090b18;--loomos-panel:#10152a;--loomos-ink:#e9faff;--loomos-muted:#8ea5c8;--loomos-accent:#25f2d0;--loomos-border:#304369; }
   .loomos-root[data-skin="fantasy"] { --loomos-bg:#111b17;--loomos-panel:#192821;--loomos-ink:#ecf1d0;--loomos-muted:#a9b995;--loomos-accent:#d4ad57;--loomos-border:#3f594b; }

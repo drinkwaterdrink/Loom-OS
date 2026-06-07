@@ -63,22 +63,21 @@ Exact JSON field contract (values below are type examples, not story facts):
   },
   "castMatrix": [{
     "id":"","name":"","kind":"npc","qty":1,"role":"","location":"",
-    "status":"","emotionalState":"","intent":"","pose":"","proximity":"",
-    "hands":"","awareness":"ambient",
+    "status":"","awareness":"ambient","changed":false,
     "threat":{"value":0,"pct":"0%","band":"","color":"","note":""},
-    "spotlight":{
-      "value":0,"pct":"0%","band":"","color":"",
-      "trend":"unknown","note":""
-    },
+    "spotlight":{"value":0,"pct":"0%","band":"","color":"","trend":"unknown","note":""},
+    "appearance":{},
+    "clothing":{"summary":"","layerCount":0,"layers":[]},
+    "currentState":{"pose":"","proximity":"","leftHand":"","rightHand":"","emotion":"","intent":"","injury":""},
+    "emotionalState":"","intent":"","pose":"","proximity":"","hands":"",
     "visualAnchor":"","identitySummary":"","clothingSummary":"",
-    "goals":[],"relationships":[],"leverage":[],"pockets":[],
-    "stableFacts":[]
+    "goals":[],"relationships":[],"leverage":[],"pockets":[],"stableFacts":[],"continuity":{}
   }],
   "worldState": {
     "recentEnvironmentalChanges":[],"activeHazards":[],
     "rumors":[{"rumor":"","source":"","credibility":0,"pct":"0%","color":""}],
     "secrets":[{"secret":"","visibleHint":"","knownBy":[]}],
-    "loadedSigns":[{"thing":"","loadedBy":"","firesWhen":"","state":"DORMANT"}]
+    "loadedSigns":[{"thing":"","plantedBy":"","payoffWhen":"","state":"LOADED","payoffHint":""}]
   },
   "storyState": {
     "goals":[{"who":"","goal":"","status":"ACTIVE","note":""}],
@@ -90,16 +89,16 @@ Exact JSON field contract (values below are type examples, not story facts):
     }],
     "stakes":[{"who":"","win":"","lose":""}],
     "countdowns":[{"title":"","left":0,"unit":"","pct":"0%","color":""}],
+    "spotlightQueue":[{"name":"","turnsSince":0,"need":"okay","reason":""}],
     "autonomyQueue":[{"who":"","action":"","unlessInterruptedBy":""}]
   },
   "continuityFirewall": {
-    "establishedFacts":[],"antiRetconAnchors":[],"pendingConsequences":[],
-    "offscreenState":[],
-    "bannedNext":[{"text":"","persistent":false}],
+    "establishedFacts":[],"antiRetconAnchors":[],"offscreenState":[],
+    "pendingConsequences":[{"cause":"","pending":"","urgency":5,"status":"PENDING"}],
+    "bannedNext":[{"text":"","reason":"","scope":"turn","source":"compiler"}],
     "impossibleNext":[],
-    "risks":[{
-      "severity":"medium","issue":"","evidence":"","recommendation":""
-    }]
+    "risks":[{"severity":"medium","issue":"","evidence":"","recommendation":""}],
+    "terms":[{"party":"","term":"","status":"UNKNOWN","binding":false}]
   },
   "tools": {
     "actionResolver": {
@@ -128,10 +127,18 @@ For disabled optional modules: meters=[], scene=null, worldState=null, the
 corresponding tools member=null, and auditLog=[]. Empty optional arrays inside an
 enabled object are valid. Do not emit example rows when there is no evidence.`;
 
-export function buildStateCompilerPrompt(enabledModules: ModuleKey[], customModules?: any[]): string {
+export function buildStateCompilerPrompt(
+  enabledModules: ModuleKey[],
+  customModules?: any[],
+  overrides?: Record<string, { compilerGuidanceAddendum?: string }>,
+): string {
   const enabled = MODULE_CATALOG
     .filter((module) => enabledModules.includes(module.key))
-    .map((module) => `- ${module.key}: ${module.description}`)
+    .map((module) => {
+      const base = `- ${module.key}: ${module.description}`;
+      const addendum = overrides?.[module.key]?.compilerGuidanceAddendum;
+      return addendum ? `${base} [Override: ${addendum}]` : base;
+    })
     .join("\n");
 
   const enabledCustom = (customModules || [])
@@ -194,11 +201,24 @@ Rules:
 - Respect all array limits. Keep prose compact and operational.
 - Precompute pct, label/band, color, and trend fields wherever the contract asks for them.
 - Meters diagnose current state only. They never command escalation.
-- bannedNext entries are { "text": string, "persistent": boolean }; default persistent to false.
 - Keep character tracking non-explicit. When age is unspecified, treat characters as adults and never output minors.
 - Do not reveal hidden chain-of-thought. Secrets are reader-visible dramatic state only.
 - activeModules must contain only enabled module keys.
 - Use numeric ranges exactly as named: percentages 0-100, threat/observer pressure 0-10, urgency 0-5, conflict severity 1-3.
+
+Character depth rules:
+- For each named character, include appearance fields (species, ageBand, height, build, skin, hair, eyes, voice, presence) when transcript evidence exists. Use empty object {} otherwise.
+- Carry forward appearance from seed unless contradicted. Never reset appearance each turn.
+- Clothing persists until transcript explicitly shows change. Track layers (outer/upper/lower/feet/accessory). Mark clothing.changed=true when clothing updates.
+- Update currentState (pose, proximity, leftHand, rightHand, emotion, intent, physicalTell, injury) from latest transcript actions and descriptions.
+- Relationships: use axis labels (Trust, Fear, Attraction, Rivalry, Loyalty, Debt). Value -100 (hostile) to 100 (devoted). Include evidence for changes.
+- Spot trends (up/down/steady) on relationship values.
+- Set changed=true and add changeNote whenever a character's location, clothing, inventory, pose, emotional state, awareness, relationship, or intent changes from the previous turn.
+- Uncertainty: log claims that are not yet fully confirmed with confidence 0-10 and appropriate label.
+- Crowd/background groups: summarize compactly with qty. Do not over-individualize.
+- Never output explicit anatomical details. Focus on grounded, useful continuity.
+- When age is unspecified, assume adult. Never output minors.
+- Spotlight queue: track turnsSince each named character last had narrative focus. Use need: active/soon/okay/quiet/background.
 `;
 }
 

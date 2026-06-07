@@ -72,6 +72,7 @@ test("custom modules validate and serialize in settings", () => {
         compilerInstruction: "Track faction standings dynamically",
         outputMode: "gauge",
         maxItems: 4,
+        intensity: "medium",
       },
     ],
   };
@@ -113,6 +114,7 @@ test("state schema validates compiled custom module data", () => {
             text: "Friendly",
             importance: "high",
             color: "#00ff00",
+            changed: false,
           },
         ],
       },

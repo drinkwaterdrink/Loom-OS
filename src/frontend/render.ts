@@ -173,7 +173,7 @@ function renderCast(state: LoomOSState, settings: LoomOSSettings): string {
                       ${member.visualAnchor ? `<p><strong>Visual Anchor:</strong> ${clampProse(member.visualAnchor, 100)}</p>` : ""}
                       ${visible(settings, "clothing") && member.clothingSummary ? `<p><strong>Clothing:</strong> ${clampProse(member.clothingSummary, 100)}</p>` : ""}
                       ${member.goals.length > 0 ? `<div class="loomos-subhead">Goals</div>${chips(member.goals)}` : ""}
-                      ${visible(settings, "relationships") && member.relationships.length > 0 ? `<div class="loomos-subhead">Relationships</div>${chips(member.relationships)}` : ""}
+                      ${visible(settings, "relationships") && member.relationships.length > 0 ? `<div class="loomos-subhead">Relationships</div>${chips(member.relationships.map((r) => `${r.target}: ${r.axis}=${r.value}${r.evidence ? ` (${r.evidence.slice(0, 60)})` : ""}`))}` : ""}
                       ${visible(settings, "inventory") && member.pockets.length > 0 ? `<div class="loomos-subhead">Pockets</div>${chips(member.pockets.map(item => `${item.name} x${item.qty}${item.known ? "" : " (unknown)"}`))}` : ""}
                       ${member.stableFacts.length > 0 ? `<div class="loomos-subhead">Stable Facts</div>${chips(member.stableFacts)}` : ""}
                     </div>
@@ -333,7 +333,7 @@ function renderContinuity(state: LoomOSState): string {
       <summary>Consequences & Offscreen &nbsp;(${firewall.pendingConsequences.length + firewall.offscreenState.length})</summary>
       <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
         <div class="loomos-subhead">Pending Consequences</div>
-        ${chips(firewall.pendingConsequences)}
+        ${chips(firewall.pendingConsequences.map((c) => `${c.pending}${c.status !== "PENDING" ? ` [${c.status}]` : ""}`))}
         <div class="loomos-subhead">Offscreen State</div>
         ${chips(firewall.offscreenState)}
       </div>
@@ -343,7 +343,7 @@ function renderContinuity(state: LoomOSState): string {
       <summary>Banned / Impossible Next &nbsp;(${firewall.bannedNext.length + firewall.impossibleNext.length})</summary>
       <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
         <div class="loomos-subhead">Banned next moves</div>
-        ${chips(firewall.bannedNext.map((item) => `${item.text}${item.persistent ? " (persistent)" : ""}`))}
+        ${chips(firewall.bannedNext.map((item) => `${item.text}${item.scope === "persistent" ? " (persistent)" : ""}`))}
         <div class="loomos-subhead">Impossible next moves</div>
         ${chips(firewall.impossibleNext)}
       </div>

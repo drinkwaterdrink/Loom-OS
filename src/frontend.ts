@@ -996,8 +996,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     }
     modal = ctx.ui.showModal({
       title: `LoomOS | ${exactLabel()}`,
-      width: 980,
-      maxHeight: 820,
+      width: Math.min(980, typeof window !== "undefined" ? window.innerWidth - 16 : 420),
+      maxHeight: typeof window !== "undefined" ? Math.min(820, window.innerHeight - 32) : 600,
     });
     const root = modal.root;
     const onClick = (event: Event) => handleActionClick(event);

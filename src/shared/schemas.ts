@@ -58,6 +58,8 @@ export const CustomModuleSchema = z.object({
   compilerInstruction: z.string().trim().max(1600),
   outputMode: z.enum(["cards", "bullets", "chips", "gauge"]).default("cards"),
   maxItems: z.number().int().min(1).max(24).default(6),
+  intensity: z.enum(["light", "medium", "heavy", "experimental"]).default("medium"),
+  displayOrder: z.number().int().optional(),
 }).strict();
 
 export const StateIdentitySchema = z.object({
@@ -96,6 +98,23 @@ const RawSettingsSchema = z.object({
   connectionId: z.string().trim().max(200).default(""),
   modulePreset: ModulePresetSchema.default("balanced"),
   moduleSettings: ModuleSettingsSchema.default(BALANCED_MODULE_SETTINGS),
+  stockModuleOverrides: z.record(
+    z.string(),
+    z.object({
+      label: z.string().max(160).optional(),
+      description: z.string().max(500).optional(),
+      group: z.string().max(160).optional(),
+      icon: z.string().max(20).optional(),
+      displayOrder: z.number().int().optional(),
+      intensityLabel: z.string().max(40).optional(),
+      defaultDisplay: z.boolean().optional(),
+      defaultInject: z.boolean().optional(),
+      compilerGuidanceAddendum: z.string().max(1000).optional(),
+      injectionPriority: z.number().int().optional(),
+      renderHint: z.string().max(200).optional(),
+      hiddenFromSettings: z.boolean().optional(),
+    }).strict(),
+  ).default({}),
   customModulePresets: z.array(CustomModulePresetSchema).default([]),
   customModules: z.array(CustomModuleSchema).default([]),
 }).strict();
@@ -141,6 +160,7 @@ function settingsInput(value: unknown): unknown {
     connectionId: source.connectionId,
     modulePreset: source.modulePreset,
     moduleSettings,
+    stockModuleOverrides: source.stockModuleOverrides,
     customModulePresets: source.customModulePresets,
     customModules: source.customModules,
   };
@@ -245,10 +265,87 @@ export const SceneSchema = z.object({
 
 const PocketItemSchema = z.object({
   name: TinyText,
-  type: TinyText,
+  type: z.enum(["consumable", "concealed", "tool", "key", "evidence", "misc"]).default("misc"),
   qty: z.number().int().nonnegative().max(9999),
   condition: ShortText,
   known: z.boolean(),
+  color: ColorText.optional(),
+  changed: z.boolean().optional().default(false),
+  changeNote: ShortText.optional(),
+}).strict();
+
+const LayerSchema = z.object({
+  slot: z.enum(["outer", "upper", "lower", "feet", "accessory", "other"]),
+  text: ShortText,
+  state: ShortText.optional(),
+  color: ColorText.optional(),
+}).strict();
+
+const RelationshipEntrySchema = z.object({
+  target: TinyText,
+  axis: ShortText,
+  value: z.number().min(-100).max(100),
+  pct: PercentText.optional(),
+  label: TinyText.optional(),
+  color: ColorText.optional(),
+  trend: TrendSchema.optional(),
+  evidence: MediumText.optional(),
+}).strict();
+
+const UncertaintyEntrySchema = z.object({
+  claim: MediumText,
+  confidence: z.number().min(0).max(10),
+  label: z.enum(["UNKNOWN", "DOUBTFUL", "POSSIBLE", "LIKELY", "CONFIRMED"]).default("UNKNOWN"),
+  handling: ShortText.optional(),
+}).strict();
+
+const AppearanceSchema = z.object({
+  species: ShortText.optional(),
+  ageBand: ShortText.optional(),
+  genderPresentation: ShortText.optional(),
+  height: ShortText.optional(),
+  build: ShortText.optional(),
+  skin: ShortText.optional(),
+  face: ShortText.optional(),
+  facialStructure: ShortText.optional(),
+  hair: ShortText.optional(),
+  eyes: ShortText.optional(),
+  voice: ShortText.optional(),
+  movement: ShortText.optional(),
+  distinguishingMarks: MediumText.optional(),
+  presence: ShortText.optional(),
+  fullDescription: MediumText.optional(),
+  anchor: MediumText.optional(),
+}).strict();
+
+const ClothingSchema = z.object({
+  summary: ShortText.optional(),
+  silhouette: ShortText.optional(),
+  palette: ShortText.optional(),
+  fabric: ShortText.optional(),
+  fit: ShortText.optional(),
+  condition: ShortText.optional(),
+  notable: ShortText.optional(),
+  layerCount: z.number().int().min(0).max(5).optional().default(0),
+  layers: z.array(LayerSchema).max(5).optional().default([]),
+}).strict();
+
+const CurrentStateSchema = z.object({
+  injury: ShortText.optional(),
+  pose: ShortText.optional(),
+  proximity: ShortText.optional(),
+  leftHand: ShortText.optional(),
+  rightHand: ShortText.optional(),
+  emotion: ShortText.optional(),
+  intent: MediumText.optional(),
+  physicalTell: ShortText.optional(),
+  socialPosition: ShortText.optional(),
+}).strict();
+
+const CastContinuitySchema = z.object({
+  lastConfirmed: ShortText.optional(),
+  sourceHint: ShortText.optional(),
+  uncertainty: z.array(UncertaintyEntrySchema).max(4).optional().default([]),
 }).strict();
 
 export const CastMemberSchema = z.object({
@@ -259,24 +356,47 @@ export const CastMemberSchema = z.object({
   role: ShortText,
   location: ShortText,
   status: ShortText,
-  emotionalState: ShortText,
-  intent: MediumText,
-  pose: ShortText,
-  proximity: ShortText,
-  hands: ShortText,
   awareness: z.enum(["none", "ambient", "watching", "alerted", "hostile"]),
   threat: GaugeSchema.omit({ value: true, trend: true }).extend({
     value: z.number().min(0).max(10),
   }).strict(),
   spotlight: GaugeSchema,
-  visualAnchor: MediumText,
-  identitySummary: MediumText,
-  clothingSummary: MediumText,
-  goals: z.array(ShortText).max(6),
-  relationships: z.array(ShortText).max(8),
-  leverage: z.array(ShortText).max(6),
-  pockets: z.array(PocketItemSchema).max(6),
-  stableFacts: z.array(ShortText).max(6),
+  changed: z.boolean().optional().default(false),
+  changeNote: ShortText.optional(),
+  
+  appearance: AppearanceSchema.optional().default({}),
+  clothing: ClothingSchema.optional().default({}),
+  currentState: CurrentStateSchema.optional().default({}),
+  
+  emotionalState: ShortText.optional().default(""),
+  intent: MediumText.optional().default(""),
+  pose: ShortText.optional().default(""),
+  proximity: ShortText.optional().default(""),
+  hands: ShortText.optional().default(""),
+  visualAnchor: MediumText.optional().default(""),
+  identitySummary: MediumText.optional().default(""),
+  clothingSummary: MediumText.optional().default(""),
+
+  relSummary: ShortText.optional(),
+  relationships: z.array(RelationshipEntrySchema).max(6).optional().default([]),
+  leverage: z.array(ShortText).max(6).optional().default([]),
+
+  pockets: z.array(PocketItemSchema).max(6).optional().default([]),
+
+  goals: z.array(ShortText).max(6).optional().default([]),
+  stableFacts: z.array(ShortText).max(8).optional().default([]),
+  continuity: CastContinuitySchema.optional().default({}),
+}).strict();
+
+const SetupEntrySchema = z.object({
+  thing: ShortText,
+  plantedBy: ShortText.optional(),
+  payoffWhen: MediumText.optional(),
+  state: z.enum(["LOADED", "HEATING", "FIRED", "DORMANT"]).default("LOADED"),
+  evidence: MediumText.optional(),
+  payoffHint: ShortText.optional(),
+  changed: z.boolean().optional().default(false),
+  changeNote: ShortText.optional(),
 }).strict();
 
 export const WorldStateSchema = z.object({
@@ -294,12 +414,7 @@ export const WorldStateSchema = z.object({
     visibleHint: MediumText,
     knownBy: z.array(TinyText).max(6),
   }).strict()).max(8),
-  loadedSigns: z.array(z.object({
-    thing: ShortText,
-    loadedBy: MediumText,
-    firesWhen: MediumText,
-    state: z.enum(["LOADED", "HEATING", "FIRED", "DORMANT"]),
-  }).strict()).max(8),
+  loadedSigns: z.array(SetupEntrySchema).max(8).optional().default([]),
 }).strict();
 
 export const StoryThreadSchema = z.object({
@@ -314,6 +429,15 @@ export const StoryThreadSchema = z.object({
   summary: MediumText,
   nextPressure: MediumText,
   participants: z.array(TinyText).max(12),
+}).strict();
+
+const SpotlightQueueEntrySchema = z.object({
+  name: TinyText,
+  turnsSince: z.number().int().nonnegative().default(0),
+  pct: PercentText.optional(),
+  color: ColorText.optional(),
+  need: z.enum(["active", "soon", "okay", "quiet", "background"]).default("okay"),
+  reason: ShortText.optional(),
 }).strict();
 
 export const StoryStateSchema = z.object({
@@ -347,6 +471,7 @@ export const StoryStateSchema = z.object({
     action: MediumText,
     unlessInterruptedBy: MediumText,
   }).strict()).max(8),
+  spotlightQueue: z.array(SpotlightQueueEntrySchema).max(12).optional().default([]),
 }).strict();
 
 export const ContinuityRiskSchema = z.object({
@@ -356,17 +481,46 @@ export const ContinuityRiskSchema = z.object({
   recommendation: MediumText,
 }).strict();
 
+const AvoidNextSchema = z.object({
+  text: MediumText,
+  reason: ShortText.optional(),
+  scope: z.enum(["turn", "scene", "persistent"]).default("turn"),
+  color: ColorText.optional(),
+  source: z.enum(["user", "system", "compiler"]).default("compiler"),
+}).strict();
+
+const ConsequenceEntrySchema = z.object({
+  cause: ShortText,
+  pending: MediumText,
+  trigger: ShortText.optional(),
+  urgency: z.number().min(0).max(10).default(5),
+  pct: PercentText.optional(),
+  status: z.enum(["PENDING", "ACTIVE", "FIRED", "RESOLVED", "DORMANT"]).default("PENDING"),
+  evidence: MediumText.optional(),
+  changed: z.boolean().optional().default(false),
+  changeNote: ShortText.optional(),
+}).strict();
+
+const TermEntrySchema = z.object({
+  party: TinyText,
+  term: MediumText,
+  risk: ShortText.optional(),
+  status: z.enum(["PENDING", "ACCEPTED", "REJECTED", "BROKEN", "EXPIRED", "UNKNOWN"]).default("UNKNOWN"),
+  binding: z.boolean().optional().default(false),
+  evidence: MediumText.optional(),
+  changed: z.boolean().optional().default(false),
+  changeNote: ShortText.optional(),
+}).strict();
+
 export const ContinuityFirewallSchema = z.object({
   establishedFacts: z.array(MediumText).max(40),
   antiRetconAnchors: z.array(MediumText).max(30),
-  pendingConsequences: z.array(MediumText).max(30),
+  pendingConsequences: z.array(ConsequenceEntrySchema).max(30).optional().default([]),
   offscreenState: z.array(MediumText).max(24),
-  bannedNext: z.array(z.object({
-    text: MediumText,
-    persistent: z.boolean(),
-  }).strict()).max(12),
+  bannedNext: z.array(AvoidNextSchema).max(12).optional().default([]),
   impossibleNext: z.array(MediumText).max(12),
   risks: z.array(ContinuityRiskSchema).max(24),
+  terms: z.array(TermEntrySchema).max(10).optional().default([]),
 }).strict();
 
 export const ToolsSchema = z.object({
@@ -419,6 +573,8 @@ export const CustomModuleItemSchema = z.object({
   text: MediumText,
   importance: z.enum(["low", "medium", "high", "critical"]),
   color: ColorText.optional(),
+  changed: z.boolean().optional().default(false),
+  changeNote: ShortText.optional(),
 }).strict();
 
 export const CustomModuleDataSchema = z.object({

@@ -142,7 +142,7 @@ export const compiledState: LoomOSCompiledState = {
     identitySummary: "Investigator protecting her patron.",
     clothingSummary: "Dark coat, gloves, soot on the left sleeve.",
     goals: ["Recover the ledger"],
-    relationships: ["Distrusts Iven"],
+    relationships: [{ target: "Iven", axis: "Trust", value: -30, pct: "30%", label: "Distrusts", color: "warning", trend: "down", evidence: "Iven concealed a torn page." }],
     leverage: ["Knows the guard rotation"],
     pockets: [{
       name: "Lock pick",
@@ -150,8 +150,44 @@ export const compiledState: LoomOSCompiledState = {
       qty: 1,
       condition: "Good",
       known: true,
+      changed: false,
     }],
     stableFacts: ["Mara cannot reveal her patron."],
+    changed: false,
+    appearance: {
+      species: "Human",
+      ageBand: "Adult",
+      height: "Average",
+      build: "Lean",
+      hair: "Dark, tied back",
+      eyes: "Keen grey",
+      presence: "Quiet intensity",
+    },
+    clothing: {
+      summary: "Dark coat, gloves, soot on left sleeve",
+      layerCount: 2,
+      layers: [
+        { slot: "outer", text: "Dark wool coat", state: "Soot-stained right sleeve" },
+        { slot: "upper", text: "Linen shirt", state: "Neat" },
+      ],
+    },
+    currentState: {
+      pose: "Crouched by the archive desk",
+      proximity: "Across the dais from Iven",
+      leftHand: "On the desk",
+      rightHand: "Holding a lantern",
+      emotion: "Controlled panic",
+      intent: "Recover the ledger.",
+      physicalTell: "Slight tremor in the hand",
+    },
+    continuity: {
+      lastConfirmed: "This turn",
+      uncertainty: [{
+        claim: "Iven may have found more than one page",
+        confidence: 6,
+        label: "POSSIBLE",
+      }],
+    },
   }],
   worldState: {
     recentEnvironmentalChanges: ["Rain intensified."],
@@ -168,12 +204,15 @@ export const compiledState: LoomOSCompiledState = {
       visibleHint: "Soot on his glove.",
       knownBy: ["Iven"],
     }],
-    loadedSigns: [{
-      thing: "Soot on Iven's glove",
-      loadedBy: "He handled the hidden page.",
-      firesWhen: "Mara looks closely.",
-      state: "HEATING",
-    }],
+      loadedSigns: [{
+        thing: "Soot on Iven's glove",
+        plantedBy: "Iven",
+        payoffWhen: "Mara looks closely.",
+        state: "HEATING",
+        evidence: "Iven concealed a torn ledger page.",
+        payoffHint: "The soot will connect Iven to the hidden page.",
+        changed: false,
+      }],
   },
   storyState: {
     goals: [{
@@ -213,6 +252,14 @@ export const compiledState: LoomOSCompiledState = {
       pct: "30%",
       color: "danger",
     }],
+    spotlightQueue: [{
+      name: "Iven",
+      turnsSince: 3,
+      pct: "30%",
+      color: "warning",
+      need: "soon",
+      reason: "Iven has important information to reveal.",
+    }],
     autonomyQueue: [{
       who: "Iven",
       action: "Move toward the west ladder.",
@@ -222,14 +269,33 @@ export const compiledState: LoomOSCompiledState = {
   continuityFirewall: {
     establishedFacts: ["The east stair is blocked."],
     antiRetconAnchors: ["Do not route anyone down the east stair."],
-    pendingConsequences: ["The guards are approaching."],
+    pendingConsequences: [{
+      cause: "Guards patrol",
+      pending: "The guards are approaching.",
+      trigger: "Two turns elapsed",
+      urgency: 7,
+      status: "ACTIVE",
+      evidence: "Bootsteps echo from below.",
+      changed: false,
+    }],
     offscreenState: ["Guards are below the observatory."],
     bannedNext: [{
       text: "Do not reveal Iven's page to Mara without evidence.",
-      persistent: false,
+      reason: "Would short-circuit the mystery arc.",
+      scope: "scene",
+      source: "system",
     }],
     impossibleNext: ["Using the collapsed east stair."],
-    risks: [{
+      terms: [{
+        party: "Mara",
+        term: "Do not reveal the patron's identity.",
+        risk: "Loss of protection",
+        status: "ACCEPTED",
+        binding: true,
+        evidence: "Mara's loyalty to her patron is established.",
+        changed: false,
+      }],
+      risks: [{
       severity: "high",
       issue: "Do not use the east stair.",
       evidence: "It collapsed two turns ago.",

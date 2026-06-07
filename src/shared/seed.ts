@@ -46,10 +46,41 @@ export function buildStateSeedForCompiler(
       location: compactText(member.location),
       status: compactText(member.status),
       intent: compactText(member.intent),
-      clothing: modules.clothing.track ? compactText(member.clothingSummary) : undefined,
+      appearance: modules.castCore.track && member.appearance?.species
+        ? {
+            species: member.appearance.species,
+            height: member.appearance.height,
+            build: member.appearance.build,
+            hair: member.appearance.hair,
+            eyes: member.appearance.eyes,
+            presence: member.appearance.presence,
+          }
+        : undefined,
+      clothing: modules.clothing.track
+        ? {
+            summary: compactText(member.clothing?.summary ?? member.clothingSummary ?? ""),
+            layerCount: member.clothing?.layerCount ?? 0,
+            notable: compactText(member.clothing?.notable ?? ""),
+          }
+        : undefined,
+      currentState: modules.castVisuals.track && member.currentState
+        ? {
+            pose: compactText(member.currentState.pose ?? member.pose ?? ""),
+            proximity: compactText(member.currentState.proximity ?? member.proximity ?? ""),
+            hands: compactText(member.currentState.leftHand ?? member.hands ?? ""),
+            emotion: compactText(member.currentState.emotion ?? member.emotionalState ?? ""),
+            injury: compactText(member.currentState.injury ?? ""),
+          }
+        : undefined,
+      changed: member.changed,
       goals: member.goals.slice(0, 4).map(compactText),
       relationships: modules.relationships.track
-        ? member.relationships.slice(0, 4).map(compactText)
+        ? member.relationships.slice(0, 4).map((rel) => ({
+            target: rel.target,
+            value: rel.value,
+            trend: rel.trend,
+            evidence: rel.evidence ? compactText(rel.evidence) : undefined,
+          }))
         : undefined,
       pockets: modules.inventory.track
         ? member.pockets.slice(0, 4).map((item) => ({
@@ -60,6 +91,11 @@ export function buildStateSeedForCompiler(
           }))
         : undefined,
       stableFacts: member.stableFacts.slice(0, 4).map(compactText),
+      uncertainty: member.continuity?.uncertainty?.slice(0, 3).map((u) => ({
+        claim: compactText(u.claim),
+        confidence: u.confidence,
+        label: u.label,
+      })),
     })),
     story: {
       threads: state.storyState.threadLoom
@@ -78,12 +114,19 @@ export function buildStateSeedForCompiler(
     continuity: {
       facts: state.continuityFirewall.establishedFacts.slice(0, 12).map(compactText),
       anchors: state.continuityFirewall.antiRetconAnchors.slice(0, 10).map(compactText),
-      pending: state.continuityFirewall.pendingConsequences.slice(0, 10).map(compactText),
+      pending: state.continuityFirewall.pendingConsequences.slice(0, 10).map((item) =>
+        compactText(typeof item === "string" ? item : item.pending)
+      ),
       offscreen: state.continuityFirewall.offscreenState.slice(0, 8).map(compactText),
       persistentBans: state.continuityFirewall.bannedNext
-        .filter((item) => item.persistent)
+        .filter((item) => item.scope === "persistent")
         .slice(0, 6)
         .map((item) => compactText(item.text)),
+      terms: state.continuityFirewall.terms?.slice(0, 6).map((item) => ({
+        party: item.party,
+        term: compactText(item.term),
+        status: item.status,
+      })),
     },
     world: modules.worldSpace.track && state.scene
       ? {
