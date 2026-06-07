@@ -1,14 +1,38 @@
 # LoomOS Command Deck
 
-Current release: **0.1.2**
+Current release: **0.1.3**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.2
+## Key Features & Upgrades in 0.1.3
 
-### 1. Custom Module Preset Manager
+### 1. Mobile-First Tabbed Dashboard
+The drawer and viewer modal now present compiled state through five navigation tabs instead of a single long scrollable panel:
+- **Overview**: Scene kernel, delta headline, diagnostic meters, tools, and custom module cards.
+- **Cast**: Full cast matrix with collapsible visual anchors, pockets, relationships, and stable facts.
+- **World**: Spatial facts, scene items, environmental hazards, rumors, and loaded signs.
+- **Story**: Thread loom, goals, stakes, countdowns, and autonomy queue.
+- **Continuity**: Firewall risks, established facts, anti-retcon anchors, and banned/impossible moves.
+
+Switching tabs is instant and preserves scroll position and open/closed section states.
+
+### 2. Sticky Header with Unified Controls
+A sticky command bar pins to the top of both the drawer and viewer modal, providing always-visible access to:
+- **Open Viewer**: Launch the full-size modal from the drawer.
+- **Generate / Stop Compile**: A single button that dynamically toggles between "Generate" (or "Refresh") and a pulsing "Stop Compile" during active compilation runs.
+- **Reload**: Refresh exact-swipe state from storage.
+- **Delete**: Remove the current exact-swipe snapshot.
+- **Enable**: Request missing permissions when needed.
+
+### 3. Collapsible Module Groups
+The Tracker Module Matrix settings panel now organizes modules into collapsible `<details>` accordion groups (Core, Scene, Cast, World, Story, Tools, Custom Modules). Each group header shows a badge with "X of Y tracked" counts so you can see module coverage at a glance without expanding every group.
+
+### 4. 44px Touch-Friendly Toggles
+Module Track / Display / Inject checkboxes are now rendered as 44px minimum-height grid cells that meet mobile accessibility tap-target standards. No more accidentally toggling the wrong checkbox on small screens.
+
+### 5. Custom Module Preset Manager
 LoomOS allows you to group your preferred active modules into saved configurations called presets. You can manage presets directly within the settings drawer and modal panel:
 - **Save As**: Capture the current module checklist status and save it under a custom name and description.
 - **Update**: Apply the current checklist states to the active custom preset.
@@ -17,10 +41,10 @@ LoomOS allows you to group your preferred active modules into saved configuratio
 - **Delete**: Remove obsolete custom presets.
 - **Import/Export**: Presets are serialized to clean JSON, making them easy to share or back up.
 
-### 2. Safe Custom Module Definitions
+### 6. Safe Custom Module Definitions
 Extend the compiled story-state beyond the 18 built-in core and optional modules:
 - Create **Custom Modules** dynamically (stored securely inside `settings.json` within `spindle.userStorage`).
-- Configure customized **Compiler Instructions** instructing the LLM on what to track (e.g., *“Track the character's Sanity level based on horror elements”*).
+- Configure customized **Compiler Instructions** instructing the LLM on what to track (e.g., *"Track the character's Sanity level based on horror elements"*).
 - Select a tailored **Output Render Mode**:
   - `cards`: Render details as structured cards.
   - `bullets`: Display as a concise bullet list.
@@ -29,22 +53,23 @@ Extend the compiled story-state beyond the 18 built-in core and optional modules
 - Set strict **Token Limits** and **maxItems** (1-24) to keep context windows clean.
 - Custom module states are dynamically validated and stored under a unified `customModuleData` field in the State V2 schema, preserving schema compatibility and type-safety.
 
-### 3. Stop & Cancel Compilation Action
+### 7. Stop & Cancel Compilation Action
 Never get locked out during a slow generation run:
-- The main **Generate** button inside the drawer and modal, along with the latest-message widget, toggles into a **Stop Compile** action when compilation is active.
+- The main **Generate** button inside the drawer, modal, and latest-message widget toggles into a **Stop Compile** action when compilation is active.
 - Clicking **Stop** immediately cancels the underlying prompt generation, aborts the LLM connection cleanly, and resets the UI status.
 
-### 4. UI Scroll & State Preservation
+### 8. UI Scroll & State Preservation
 LoomOS completely solves the annoying issue of losing your spot when settings are updated or the dashboard re-renders:
 - **Scroll Positions**: Remembers and restores the vertical scroll offset of all details panels.
-- **Interactive Details**: Remembers which `<details>` sections or cast cards were expanded (`open` state) and restores them exactly.
+- **Interactive Details**: Remembers which `<details>` sections, cast cards, and module groups were expanded (`open` state) and restores them exactly.
+- **Tab State**: The active dashboard tab is preserved across re-renders.
 - **Cursor Focus & Text Selection**: Restores active input focus, search text query inputs, and text selection ranges (`selectionStart` and `selectionEnd`) during edits.
 - **Debounced Save Settings**: Toggling checkboxes rapidly is debounced to avoid state loss and prevent excessive disk reads/writes.
 
-### 5. Polished Dashboard Layout
-- **Dashboard Overview**: A new high-level metric block at the top showing the latest delta headline, current location and timeframe, counts of active cast members, active story threads, pending risk counts, and injection budget warnings.
-- **Collapsible Cast Cards**: Primary info (id, name, kind, pose, and status) is shown upfront, while deep continuity facts (visual anchor, pockets, leverage, stable facts) are kept inside clean collapsible details tabs.
-- **Module Search & Bulk Actions**: Easily filter through modules with real-time indicators ("X of Y modules shown"). Reset presets or bulk-apply recommended modules with single clicks.
+### 9. Polished Dashboard Layout
+- **Dashboard Overview**: A high-level metric block showing the latest delta headline, current location and timeframe, counts of active cast members, story threads, pending risks, active module count, and injection status.
+- **Collapsible Cast Cards**: Primary info (name, kind, emotional state, and intent) is shown upfront, while deep continuity facts (visual anchor, pockets, relationships, stable facts) are kept inside clean collapsible details.
+- **Module Search & Bulk Actions**: Filter through modules with real-time count indicators ("X of Y modules shown"). Reset presets or bulk-apply recommended modules with single clicks.
 
 ---
 
@@ -141,6 +166,19 @@ When compact injection is active, LoomOS inserts state data into future generati
 5. Cast Core poses, intent, and goals.
 6. Spatial coordinates, pocket inventory, and active countdowns.
 7. Rumors, secrets, and custom modules (with budget headroom).
+
+---
+
+## Theme Skins
+
+LoomOS ships with seven built-in skins:
+- **Auto** (adapts to the Lumiverse host)
+- **Dark Academia** – warm scholarly tones
+- **Cyberpunk** – neon teals and deep navy
+- **Fantasy** – forest greens and gold
+- **Horror** – blood reds and charcoal
+- **Noir** – stark grayscale
+- **Minimal** – clean light mode
 
 ---
 

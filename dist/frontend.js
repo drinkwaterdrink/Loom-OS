@@ -4614,8 +4614,21 @@ function visible(settings, key) {
 function chips(items, empty = "None recorded") {
   if (items.length === 0) return `<span class="loomos-muted">${escapeHtml(empty)}</span>`;
   return `<div class="loomos-chip-row">${items.map(
-    (item) => `<span class="loomos-chip">${escapeHtml(item)}</span>`
+    (item) => `<span class="loomos-chip" title="${escapeHtml(item)}">${escapeHtml(item)}</span>`
   ).join("")}</div>`;
+}
+function clampProse(text, maxLength = 140) {
+  const clean = escapeHtml(text);
+  if (clean.length <= maxLength) return clean;
+  return `
+    <span class="loomos-prose-clamped">
+      ${clean.substring(0, maxLength)}...
+      <details class="loomos-prose-details">
+        <summary>Show more</summary>
+        <span style="display: block; margin-top: 4px; color: var(--loomos-ink); font-weight: normal; font-style: normal;">${clean}</span>
+      </details>
+    </span>
+  `;
 }
 function section(key, title, summary, body, open = false) {
   return `
@@ -4632,17 +4645,17 @@ function renderKernel(state) {
   return section("kernel", "Kernel", kernel.scene || "Current scene", `
     <div class="loomos-hero">
       <span class="loomos-kicker">Current focus</span>
-      <strong>${escapeHtml(kernel.currentFocus || kernel.objective)}</strong>
-      <p>${escapeHtml(kernel.summary)}</p>
+      <strong>${clampProse(kernel.currentFocus || kernel.objective, 120)}</strong>
+      <p>${clampProse(kernel.summary, 160)}</p>
     </div>
     <dl class="loomos-facts">
       <div><dt>Location</dt><dd>${escapeHtml(kernel.location)}</dd></div>
       <div><dt>Time</dt><dd>${escapeHtml(kernel.timeframe || `${kernel.date} ${kernel.time}`)}</dd></div>
       <div><dt>POV</dt><dd>${escapeHtml(kernel.pov)}</dd></div>
       <div><dt>Tone</dt><dd>${escapeHtml(kernel.tone)}</dd></div>
-      <div><dt>Objective</dt><dd>${escapeHtml(kernel.objective)}</dd></div>
-      <div><dt>Risk</dt><dd>${escapeHtml(kernel.currentRisk)}</dd></div>
-      <div><dt>Next focus</dt><dd>${escapeHtml(kernel.nextFocus)}</dd></div>
+      <div><dt>Objective</dt><dd>${clampProse(kernel.objective, 120)}</dd></div>
+      <div><dt>Risk</dt><dd>${clampProse(kernel.currentRisk, 120)}</dd></div>
+      <div><dt>Next focus</dt><dd>${clampProse(kernel.nextFocus, 120)}</dd></div>
       <div><dt>Stop mode</dt><dd>${escapeHtml(kernel.stopMode)}</dd></div>
     </dl>
     <div class="loomos-subhead">Constraints</div>
@@ -4652,12 +4665,12 @@ function renderKernel(state) {
 function renderDelta(state) {
   const delta = state.delta;
   return section("delta", "Delta", delta.headline || "No major change", `
-    <div class="loomos-callout">${escapeHtml(delta.headline)}</div>
+    <div class="loomos-callout">${clampProse(delta.headline, 140)}</div>
     <div class="loomos-list">
       ${delta.changes.length === 0 ? `<p class="loomos-muted">No meaningful changes recorded.</p>` : delta.changes.map((change) => `
           <article class="loomos-row loomos-importance-${change.importance}">
             <div class="loomos-row-title">
-              <strong>${escapeHtml(change.text)}</strong>
+              <strong>${clampProse(change.text, 120)}</strong>
               <span>${escapeHtml(change.module)}</span>
             </div>
             <small>${escapeHtml(change.age)} | ${escapeHtml(change.importance)}</small>
@@ -4688,7 +4701,7 @@ function renderMeters(state) {
                   <span>${escapeHtml(meter.pct)} (${meter.value}/100) ${trendIcon}</span>
                 </div>
                 <div class="loomos-meter-track"><i style="width:${Math.max(0, Math.min(100, meter.value))}%; ${colorStyle}"></i></div>
-                <small><strong>${escapeHtml(meter.band)}</strong> | ${escapeHtml(meter.note)}</small>
+                <small><strong>${escapeHtml(meter.band)}</strong> | ${clampProse(meter.note, 100)}</small>
               </article>
             `;
   }).join("")}
@@ -4697,7 +4710,7 @@ function renderMeters(state) {
 }
 function renderCast(state, settings) {
   return section("cast", "Cast Matrix", `${state.castMatrix.length} tracked`, `
-    <div class="loomos-card-grid">
+    <div class="loomos-list">
       ${state.castMatrix.length === 0 ? `<p class="loomos-muted">No cast evidence in this state.</p>` : state.castMatrix.map((member) => {
     const hasExtra = member.pose || member.proximity || member.hands || member.visualAnchor || visible(settings, "clothing") && member.clothingSummary || member.goals.length > 0 || visible(settings, "relationships") && member.relationships.length > 0 || visible(settings, "inventory") && member.pockets.length > 0 || member.stableFacts.length > 0;
     return `
@@ -4712,23 +4725,23 @@ function renderCast(state, settings) {
                 <div class="loomos-chip-row" style="margin: 4px 0 8px;">
                   <span class="loomos-chip">\u{1F4CD} ${escapeHtml(member.location)}</span>
                   <span class="loomos-chip">\u{1F3AD} ${escapeHtml(member.emotionalState)}</span>
-                  <span class="loomos-chip">\u26A0\uFE0F Threat: ${escapeHtml(member.threat.pct)} (${escapeHtml(member.threat.band)})</span>
+                  <span class="loomos-chip">\u26A0\uFE0F Threat: ${escapeHtml(member.threat.pct)}</span>
                 </div>
-                <p><strong>Intent:</strong> ${escapeHtml(member.intent)}</p>
-                <p><strong>Status:</strong> ${escapeHtml(member.status)}</p>
+                <p><strong>Intent:</strong> ${clampProse(member.intent, 100)}</p>
+                <p><strong>Status:</strong> ${clampProse(member.status, 100)}</p>
                 
                 ${hasExtra ? `
                   <details class="loomos-cast-extra">
                     <summary>Visuals & Pockets</summary>
                     <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
-                      ${member.pose ? `<p><strong>Pose:</strong> ${escapeHtml(member.pose)}</p>` : ""}
-                      ${member.proximity ? `<p><strong>Proximity:</strong> ${escapeHtml(member.proximity)}</p>` : ""}
-                      ${member.hands ? `<p><strong>Hands:</strong> ${escapeHtml(member.hands)}</p>` : ""}
-                      ${member.visualAnchor ? `<p><strong>Visual Anchor:</strong> ${escapeHtml(member.visualAnchor)}</p>` : ""}
-                      ${visible(settings, "clothing") && member.clothingSummary ? `<p><strong>Clothing:</strong> ${escapeHtml(member.clothingSummary)}</p>` : ""}
+                      ${member.pose ? `<p><strong>Pose:</strong> ${clampProse(member.pose, 100)}</p>` : ""}
+                      ${member.proximity ? `<p><strong>Proximity:</strong> ${clampProse(member.proximity, 100)}</p>` : ""}
+                      ${member.hands ? `<p><strong>Hands:</strong> ${clampProse(member.hands, 100)}</p>` : ""}
+                      ${member.visualAnchor ? `<p><strong>Visual Anchor:</strong> ${clampProse(member.visualAnchor, 100)}</p>` : ""}
+                      ${visible(settings, "clothing") && member.clothingSummary ? `<p><strong>Clothing:</strong> ${clampProse(member.clothingSummary, 100)}</p>` : ""}
                       ${member.goals.length > 0 ? `<div class="loomos-subhead">Goals</div>${chips(member.goals)}` : ""}
                       ${visible(settings, "relationships") && member.relationships.length > 0 ? `<div class="loomos-subhead">Relationships</div>${chips(member.relationships)}` : ""}
-                      ${visible(settings, "inventory") && member.pockets.length > 0 ? `<div class="loomos-subhead">Pockets</div>${chips(member.pockets.map((item) => `${item.name} x${item.qty}${item.known ? "" : " (unknown)"}`))} : ""` : ""}
+                      ${visible(settings, "inventory") && member.pockets.length > 0 ? `<div class="loomos-subhead">Pockets</div>${chips(member.pockets.map((item) => `${item.name} x${item.qty}${item.known ? "" : " (unknown)"}`))}` : ""}
                       ${member.stableFacts.length > 0 ? `<div class="loomos-subhead">Stable Facts</div>${chips(member.stableFacts)}` : ""}
                     </div>
                   </details>
@@ -4750,7 +4763,7 @@ function renderWorld(state, settings) {
           <div><dt>Crowd</dt><dd>${escapeHtml(scene.crowdNoise)} / ${escapeHtml(scene.crowdFlow)}</dd></div>
           <div><dt>Light</dt><dd>${escapeHtml(scene.light.primary)} | ${escapeHtml(scene.light.quality)}</dd></div>
           <div><dt>Exit</dt><dd>${escapeHtml(scene.access.exit)}</dd></div>
-          <div><dt>Sightline</dt><dd>${escapeHtml(scene.access.lineOfSight)}</dd></div>
+          <div><dt>Sightline</dt><dd>${clampProse(scene.access.lineOfSight, 100)}</dd></div>
         </dl>
         <div class="loomos-subhead">Spatial facts</div>${chips(scene.spatial)}
         <div class="loomos-subhead">Carryover</div>${chips([
@@ -4786,9 +4799,9 @@ function renderStory(state) {
               <strong>${escapeHtml(thread.title)}</strong>
               <span>${escapeHtml(thread.status)} | ${thread.urgency}/5</span>
             </div>
-            <p>${escapeHtml(thread.summary)}</p>
+            <p>${clampProse(thread.summary, 120)}</p>
             <div class="loomos-meter-track"><i style="width:${Math.max(0, Math.min(100, thread.progress * 10))}%"></i></div>
-            <small>Next pressure: ${escapeHtml(thread.nextPressure)}</small>
+            <small>Next pressure: ${clampProse(thread.nextPressure, 100)}</small>
           </article>
         `).join("")}
     </div>
@@ -4815,11 +4828,11 @@ function renderContinuity(state) {
       ${firewall.risks.length === 0 ? `<p class="loomos-muted" style="margin-bottom: 12px;">\u2705 No continuity conflicts detected.</p>` : firewall.risks.map((risk) => `
           <article class="loomos-row loomos-severity-${risk.severity}">
             <div class="loomos-row-title">
-              <strong>${escapeHtml(risk.issue)}</strong>
+              <strong>${clampProse(risk.issue, 100)}</strong>
               <span class="loomos-badge loomos-badge-severity-${risk.severity}">${escapeHtml(risk.severity)}</span>
             </div>
-            <p>${escapeHtml(risk.evidence)}</p>
-            <small>Guardrail: ${escapeHtml(risk.recommendation)}</small>
+            <p>${clampProse(risk.evidence, 140)}</p>
+            <small>Guardrail: ${clampProse(risk.recommendation, 120)}</small>
           </article>
         `).join("")}
     </div>
@@ -4868,33 +4881,33 @@ function renderTools(state, settings) {
   if (visible(settings, "actionResolver") && tools.actionResolver) {
     blocks.push(`<article class="loomos-card">
       <span class="loomos-kicker">Action Resolver</span>
-      <strong>${escapeHtml(tools.actionResolver.userAction)}</strong>
-      <p>${escapeHtml(tools.actionResolver.worldResponse)}</p>
-      <small>Risk: ${escapeHtml(tools.actionResolver.risk)}</small>
+      <strong>${clampProse(tools.actionResolver.userAction, 100)}</strong>
+      <p>${clampProse(tools.actionResolver.worldResponse, 120)}</p>
+      <small>Risk: ${clampProse(tools.actionResolver.risk, 100)}</small>
       ${chips(tools.actionResolver.blockers)}
     </article>`);
   }
   if (visible(settings, "dialogueState") && tools.dialogueState) {
     blocks.push(`<article class="loomos-card">
       <span class="loomos-kicker">Dialogue</span>
-      <strong>${escapeHtml(tools.dialogueState.openThread)}</strong>
-      <p>${escapeHtml(tools.dialogueState.socialMask)}</p>
+      <strong>${clampProse(tools.dialogueState.openThread, 100)}</strong>
+      <p>${clampProse(tools.dialogueState.socialMask, 120)}</p>
       ${chips(tools.dialogueState.levers)}
     </article>`);
   }
   if (visible(settings, "directorStyle") && tools.directorStyle) {
     blocks.push(`<article class="loomos-card">
       <span class="loomos-kicker">Director Style</span>
-      <strong>${escapeHtml(tools.directorStyle.primary)}</strong>
-      <p>${escapeHtml(tools.directorStyle.push)}</p>
+      <strong>${clampProse(tools.directorStyle.primary, 100)}</strong>
+      <p>${clampProse(tools.directorStyle.push, 120)}</p>
       ${chips(tools.directorStyle.voiceCues)}
     </article>`);
   }
   if (visible(settings, "closenessState") && tools.closenessState) {
     blocks.push(`<article class="loomos-card">
       <span class="loomos-kicker">Closeness</span>
-      <strong>${escapeHtml(tools.closenessState.emotional)}</strong>
-      <p>${escapeHtml(tools.closenessState.physical)}</p>
+      <strong>${clampProse(tools.closenessState.emotional, 100)}</strong>
+      <p>${clampProse(tools.closenessState.physical, 120)}</p>
       ${chips(tools.closenessState.boundaries)}
     </article>`);
   }
@@ -4902,8 +4915,8 @@ function renderTools(state, settings) {
     blocks.push(`<article class="loomos-card">
       <span class="loomos-kicker">Image Prompt</span>
       <strong>${escapeHtml(tools.imagePrompt.shot)} | ${escapeHtml(tools.imagePrompt.medium)}</strong>
-      <p>${escapeHtml(tools.imagePrompt.subject)}</p>
-      <small>${escapeHtml(tools.imagePrompt.hint)}</small>
+      <p>${clampProse(tools.imagePrompt.subject, 120)}</p>
+      <small>${clampProse(tools.imagePrompt.hint, 100)}</small>
     </article>`);
   }
   return blocks.length === 0 ? "" : section("tools", "Tools", `${blocks.length} active`, `<div class="loomos-card-grid">${blocks.join("")}</div>`);
@@ -4917,8 +4930,8 @@ function renderAudit(state) {
             <strong>${escapeHtml(entry.system)}</strong>
             <span>${escapeHtml(entry.marker)}</span>
           </div>
-          <p>${escapeHtml(entry.result)}</p>
-          <small>${entry.repaired ? "Repaired | " : ""}${escapeHtml(entry.notes)}</small>
+          <p>${clampProse(entry.result, 120)}</p>
+          <small>${entry.repaired ? "Repaired | " : ""}${clampProse(entry.notes, 100)}</small>
         </article>
       `).join("") || `<p class="loomos-muted">No audit entries.</p>`}
     </div>
@@ -4935,13 +4948,14 @@ function renderOverviewCard(state, settings) {
   return `
     <div class="loomos-shell loomos-overview-card">
       <div class="loomos-kicker">Overview</div>
-      <div class="loomos-overview-headline">"${escapeHtml(deltaHeadline)}"</div>
+      <div class="loomos-overview-headline">${clampProse(deltaHeadline, 140)}</div>
       <div class="loomos-overview-details">
-        <div><strong>Location:</strong> <span>${escapeHtml(location)} (${escapeHtml(time)})</span></div>
+        <div><strong>Location:</strong> <span>${escapeHtml(location)} \xB7 ${escapeHtml(time)}</span></div>
         <div class="loomos-overview-stats">
           <span>\u{1F465} ${activeCastCount} Cast</span>
           <span>\u{1F9F5} ${threadCount} Threads</span>
           <span>\u26A0\uFE0F ${riskCount} Risks</span>
+          <span>\u{1F4E6} ${state.activeModules.length} Modules</span>
           <span class="loomos-overview-inject-${settings.injectionEnabled ? "active" : "inactive"}">\u{1F489} Inject: ${injectionStatus}</span>
         </div>
       </div>
@@ -4965,7 +4979,7 @@ function renderCustomModules(state, settings) {
           <ul class="loomos-bullet-list">
             ${compiled.items.map((it) => `
               <li>
-                <strong>${escapeHtml(it.title)}</strong>: ${escapeHtml(it.text)}
+                <strong>${escapeHtml(it.title)}</strong>: ${clampProse(it.text, 100)}
                 <span class="loomos-badge loomos-badge-severity-${it.importance}" style="font-size: 7px; vertical-align: middle; margin-left: 4px;">${it.importance}</span>
               </li>
             `).join("")}
@@ -4976,7 +4990,7 @@ function renderCustomModules(state, settings) {
           <div class="loomos-chip-row" style="margin-top: 4px;">
             ${compiled.items.map((it) => `
               <span class="loomos-chip" style="${it.color ? `border-color:${escapeHtml(it.color)}` : ""}">
-                <strong>${escapeHtml(it.title)}</strong>: ${escapeHtml(it.text)}
+                <strong>${escapeHtml(it.title)}</strong>: ${clampProse(it.text, 80)}
                 <span class="loomos-badge loomos-badge-severity-${it.importance}" style="font-size: 7px; margin-left: 2px;">${it.importance}</span>
               </span>
             `).join("")}
@@ -5011,7 +5025,7 @@ function renderCustomModules(state, settings) {
                   <strong>${escapeHtml(it.title)}</strong>
                   <span class="loomos-badge loomos-badge-severity-${it.importance}">${it.importance}</span>
                 </div>
-                <p>${escapeHtml(it.text)}</p>
+                <p>${clampProse(it.text, 120)}</p>
               </div>
             `).join("")}
           </div>
@@ -5030,21 +5044,44 @@ function renderCustomModules(state, settings) {
   }
   return results;
 }
-function renderDashboard(state, settings) {
-  const sections = [
-    visible(settings, "sceneKernel") ? renderKernel(state) : "",
-    visible(settings, "deltas") ? renderDelta(state) : "",
-    visible(settings, "meters") ? renderMeters(state) : "",
-    visible(settings, "castCore") ? renderCast(state, settings) : "",
-    visible(settings, "worldSpace") || visible(settings, "secretsRumors") ? renderWorld(state, settings) : "",
-    visible(settings, "storyThreads") ? renderStory(state) : "",
-    visible(settings, "continuity") ? renderContinuity(state) : "",
-    renderTools(state, settings),
-    ...renderCustomModules(state, settings),
-    visible(settings, "auditLog") ? renderAudit(state) : ""
-  ].filter(Boolean);
-  const overview = renderOverviewCard(state, settings);
-  return sections.length > 0 ? `<div class="loomos-dashboard">${overview}${sections.join("")}</div>` : `<div class="loomos-empty"><h3>All display modules are hidden</h3><p>Enable Display for one or more modules in the drawer settings. Stored state has not been deleted.</p></div>`;
+function renderDashboard(state, settings, activeTab = "overview") {
+  if (activeTab === "overview") {
+    const overview = renderOverviewCard(state, settings);
+    const sections = [
+      visible(settings, "sceneKernel") ? renderKernel(state) : "",
+      visible(settings, "deltas") ? renderDelta(state) : "",
+      visible(settings, "meters") ? renderMeters(state) : "",
+      renderTools(state, settings),
+      ...renderCustomModules(state, settings)
+    ].filter(Boolean);
+    return sections.length > 0 ? `<div class="loomos-dashboard">${overview}${sections.join("")}</div>` : `<div class="loomos-dashboard">${overview}<div class="loomos-empty"><h3>All overview display modules are hidden</h3><p>Enable display for Kernel, Deltas, Meters, or Tools in the Settings tab.</p></div></div>`;
+  }
+  if (activeTab === "cast") {
+    const sections = [
+      visible(settings, "castCore") ? renderCast(state, settings) : ""
+    ].filter(Boolean);
+    return sections.length > 0 ? `<div class="loomos-dashboard">${sections.join("")}</div>` : `<div class="loomos-empty"><h3>Cast Core display is hidden</h3><p>Enable Cast Core display in settings.</p></div>`;
+  }
+  if (activeTab === "world") {
+    const sections = [
+      visible(settings, "worldSpace") || visible(settings, "secretsRumors") ? renderWorld(state, settings) : ""
+    ].filter(Boolean);
+    return sections.length > 0 ? `<div class="loomos-dashboard">${sections.join("")}</div>` : `<div class="loomos-empty"><h3>World modules are hidden</h3><p>Enable World & Space or Secrets & Rumors display in settings.</p></div>`;
+  }
+  if (activeTab === "story") {
+    const sections = [
+      visible(settings, "storyThreads") ? renderStory(state) : ""
+    ].filter(Boolean);
+    return sections.length > 0 ? `<div class="loomos-dashboard">${sections.join("")}</div>` : `<div class="loomos-empty"><h3>Story threads display is hidden</h3><p>Enable Story Threads display in settings.</p></div>`;
+  }
+  if (activeTab === "continuity") {
+    const sections = [
+      visible(settings, "continuity") ? renderContinuity(state) : "",
+      visible(settings, "auditLog") ? renderAudit(state) : ""
+    ].filter(Boolean);
+    return sections.length > 0 ? `<div class="loomos-dashboard">${sections.join("")}</div>` : `<div class="loomos-empty"><h3>Continuity and Audit display are hidden</h3><p>Enable Continuity Firewall or Audit Log display in settings.</p></div>`;
+  }
+  return "";
 }
 
 // src/frontend/styles.ts
@@ -5063,6 +5100,9 @@ var LOOMOS_STYLES = `
     gap: 10px;
     line-height: 1.45;
     padding: 10px;
+    max-width: 100%;
+    overflow-x: hidden;
+    padding-bottom: 72px !important;
   }
   .loomos-root *, .loomos-root *::before, .loomos-root *::after { box-sizing: border-box; }
   .loomos-root[data-skin="dark_academia"] { --loomos-bg:#17130f;--loomos-panel:#241d16;--loomos-ink:#ead9b7;--loomos-muted:#af9c78;--loomos-accent:#ba8b43;--loomos-border:#493a28; }
@@ -5071,20 +5111,25 @@ var LOOMOS_STYLES = `
   .loomos-root[data-skin="horror"] { --loomos-bg:#130b0c;--loomos-panel:#211012;--loomos-ink:#f0d8d8;--loomos-muted:#b68e91;--loomos-accent:#d24c52;--loomos-border:#51252a; }
   .loomos-root[data-skin="noir"] { --loomos-bg:#0d0d0d;--loomos-panel:#181818;--loomos-ink:#f0f0f0;--loomos-muted:#a4a4a4;--loomos-accent:#d7d7d7;--loomos-border:#3a3a3a; }
   .loomos-root[data-skin="minimal"] { --loomos-bg:#f5f5f4;--loomos-panel:#fff;--loomos-ink:#18181b;--loomos-muted:#71717a;--loomos-accent:#27272a;--loomos-border:#dededb; }
+  
   .loomos-shell, .loomos-section {
     background: var(--loomos-bg);
     border: 1px solid var(--loomos-border);
     border-radius: 12px;
+    min-width: 0;
+    max-width: 100%;
   }
   .loomos-shell { padding: 10px; }
-  .loomos-header, .loomos-toolbar, .loomos-row-title, .loomos-card-heading {
+  .loomos-header {
     align-items: center;
     display: flex;
     gap: 8px;
     justify-content: space-between;
+    flex-wrap: wrap;
+    min-width: 0;
   }
-  .loomos-title { display: grid; gap: 1px; min-width: 0; }
-  .loomos-title strong { font-size: 15px; }
+  .loomos-title { display: grid; gap: 1px; min-width: 0; flex: 1; }
+  .loomos-title strong { font-size: 15px; overflow-wrap: anywhere; }
   .loomos-title span, .loomos-muted, .loomos-row small, .loomos-card small { color: var(--loomos-muted); }
   .loomos-status, .loomos-badge {
     border: 1px solid var(--loomos-border);
@@ -5092,9 +5137,40 @@ var LOOMOS_STYLES = `
     color: var(--loomos-muted);
     font-size: 10px;
     padding: 3px 7px;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .loomos-status { max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .loomos-toolbar { flex-wrap: wrap; justify-content: flex-start; margin-top: 10px; }
+  
+  /* Sticky Header */
+  .loomos-header-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--loomos-bg);
+    border-bottom: 1px solid var(--loomos-border);
+    margin: -10px -10px 10px -10px;
+    padding: 10px 10px 6px 10px;
+    border-radius: 0;
+  }
+
+  .loomos-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    width: 100%;
+  }
+  .loomos-header-actions button {
+    flex: 1 1 auto;
+    font-size: 11px;
+    min-width: 80px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .loomos-button, .loomos-select, .loomos-input {
     background: var(--loomos-panel);
     border: 1px solid var(--loomos-border);
@@ -5102,8 +5178,10 @@ var LOOMOS_STYLES = `
     color: var(--loomos-ink);
     min-height: 34px;
     padding: 6px 9px;
+    max-width: 100%;
+    min-width: 0;
   }
-  .loomos-button { cursor: pointer; font-weight: 700; }
+  .loomos-button { cursor: pointer; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; text-align: center; }
   .loomos-button:hover, .loomos-button:focus-visible, .loomos-select:focus-visible, .loomos-input:focus-visible {
     border-color: var(--loomos-accent);
     outline: 2px solid color-mix(in srgb, var(--loomos-accent) 35%, transparent);
@@ -5112,214 +5190,192 @@ var LOOMOS_STYLES = `
   .loomos-button-primary { background: var(--loomos-accent); color: var(--lumiverse-accent-fg, #fff); }
   .loomos-button-danger { color: #e56b70; }
   .loomos-button:disabled, .loomos-input:disabled { cursor: not-allowed; opacity: .48; }
-  .loomos-settings > summary, .loomos-section > summary {
-    cursor: pointer;
-    font-weight: 800;
-    list-style: none;
+
+  /* Tabs Layout */
+  .loomos-tabs-nav {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    margin-top: 10px;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
   }
-  .loomos-settings > summary { padding: 2px; }
+  .loomos-tabs-nav::-webkit-scrollbar {
+    display: none;
+  }
+  .loomos-tab-btn {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--loomos-muted);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 10px;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+  }
+  .loomos-tab-btn:hover {
+    color: var(--loomos-ink);
+  }
+  .loomos-tab-btn.active {
+    border-bottom-color: var(--loomos-accent);
+    color: var(--loomos-accent);
+  }
+  .loomos-tab-pane {
+    width: 100%;
+    min-width: 0;
+  }
+
   .loomos-section > summary {
     align-items: center;
     display: flex;
     gap: 8px;
     justify-content: space-between;
     padding: 10px;
+    cursor: pointer;
+    font-weight: 800;
+    list-style: none;
   }
-  .loomos-section > summary small { color: var(--loomos-muted); font-weight: 500; max-width: 62%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .loomos-section > summary::-webkit-details-marker { display: none; }
+  .loomos-section > summary small { 
+    color: var(--loomos-muted); 
+    font-weight: 500; 
+    max-width: 62%; 
+    overflow: hidden; 
+    text-overflow: ellipsis; 
+    white-space: nowrap; 
+  }
   .loomos-section[open] > summary { border-bottom: 1px solid var(--loomos-border); }
-  .loomos-section-body { background: var(--loomos-panel); border-radius: 0 0 11px 11px; padding: 10px; }
-  .loomos-dashboard { display: grid; gap: 9px; }
+  .loomos-section-body { background: var(--loomos-panel); border-radius: 0 0 11px 11px; padding: 10px; min-width: 0; }
+  
+  .loomos-dashboard { display: grid; gap: 9px; min-width: 0; }
   .loomos-settings-grid, .loomos-two-column, .loomos-facts {
     display: grid;
     gap: 9px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-width: 0;
   }
   .loomos-settings-grid { margin-top: 10px; }
-  .loomos-field { display: grid; gap: 4px; min-width: 0; }
+  .loomos-field { display: grid; gap: 4px; min-width: 0; max-width: 100%; }
   .loomos-field > span, .loomos-subhead { color: var(--loomos-muted); font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
-  .loomos-check { align-items: center; display: flex; gap: 7px; min-height: 34px; }
+  .loomos-check { align-items: center; display: flex; gap: 7px; min-height: 34px; cursor: pointer; }
+  
   .loomos-kicker { color: var(--loomos-accent); display: block; font-size: 9px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
-  .loomos-hero { display: grid; gap: 3px; }
-  .loomos-hero strong { font-size: 15px; }
-  .loomos-hero p, .loomos-card p, .loomos-row p { margin: 5px 0; }
+  .loomos-hero { display: grid; gap: 3px; min-width: 0; }
+  .loomos-hero strong { font-size: 15px; overflow-wrap: anywhere; }
+  .loomos-hero p, .loomos-card p, .loomos-row p { margin: 5px 0; overflow-wrap: anywhere; }
+  
   .loomos-facts { margin: 9px 0; }
   .loomos-facts div { border-top: 1px solid var(--loomos-border); min-width: 0; padding-top: 5px; }
   .loomos-facts dt { color: var(--loomos-muted); font-size: 9px; text-transform: uppercase; }
-  .loomos-facts dd { margin: 2px 0 0; overflow-wrap: anywhere; }
-  .loomos-facts-tight { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .loomos-facts dd { margin: 2px 0 0; overflow-wrap: anywhere; font-weight: 600; }
+  
   .loomos-chip-row { display: flex; flex-wrap: wrap; gap: 5px; margin: 5px 0 8px; }
-  .loomos-chip { border: 1px solid var(--loomos-border); border-radius: 999px; color: var(--loomos-muted); font-size: 10px; padding: 2px 6px; }
-  .loomos-callout, .loomos-note { border-left: 3px solid var(--loomos-accent); margin-bottom: 8px; padding: 7px 9px; }
-  .loomos-list { display: grid; gap: 7px; }
-  .loomos-row { border-left: 2px solid var(--loomos-border); padding-left: 8px; }
-  .loomos-row-title { align-items: flex-start; }
-  .loomos-row-title strong { overflow-wrap: anywhere; }
-  .loomos-row-title span { color: var(--loomos-muted); font-size: 9px; text-transform: uppercase; }
-  .loomos-severity-high, .loomos-priority-high, .loomos-importance-high { border-left-color: #d58a42; }
-  .loomos-severity-critical, .loomos-priority-critical, .loomos-importance-critical { border-left-color: #df5259; }
-  .loomos-card-grid, .loomos-meter-grid { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .loomos-card, .loomos-meter { background: color-mix(in srgb, var(--loomos-bg) 65%, transparent); border: 1px solid var(--loomos-border); border-radius: 9px; padding: 9px; }
-  .loomos-card-heading { align-items: flex-start; }
-  .loomos-card-heading strong { display: block; }
-  .loomos-meter-track { background: var(--loomos-border); border-radius: 999px; height: 5px; margin: 6px 0; overflow: hidden; }
-  .loomos-meter-track i { background: var(--loomos-accent); display: block; height: 100%; }
-  .loomos-stat-grid { display: grid; gap: 6px; grid-template-columns: repeat(4, 1fr); margin-bottom: 9px; }
-  .loomos-stat-grid div { border: 1px solid var(--loomos-border); border-radius: 8px; display: grid; padding: 6px; text-align: center; }
-  .loomos-stat-grid span { color: var(--loomos-muted); font-size: 9px; text-transform: uppercase; }
-  .loomos-empty { padding: 24px 12px; text-align: center; }
-  .loomos-empty h3 { margin: 0 0 5px; }
-  .loomos-empty p { color: var(--loomos-muted); margin: 0 auto 12px; max-width: 440px; }
-  .loomos-module-wrap { border: 1px solid var(--loomos-border); border-radius: 9px; grid-column: 1 / -1; overflow: hidden; }
-  .loomos-module-head, .loomos-module-row { align-items: center; display: grid; gap: 6px; grid-template-columns: minmax(145px, 1fr) repeat(3, 54px); padding: 7px 8px; }
-  .loomos-module-head { background: var(--loomos-bg); color: var(--loomos-muted); font-size: 9px; font-weight: 900; text-align: center; text-transform: uppercase; }
-  .loomos-module-head span:first-child { text-align: left; }
-  .loomos-module-row { border-top: 1px solid var(--loomos-border); }
-  .loomos-module-row label:first-child { min-width: 0; }
-  .loomos-module-row strong, .loomos-module-row small { display: block; }
-  .loomos-module-row small { color: var(--loomos-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .loomos-module-row input { justify-self: center; }
-  .loomos-hint { color: var(--loomos-muted); font-size: 11px; grid-column: 1 / -1; margin: 0; }
-  .loomos-diagnostic { color: var(--loomos-muted); font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; }
-  @media (max-width: 620px) {
-    .loomos-root { padding: 6px; }
-    .loomos-settings-grid, .loomos-two-column, .loomos-facts, .loomos-card-grid, .loomos-meter-grid { grid-template-columns: 1fr; }
-    .loomos-status { max-width: 46%; }
-    .loomos-button { flex: 1 1 auto; }
-    .loomos-stat-grid { grid-template-columns: repeat(2, 1fr); }
-    .loomos-module-head, .loomos-module-row { grid-template-columns: minmax(118px, 1fr) repeat(3, 44px); padding-inline: 6px; }
-    .loomos-module-row small { display: none; }
-  }
-
-  /* Upgraded LoomOS command deck design elements */
-  .loomos-overview-card {
-    background: linear-gradient(135deg, var(--loomos-panel), var(--loomos-bg));
-    border-left: 4px solid var(--loomos-accent);
-    padding: 12px 14px;
-    margin-bottom: 8px;
-  }
-  .loomos-overview-headline {
-    font-size: 15px;
-    font-weight: 700;
-    font-style: italic;
-    color: var(--loomos-ink);
-    margin: 6px 0 10px;
-    line-height: 1.35;
-  }
-  .loomos-overview-details {
-    display: grid;
-    gap: 6px;
-    font-size: 11px;
-  }
-  .loomos-overview-stats {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-top: 4px;
-    color: var(--loomos-muted);
-  }
-  .loomos-overview-inject-active {
-    color: #4cd27e;
-  }
-  .loomos-overview-inject-inactive {
-    color: var(--loomos-muted);
-  }
-
-  .loomos-preset-manager {
-    border-bottom: 1px solid var(--loomos-border);
-    margin-bottom: 12px;
-    padding-bottom: 12px;
-  }
-  .loomos-preset-select-row {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-top: 6px;
-  }
-  .loomos-preset-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-  }
-  .loomos-preset-dirty-warning {
-    color: #ba8b43;
-    font-size: 10px;
-    margin-top: 4px;
-    font-weight: 700;
-  }
-
-  .loomos-search-bar {
-    align-items: center;
-    display: flex;
-    gap: 6px;
-    margin-bottom: 8px;
-    position: relative;
-  }
-  .loomos-search-bar input {
-    flex: 1;
-    padding-right: 24px;
-  }
-  .loomos-button-clear {
-    background: transparent;
-    border: none;
-    color: var(--loomos-muted);
-    cursor: pointer;
-    font-size: 16px;
-    position: absolute;
-    right: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 2;
-    padding: 0 4px;
-  }
-  .loomos-button-clear:hover {
-    color: var(--loomos-ink);
-  }
-  .loomos-search-count {
-    color: var(--loomos-muted);
-    font-size: 10px;
+  .loomos-chip { 
+    border: 1px solid var(--loomos-border); 
+    border-radius: 999px; 
+    color: var(--loomos-muted); 
+    font-size: 10px; 
+    padding: 2px 6px; 
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .loomos-bulk-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-bottom: 12px;
+  
+  .loomos-callout, .loomos-note { 
+    border-left: 3px solid var(--loomos-accent); 
+    margin-bottom: 8px; 
+    padding: 7px 9px; 
+    overflow-wrap: anywhere;
+    background: color-mix(in srgb, var(--loomos-accent) 6%, var(--loomos-panel));
   }
-  .loomos-btn-sm {
-    font-size: 10px;
-    min-height: 26px;
-    padding: 2px 6px;
+  
+  .loomos-list { display: grid; gap: 7px; min-width: 0; }
+  .loomos-row { border-left: 2px solid var(--loomos-border); padding-left: 8px; min-width: 0; }
+  .loomos-row-title { align-items: flex-start; display: flex; justify-content: space-between; gap: 8px; }
+  .loomos-row-title strong { overflow-wrap: anywhere; font-size: 12px; }
+  .loomos-row-title span { color: var(--loomos-muted); font-size: 9px; text-transform: uppercase; white-space: nowrap; }
+  
+  .loomos-severity-high, .loomos-priority-high, .loomos-importance-high { border-left-color: #d58a42; }
+  .loomos-severity-critical, .loomos-priority-critical, .loomos-importance-critical { border-left-color: #df5259; }
+  
+  .loomos-card-grid, .loomos-meter-grid { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; }
+  .loomos-card, .loomos-meter { 
+    background: color-mix(in srgb, var(--loomos-bg) 65%, transparent); 
+    border: 1px solid var(--loomos-border); 
+    border-radius: 9px; 
+    padding: 9px; 
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
-  .loomos-module-groups {
-    display: grid;
-    gap: 12px;
-  }
-  .loomos-module-group-card {
+  .loomos-card-heading { align-items: flex-start; display: flex; justify-content: space-between; gap: 8px; }
+  .loomos-card-heading strong { display: block; font-size: 13px; overflow-wrap: anywhere; }
+  
+  .loomos-meter-track { background: var(--loomos-border); border-radius: 999px; height: 6px; margin: 6px 0; overflow: hidden; }
+  .loomos-meter-track i { background: var(--loomos-accent); display: block; height: 100%; }
+  
+  .loomos-stat-grid { display: grid; gap: 6px; grid-template-columns: repeat(4, 1fr); margin-bottom: 9px; min-width: 0; }
+  .loomos-stat-grid div { border: 1px solid var(--loomos-border); border-radius: 8px; display: grid; padding: 6px; text-align: center; min-width: 0; }
+  .loomos-stat-grid span { color: var(--loomos-muted); font-size: 9px; text-transform: uppercase; }
+  
+  .loomos-empty { padding: 24px 12px; text-align: center; }
+  .loomos-empty h3 { margin: 0 0 5px; }
+  .loomos-empty p { color: var(--loomos-muted); margin: 0 auto 12px; max-width: 440px; overflow-wrap: anywhere; }
+  
+  /* Collapsible matrix groups */
+  .loomos-module-group-details {
     background: var(--loomos-panel);
     border: 1px solid var(--loomos-border);
     border-radius: 10px;
+    margin-bottom: 12px;
     overflow: hidden;
   }
-  .loomos-module-group-title {
+  .loomos-module-group-summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 10px 12px;
+    user-select: none;
     background: color-mix(in srgb, var(--loomos-bg) 40%, var(--loomos-panel));
-    border-bottom: 1px solid var(--loomos-border);
-    color: var(--loomos-ink);
+  }
+  .loomos-module-group-summary::-webkit-details-marker {
+    display: none;
+  }
+  .loomos-module-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .loomos-module-group-header strong {
     font-size: 11px;
     font-weight: 900;
-    letter-spacing: .06em;
-    padding: 6px 10px;
     text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
-  .loomos-module-group-list {
+  .loomos-module-group-desc {
+    color: var(--loomos-muted);
+    display: block;
+    font-size: 10px;
+    margin-top: 4px;
+    line-height: 1.35;
+  }
+  .loomos-module-group-content {
+    border-top: 1px solid var(--loomos-border);
+    background: var(--loomos-bg);
     display: grid;
     gap: 0;
   }
+
   .loomos-module-card {
     border-bottom: 1px solid var(--loomos-border);
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 10px;
+    padding: 12px 10px;
+    min-width: 0;
   }
   .loomos-module-card:last-child {
     border-bottom: none;
@@ -5340,6 +5396,7 @@ var LOOMOS_STYLES = `
   .loomos-pills {
     display: flex;
     gap: 4px;
+    flex-wrap: wrap;
   }
   .loomos-pill {
     border: 1px solid var(--loomos-border);
@@ -5348,54 +5405,169 @@ var LOOMOS_STYLES = `
     font-weight: 800;
     padding: 1px 4px;
     text-transform: uppercase;
+    white-space: nowrap;
   }
-  .pill-core {
-    border-color: #ba8b43;
-    color: #ba8b43;
-  }
-  .pill-experimental {
-    border-color: #d24c52;
-    color: #d24c52;
-  }
-  .pill-injected {
-    border-color: #25f2d0;
-    color: #25f2d0;
-  }
-  .pill-hidden {
-    border-color: var(--loomos-muted);
-    color: var(--loomos-muted);
-  }
-  .pill-custom {
-    border-color: #7c6cff;
-    color: #7c6cff;
-  }
+  .pill-core { border-color: #ba8b43; color: #ba8b43; }
+  .pill-experimental { border-color: #d24c52; color: #d24c52; }
+  .pill-injected { border-color: #25f2d0; color: #25f2d0; }
+  .pill-hidden { border-color: var(--loomos-muted); color: var(--loomos-muted); }
+  .pill-custom { border-color: #7c6cff; color: #7c6cff; }
+
+  /* 44px settings matrix buttons */
   .loomos-module-toggles {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
     gap: 6px;
-    justify-content: flex-start;
+    margin-top: 4px;
   }
   .loomos-toggle-target {
     align-items: center;
-    background: var(--loomos-bg);
+    background: var(--loomos-panel);
     border: 1px solid var(--loomos-border);
     border-radius: 6px;
     cursor: pointer;
     display: inline-flex;
+    justify-content: center;
     gap: 6px;
-    min-height: 38px;
-    padding: 4px 8px;
+    min-height: 44px; /* thumb-friendly 44px touch target */
+    padding: 4px 6px;
     user-select: none;
+    transition: all 0.15s ease;
   }
   .loomos-toggle-target:hover {
     border-color: var(--loomos-accent);
   }
   .loomos-toggle-target input {
     margin: 0;
+    width: 15px;
+    height: 15px;
   }
   .loomos-toggle-target span {
     font-size: 11px;
     font-weight: 700;
+  }
+  .loomos-toggle-target.active {
+    background: color-mix(in srgb, var(--loomos-accent) 15%, var(--loomos-panel));
+    border-color: var(--loomos-accent);
+    color: var(--loomos-accent);
+  }
+  .loomos-toggle-target.locked {
+    opacity: 0.7;
+    cursor: not-allowed;
+    background: color-mix(in srgb, var(--loomos-border) 25%, var(--loomos-panel));
+  }
+  
+  .loomos-hint { color: var(--loomos-muted); font-size: 11px; grid-column: 1 / -1; margin: 0; }
+  .loomos-diagnostic { 
+    color: var(--loomos-muted); 
+    font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; 
+    white-space: pre-wrap; 
+    overflow-x: auto;
+    max-width: 100%;
+  }
+
+  /* Overview Widget */
+  .loomos-overview-card {
+    background: linear-gradient(135deg, var(--loomos-panel), var(--loomos-bg));
+    border-left: 4px solid var(--loomos-accent);
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    min-width: 0;
+  }
+  .loomos-overview-headline {
+    font-size: 14px;
+    font-weight: 700;
+    font-style: italic;
+    color: var(--loomos-ink);
+    margin: 6px 0 10px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+  .loomos-overview-details {
+    display: grid;
+    gap: 6px;
+    font-size: 11px;
+    min-width: 0;
+  }
+  .loomos-overview-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 4px;
+    color: var(--loomos-muted);
+  }
+  .loomos-overview-inject-active { color: #4cd27e; font-weight: 700; }
+  .loomos-overview-inject-inactive { color: var(--loomos-muted); }
+
+  .loomos-preset-manager {
+    border-bottom: 1px solid var(--loomos-border);
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    grid-column: 1 / -1;
+  }
+  .loomos-preset-select-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 6px;
+    max-width: 100%;
+  }
+  .loomos-preset-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .loomos-preset-dirty-warning {
+    color: #ba8b43;
+    font-size: 10px;
+    margin-top: 4px;
+    font-weight: 700;
+  }
+
+  .loomos-search-bar {
+    align-items: center;
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+    position: relative;
+    width: 100%;
+  }
+  .loomos-search-bar input {
+    flex: 1;
+    padding-right: 24px;
+    width: 100%;
+  }
+  .loomos-button-clear {
+    background: transparent;
+    border: none;
+    color: var(--loomos-muted);
+    cursor: pointer;
+    font-size: 16px;
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    padding: 0 4px;
+  }
+  .loomos-button-clear:hover { color: var(--loomos-ink); }
+  .loomos-search-count { color: var(--loomos-muted); font-size: 10px; white-space: nowrap; }
+  
+  .loomos-bulk-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+  .loomos-btn-sm {
+    font-size: 10px;
+    min-height: 28px;
+    padding: 2px 6px;
+  }
+  .loomos-module-groups {
+    display: grid;
+    gap: 0;
+    width: 100%;
   }
 
   .loomos-compile-status {
@@ -5425,6 +5597,7 @@ var LOOMOS_STYLES = `
     display: grid;
     gap: 12px;
     padding: 15px;
+    max-width: 100%;
   }
   .loomos-dialog-buttons {
     display: flex;
@@ -5451,9 +5624,7 @@ var LOOMOS_STYLES = `
     padding: 0;
     text-decoration: underline;
   }
-  .loomos-link-btn-danger {
-    color: #e56b70;
-  }
+  .loomos-link-btn-danger { color: #e56b70; }
 
   .loomos-badge-severity-critical { background: #df5259; color: #fff; font-size: 8px; text-transform: uppercase; border-radius: 4px; padding: 1px 4px; }
   .loomos-badge-severity-high { background: #d58a42; color: #fff; font-size: 8px; text-transform: uppercase; border-radius: 4px; padding: 1px 4px; }
@@ -5466,6 +5637,7 @@ var LOOMOS_STYLES = `
   }
   .loomos-bullet-list li {
     margin-bottom: 4px;
+    overflow-wrap: anywhere;
   }
 
   .loomos-performance-info {
@@ -5474,22 +5646,26 @@ var LOOMOS_STYLES = `
     border-radius: 10px;
     padding: 10px;
     margin-top: 12px;
+    grid-column: 1 / -1;
   }
   .loomos-perf-row {
     display: flex;
     justify-content: space-between;
     font-size: 11px;
     margin-bottom: 6px;
+    gap: 8px;
   }
   .loomos-perf-badge {
     border-radius: 4px;
     font-size: 9px;
     font-weight: 800;
     padding: 1px 6px;
+    white-space: nowrap;
   }
   .intensity-lite { background: rgba(76, 210, 126, 0.15); color: #4cd27e; border: 1px solid #4cd27e; }
   .intensity-balanced { background: rgba(124, 108, 255, 0.15); color: #7c6cff; border: 1px solid #7c6cff; }
   .intensity-heavy { background: rgba(223, 82, 89, 0.15); color: #df5259; border: 1px solid #df5259; }
+  
   .loomos-perf-warning {
     background: rgba(186, 139, 67, 0.12);
     border: 1px solid #ba8b43;
@@ -5498,6 +5674,7 @@ var LOOMOS_STYLES = `
     font-size: 10px;
     margin: 8px 0;
     padding: 8px;
+    overflow-wrap: anywhere;
   }
   .loomos-perf-details {
     color: var(--loomos-muted);
@@ -5514,6 +5691,7 @@ var LOOMOS_STYLES = `
     border-radius: 8px;
     margin-top: 6px;
     background: var(--loomos-bg);
+    max-width: 100%;
   }
   .loomos-cast-extra > summary {
     padding: 6px 8px;
@@ -5521,17 +5699,96 @@ var LOOMOS_STYLES = `
     font-weight: 700;
     cursor: pointer;
     color: var(--loomos-muted);
+    list-style: none;
   }
+  .loomos-cast-extra > summary::-webkit-details-marker { display: none; }
   .loomos-cast-extra[open] > summary {
     border-bottom: 1px solid var(--loomos-border);
   }
   .loomos-cast-extra-body {
     padding: 8px;
     font-size: 11px;
+    min-width: 0;
   }
 
-  .loomos-root {
-    padding-bottom: 64px !important;
+  .loomos-prose-details {
+    margin-top: 4px;
+    max-width: 100%;
+  }
+  .loomos-prose-details summary {
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--loomos-accent);
+    outline: none;
+    list-style: none;
+  }
+  .loomos-prose-details summary::-webkit-details-marker { display: none; }
+  .loomos-prose-details[open] summary {
+    margin-bottom: 4px;
+  }
+
+  @media (max-width: 620px) {
+    .loomos-root { padding: 6px; }
+    .loomos-settings-grid, .loomos-two-column, .loomos-facts, .loomos-card-grid, .loomos-meter-grid { grid-template-columns: 1fr; }
+    .loomos-status { max-width: 100%; }
+    .loomos-button { flex: 1 1 auto; }
+    .loomos-stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .loomos-header-actions button { min-width: 70px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .loomos-button-pulse, .loomos-pulse, .loomos-meter-track i {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+
+  /* Cast cards stack vertically */
+  .loomos-list .loomos-card {
+    max-width: 100%;
+  }
+
+  /* Viewer modal scroll fix */
+  .loomos-root .loomos-tab-pane {
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-width: 0;
+  }
+
+  /* Widget message bar polish */
+  .loomos-widget-bar {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 4px 0;
+  }
+
+  /* Settings grid full-span items */
+  .loomos-settings .loomos-module-selector,
+  .loomos-settings .loomos-performance-info {
+    grid-column: 1 / -1;
+  }
+
+  /* Tab pane auto height */
+  .loomos-tab-pane:empty {
+    display: none;
+  }
+
+  /* Ensure overview stat badges wrap gracefully */
+  .loomos-overview-stats span {
+    white-space: nowrap;
+  }
+
+  /* Drawer view (sidebar) layout hardening - force single column */
+  .loomos-root[data-view="drawer"] .loomos-settings-grid,
+  .loomos-root[data-view="drawer"] .loomos-two-column,
+  .loomos-root[data-view="drawer"] .loomos-facts,
+  .loomos-root[data-view="drawer"] .loomos-card-grid,
+  .loomos-root[data-view="drawer"] .loomos-meter-grid,
+  .loomos-root[data-view="drawer"] .loomos-stat-grid {
+    grid-template-columns: 1fr !important;
   }
 `;
 
@@ -5586,6 +5843,7 @@ function setup(ctx) {
   let chatStates = [];
   let modal = null;
   let modalListenerCleanup = null;
+  let activeTab = "overview";
   const tab = ctx.ui.registerDrawerTab({
     id: "command-deck",
     title: "LoomOS Command Deck",
@@ -5596,6 +5854,7 @@ function setup(ctx) {
     iconSvg: ICON
   });
   tab.root.classList.add("loomos-root");
+  tab.root.dataset.view = "drawer";
   const inputAction = ctx.ui.registerInputBarAction({
     id: "open-command-deck",
     label: "Open LoomOS",
@@ -5643,17 +5902,18 @@ function setup(ctx) {
   }
   function captureUiState() {
     const openDetails = /* @__PURE__ */ new Set();
-    tab.root.querySelectorAll("details[data-details], details[data-section]").forEach((d) => {
-      const key = d.getAttribute("data-details") || d.getAttribute("data-section");
+    tab.root.querySelectorAll("details[data-details], details[data-section], details[data-group]").forEach((d) => {
+      const key = d.getAttribute("data-details") || d.getAttribute("data-section") || d.getAttribute("data-group");
       if (key && d.open) openDetails.add(key);
     });
     if (modal) {
-      modal.root.querySelectorAll("details[data-details], details[data-section]").forEach((d) => {
-        const key = d.getAttribute("data-details") || d.getAttribute("data-section");
+      modal.root.querySelectorAll("details[data-details], details[data-section], details[data-group]").forEach((d) => {
+        const key = d.getAttribute("data-details") || d.getAttribute("data-section") || d.getAttribute("data-group");
         if (key && d.open) openDetails.add("modal:" + key);
       });
     }
     const searchQuery = tab.root.querySelector("[data-module-search]")?.value ?? "";
+    const savedTab = activeTab;
     const scrollPositions = /* @__PURE__ */ new Map();
     let curr = tab.root;
     while (curr) {
@@ -5699,43 +5959,45 @@ function setup(ctx) {
       scrollPositions,
       openDetails,
       searchQuery,
+      savedTab,
       focusedSelector,
       selectionStart,
       selectionEnd
     };
   }
-  function restoreUiState(state2) {
-    tab.root.querySelectorAll("details[data-details], details[data-section]").forEach((d) => {
-      const key = d.getAttribute("data-details") || d.getAttribute("data-section");
-      if (key) d.open = state2.openDetails.has(key);
+  function restoreUiState(uiSnapshot) {
+    activeTab = uiSnapshot.savedTab;
+    tab.root.querySelectorAll("details[data-details], details[data-section], details[data-group]").forEach((d) => {
+      const key = d.getAttribute("data-details") || d.getAttribute("data-section") || d.getAttribute("data-group");
+      if (key) d.open = uiSnapshot.openDetails.has(key);
     });
     if (modal) {
-      modal.root.querySelectorAll("details[data-details], details[data-section]").forEach((d) => {
-        const key = d.getAttribute("data-details") || d.getAttribute("data-section");
-        if (key) d.open = state2.openDetails.has("modal:" + key);
+      modal.root.querySelectorAll("details[data-details], details[data-section], details[data-group]").forEach((d) => {
+        const key = d.getAttribute("data-details") || d.getAttribute("data-section") || d.getAttribute("data-group");
+        if (key) d.open = uiSnapshot.openDetails.has("modal:" + key);
       });
     }
     const searchInput = tab.root.querySelector("[data-module-search]");
     if (searchInput) {
-      searchInput.value = state2.searchQuery;
-      const query = state2.searchQuery.toLowerCase();
+      searchInput.value = uiSnapshot.searchQuery;
+      const query = uiSnapshot.searchQuery.toLowerCase();
       tab.root.querySelectorAll("[data-module-row]").forEach((row) => {
         row.hidden = Boolean(query) && !(row.dataset.search ?? "").includes(query);
       });
     }
-    for (const [el, scrollTop] of state2.scrollPositions.entries()) {
+    for (const [el, scrollTop] of uiSnapshot.scrollPositions.entries()) {
       try {
         el.scrollTop = scrollTop;
       } catch {
       }
     }
-    if (state2.focusedSelector) {
-      const el = tab.root.querySelector(state2.focusedSelector) || modal && modal.root.querySelector(state2.focusedSelector);
+    if (uiSnapshot.focusedSelector) {
+      const el = tab.root.querySelector(uiSnapshot.focusedSelector) || modal && modal.root.querySelector(uiSnapshot.focusedSelector);
       if (el instanceof HTMLElement) {
         el.focus();
-        if (el instanceof HTMLInputElement && state2.selectionStart !== null && state2.selectionEnd !== null) {
+        if (el instanceof HTMLInputElement && uiSnapshot.selectionStart !== null && uiSnapshot.selectionEnd !== null) {
           try {
-            el.setSelectionRange(state2.selectionStart, state2.selectionEnd);
+            el.setSelectionRange(uiSnapshot.selectionStart, uiSnapshot.selectionEnd);
           } catch {
           }
         }
@@ -5763,13 +6025,57 @@ function setup(ctx) {
         widgetId: "loomos-action-history",
         html: `
           <style>
-            :root{color-scheme:light dark}body{margin:0;padding:2px 0;font:11px system-ui,sans-serif;color:var(--lumiverse-text-dim)}
-            .bar{align-items:center;display:flex;gap:8px}
-            button{background:var(--lumiverse-fill-subtle);border:1px solid var(--lumiverse-border);border-radius:6px;color:var(--lumiverse-text);cursor:pointer;padding:3px 6px;font-size:10px}
-            button:hover{border-color:var(--lumiverse-accent)}
+            :root { color-scheme: light dark; }
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              padding: 2px 0;
+              font-family: system-ui, -apple-system, sans-serif;
+              color: var(--lumiverse-text-dim, #aaa);
+            }
+            .bar {
+              display: inline-flex;
+              align-items: center;
+              gap: 8px;
+              background: var(--lumiverse-fill-subtle, rgba(255, 255, 255, 0.02));
+              border: 1px solid var(--lumiverse-border, rgba(255, 255, 255, 0.05));
+              border-radius: 6px;
+              padding: 3px 6px;
+              max-width: 100%;
+              flex-wrap: nowrap;
+            }
+            button {
+              background: var(--lumiverse-fill, rgba(255, 255, 255, 0.05));
+              border: 1px solid var(--lumiverse-border, rgba(255, 255, 255, 0.1));
+              border-radius: 4px;
+              color: var(--lumiverse-text, #f5f5f5);
+              cursor: pointer;
+              font-size: 10px;
+              font-weight: 500;
+              height: 22px;
+              padding: 0 6px;
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              white-space: nowrap;
+              transition: all 0.2s ease;
+            }
+            button:hover {
+              border-color: var(--lumiverse-accent, #7c6cff);
+              background: rgba(124, 108, 255, 0.08);
+            }
+            .label-wrapper {
+              display: inline-flex;
+              align-items: center;
+              gap: 4px;
+              font-size: 10px;
+              white-space: nowrap;
+            }
           </style>
           <div class="bar">
-            <span>\u{1F4DD} LoomOS State (swipe ${item.swipeId})</span>
+            <div class="label-wrapper">
+              <span>\u{1F4DD} LoomOS State (swipe ${item.swipeId})</span>
+            </div>
             <button id="open" type="button">Open State</button>
           </div>
           <script>
@@ -5805,20 +6111,101 @@ function setup(ctx) {
         widgetId: "loomos-action",
         html: `
           <style>
-            :root{color-scheme:light dark}*{box-sizing:border-box}body{margin:0;padding:4px 0;font:12px/1.25 system-ui,sans-serif;color:var(--lumiverse-text)}
-            .bar{align-items:center;display:flex;flex-wrap:wrap;gap:6px}
-            button{background:var(--lumiverse-fill-subtle);border:1px solid var(--lumiverse-border);border-radius:7px;color:var(--lumiverse-text);cursor:pointer;min-height:30px;padding:5px 8px}
-            button.primary{border-color:var(--lumiverse-accent)}
-            button.danger{border-color:#df5259;background:rgba(223,82,89,0.15)}
-            button.pulse{animation:loomos-pulse 1.6s infinite}
-            button:disabled{cursor:not-allowed;opacity:.5}
-            .state{color:var(--lumiverse-text-dim);font-size:10px}
-            @keyframes loomos-pulse{0%{opacity:1}50%{opacity:0.6}100%{opacity:1}}
+            :root { color-scheme: light dark; }
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              padding: 2px 0;
+              font-family: system-ui, -apple-system, sans-serif;
+              color: var(--lumiverse-text, #f5f5f5);
+            }
+            .bar {
+              display: inline-flex;
+              align-items: center;
+              gap: 8px;
+              background: var(--lumiverse-fill-subtle, rgba(255, 255, 255, 0.03));
+              border: 1px solid var(--lumiverse-border, rgba(255, 255, 255, 0.08));
+              border-radius: 8px;
+              padding: 4px 8px;
+              max-width: 100%;
+              flex-wrap: nowrap;
+            }
+            button {
+              background: var(--lumiverse-fill, rgba(255, 255, 255, 0.05));
+              border: 1px solid var(--lumiverse-border, rgba(255, 255, 255, 0.1));
+              border-radius: 6px;
+              color: var(--lumiverse-text, #f5f5f5);
+              cursor: pointer;
+              font-size: 11px;
+              font-weight: 600;
+              height: 28px;
+              padding: 0 10px;
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              white-space: nowrap;
+              transition: all 0.2s ease;
+            }
+            button:hover {
+              border-color: var(--lumiverse-accent, #7c6cff);
+              background: rgba(124, 108, 255, 0.08);
+            }
+            button.primary {
+              background: var(--lumiverse-accent, #7c6cff);
+              color: var(--lumiverse-accent-fg, #fff);
+              border-color: var(--lumiverse-accent, #7c6cff);
+            }
+            button.primary:hover {
+              opacity: 0.9;
+              filter: brightness(1.1);
+            }
+            button.danger {
+              border-color: #df5259;
+              background: rgba(223, 82, 89, 0.15);
+              color: #ff6b72;
+            }
+            button.pulse {
+              animation: loomos-pulse 1.6s infinite;
+            }
+            button:disabled {
+              cursor: not-allowed;
+              opacity: 0.48;
+            }
+            .status-wrapper {
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+              font-size: 10px;
+              color: var(--lumiverse-text-dim, #aaa);
+              margin-left: 4px;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+            }
+            .status-dot {
+              width: 6px;
+              height: 6px;
+              border-radius: 50%;
+              background-color: #71717a;
+              display: inline-block;
+            }
+            .status-dot.active {
+              background-color: #10b981;
+              box-shadow: 0 0 6px #10b981;
+            }
+            @keyframes loomos-pulse {
+              0% { opacity: 1; }
+              50% { opacity: 0.5; }
+              100% { opacity: 1; }
+            }
           </style>
           <div class="bar">
-            <button id="open" type="button">Open LoomOS</button>
+            <button id="open" type="button">\u{1F52E} Open LoomOS</button>
             <button id="generate" class="${generateClass}" type="button"${disabled(!permissions.generation || !permissions.chatMutation)}>${escapeHtml(generateLabel)}</button>
-            <span class="state">${hasState ? `Exact state loaded (${swipeText})` : `No state for ${swipeText}`}</span>
+            <div class="status-wrapper">
+              <i class="status-dot ${hasState ? "active" : ""}"></i>
+              <span>${hasState ? `Exact state loaded (${swipeText})` : `No state for ${swipeText}`}</span>
+            </div>
           </div>
           <script>
             document.getElementById("open").addEventListener("click",()=>window.spindleSandbox.postMessage({type:"open"}));
@@ -6015,10 +6402,18 @@ function setup(ctx) {
     for (const [groupName, groupModules] of groups.entries()) {
       const groupVisibleCount = groupModules.filter((m) => m.visible).length;
       if (groupVisibleCount === 0) continue;
+      const enabledCount = groupModules.filter((m) => m.visible && m.control.track).length;
+      const groupDesc = `${enabledCount} of ${groupVisibleCount} tracked`;
       groupsHtml += `
-        <div class="loomos-module-group-card" style="margin-top: 10px;">
-          <div class="loomos-module-group-title">${escapeHtml(groupName)}</div>
-          <div class="loomos-module-group-list">
+        <details class="loomos-module-group-details" data-group="grp_${escapeHtml(groupName)}">
+          <summary class="loomos-module-group-summary">
+            <div class="loomos-module-group-header">
+              <strong>${escapeHtml(groupName)}</strong>
+              <span class="loomos-badge">${escapeHtml(groupDesc)}</span>
+            </div>
+            <span class="loomos-module-group-desc">${groupVisibleCount} modules in this group</span>
+          </summary>
+          <div class="loomos-module-group-content">
             ${groupModules.map((m) => {
         if (!m.visible) return "";
         if (m.isCustom) {
@@ -6080,7 +6475,7 @@ function setup(ctx) {
               `;
       }).join("")}
           </div>
-        </div>
+        </details>
       `;
     }
     return `
@@ -6142,7 +6537,7 @@ function setup(ctx) {
   }
   function diagnosticText() {
     const lines = [
-      `version: 0.1.2`,
+      `version: 0.1.3`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -6160,31 +6555,48 @@ function setup(ctx) {
       <button class="loomos-button loomos-button-primary" data-action="generate"${disabled(!permissions.generation || !permissions.chatMutation || Boolean(activeGenerationRequestId))}>Generate State</button>
     </div>`;
   }
-  function toolbarHtml() {
+  function tabsNavHtml() {
+    const tabs = [
+      { id: "overview", label: "Overview" },
+      { id: "cast", label: "Cast" },
+      { id: "world", label: "World" },
+      { id: "story", label: "Story" },
+      { id: "continuity", label: "Continuity" }
+    ];
+    return `<nav class="loomos-tabs-nav">${tabs.map(
+      (t) => `<button class="loomos-tab-btn${activeTab === t.id ? " active" : ""}" data-tab="${t.id}">${t.label}</button>`
+    ).join("")}</nav>`;
+  }
+  function stickyHeaderHtml(showTabs) {
     const canGenerate = permissions.generation && permissions.chatMutation;
     const busy = activeGenerationRequestId !== null;
     const missingPermission = !permissions.generation || !permissions.chatMutation || settings.injectionEnabled && !permissions.interceptor;
-    return `<div class="loomos-toolbar">
-      <button class="loomos-button loomos-button-primary" data-action="viewer">Open Viewer</button>
-      ${busy ? `<button class="loomos-button loomos-button-danger loomos-button-pulse" data-action="cancel">Stop Compile</button>` : `<button class="loomos-button" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh State" : "Generate State"}</button>`}
-      <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation || busy)}>Reload</button>
-      ${state && !busy ? `<button class="loomos-button loomos-button-danger" data-action="delete">Delete Exact State</button>` : ""}
-      ${missingPermission ? `<button class="loomos-button" data-action="permissions">Enable Features</button>` : ""}
-    </div>`;
-  }
-  function renderDrawer() {
-    tab.root.dataset.skin = settings.skin;
-    tab.root.innerHTML = `
-      <div class="loomos-shell">
+    return `
+      <div class="loomos-header-sticky">
         <div class="loomos-header">
           <div class="loomos-title"><strong>LoomOS Command Deck</strong><span>${escapeHtml(exactLabel())}</span></div>
           <span class="loomos-status" title="${escapeHtml(elapsedLabel())}">${escapeHtml(elapsedLabel())}</span>
         </div>
-        ${toolbarHtml()}
-      </div>
+        <div class="loomos-header-actions">
+          <button class="loomos-button loomos-button-primary" data-action="viewer">Open Viewer</button>
+          ${busy ? `<button class="loomos-button loomos-button-danger loomos-button-pulse" data-action="cancel">Stop Compile</button>` : `<button class="loomos-button" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh" : "Generate"}</button>`}
+          <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation || busy)}>Reload</button>
+          ${state && !busy ? `<button class="loomos-button loomos-button-danger" data-action="delete">Delete</button>` : ""}
+          ${missingPermission ? `<button class="loomos-button" data-action="permissions">Enable</button>` : ""}
+        </div>
+        ${showTabs ? tabsNavHtml() : ""}
+      </div>`;
+  }
+  function renderDrawer() {
+    tab.root.dataset.skin = settings.skin;
+    tab.root.dataset.view = "drawer";
+    tab.root.innerHTML = `
+      ${stickyHeaderHtml(Boolean(state))}
       ${compileStatusCardHtml()}
       ${renderSettings()}
-      ${state ? renderDashboard(state, settings) : emptyStateHtml()}
+      <div class="loomos-tab-pane">
+        ${state ? renderDashboard(state, settings, activeTab) : emptyStateHtml()}
+      </div>
       <details class="loomos-shell loomos-settings" data-details="diagnostics">
         <summary>Pipeline Diagnostics</summary>
         <pre class="loomos-diagnostic">${escapeHtml(diagnosticText())}</pre>
@@ -6194,17 +6606,14 @@ function setup(ctx) {
     if (!modal) return;
     modal.root.className = "loomos-root";
     modal.root.dataset.skin = settings.skin;
+    modal.root.dataset.view = "modal";
     modal.setTitle(`LoomOS | ${exactLabel()}`);
     modal.root.innerHTML = `
-      <div class="loomos-shell">
-        <div class="loomos-header">
-          <div class="loomos-title"><strong>${state ? escapeHtml(state.kernel.scene || "Story State") : "Exact Swipe State"}</strong><span>${escapeHtml(exactLabel())}</span></div>
-          <span class="loomos-status">${escapeHtml(elapsedLabel())}</span>
-        </div>
-        ${toolbarHtml()}
-      </div>
+      ${stickyHeaderHtml(Boolean(state))}
       ${compileStatusCardHtml()}
-      ${state ? renderDashboard(state, settings) : emptyStateHtml()}`;
+      <div class="loomos-tab-pane">
+        ${state ? renderDashboard(state, settings, activeTab) : emptyStateHtml()}
+      </div>`;
   }
   function renderAll() {
     const uiState = captureUiState();
@@ -6890,6 +7299,15 @@ function setup(ctx) {
   function handleActionClick(event) {
     const target = event.target;
     if (!target) return;
+    const tabBtn = target.closest("[data-tab]");
+    if (tabBtn) {
+      const newTab = tabBtn.dataset.tab;
+      if (newTab && newTab !== activeTab) {
+        activeTab = newTab;
+        renderAll();
+      }
+      return;
+    }
     const actionBtn = target.closest("[data-action]");
     if (actionBtn) {
       const action = actionBtn.dataset.action;

@@ -2,6 +2,28 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.3] - 2026-06-07
+
+### Added
+
+- **Mobile-First Tabbed Dashboard**: The main drawer and viewer modal now present state through five navigation tabs (Overview, Cast, World, Story, Continuity) instead of a single long scroll.
+- **Sticky Header with Unified Controls**: A sticky command bar at the top of the drawer and modal provides always-visible Generate/Stop, Reload, Delete, and Open Viewer actions. The Generate button dynamically toggles to a pulsing "Stop Compile" button during active generation.
+- **Collapsible Module Groups**: The Tracker Module Matrix settings now use collapsible `<details>` accordions per group (Core, Scene, Cast, World, Story, Tools, Custom) with tracked-module counts in each header badge.
+
+### Changed
+
+- **44px Touch Targets**: Module settings toggle buttons (Track / Display / Inject) are now 44px minimum-height grid cells, meeting accessibility tap-target standards on mobile devices.
+- **Tab State Preservation**: The active tab, collapsible group open/closed state, scroll positions, and focused inputs are all captured and restored across dynamic re-renders.
+- **Cast Cards Stack Vertically**: Cast matrix cards now render in a single-column list layout instead of a 2-column grid, preventing horizontal text overflow on narrow screens.
+- **Shorter Button Labels**: Toolbar buttons use compact labels (Generate/Refresh/Delete/Enable) instead of verbose ones (Generate State/Refresh State/Delete Exact State/Enable Features).
+- **Overview Card Polish**: The overview widget now shows active module count and cleaner location/time formatting.
+
+### Fixed
+
+- **Horizontal Overflow Hardening**: Applied `overflow-wrap: anywhere`, `min-width: 0`, and `overflow-x: hidden` across all grid/flex children to prevent any text from extending beyond the viewport.
+- **Viewer Modal Scroll**: The tab pane in the viewer modal is now independently scrollable with overflow containment.
+- **Module Group Details State**: Collapsible module groups correctly restore their open/closed state when settings toggles cause a re-render.
+
 ## [0.1.2] - 2026-06-07
 
 ### Added

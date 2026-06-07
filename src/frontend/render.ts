@@ -20,8 +20,23 @@ function visible(settings: LoomOSSettings, key: ModuleKey): boolean {
 function chips(items: string[], empty = "None recorded"): string {
   if (items.length === 0) return `<span class="loomos-muted">${escapeHtml(empty)}</span>`;
   return `<div class="loomos-chip-row">${items.map((item) =>
-    `<span class="loomos-chip">${escapeHtml(item)}</span>`
+    `<span class="loomos-chip" title="${escapeHtml(item)}">${escapeHtml(item)}</span>`
   ).join("")}</div>`;
+}
+
+function clampProse(text: string, maxLength = 140): string {
+  const clean = escapeHtml(text);
+  if (clean.length <= maxLength) return clean;
+  
+  return `
+    <span class="loomos-prose-clamped">
+      ${clean.substring(0, maxLength)}...
+      <details class="loomos-prose-details">
+        <summary>Show more</summary>
+        <span style="display: block; margin-top: 4px; color: var(--loomos-ink); font-weight: normal; font-style: normal;">${clean}</span>
+      </details>
+    </span>
+  `;
 }
 
 function section(
@@ -46,17 +61,17 @@ function renderKernel(state: LoomOSState): string {
   return section("kernel", "Kernel", kernel.scene || "Current scene", `
     <div class="loomos-hero">
       <span class="loomos-kicker">Current focus</span>
-      <strong>${escapeHtml(kernel.currentFocus || kernel.objective)}</strong>
-      <p>${escapeHtml(kernel.summary)}</p>
+      <strong>${clampProse(kernel.currentFocus || kernel.objective, 120)}</strong>
+      <p>${clampProse(kernel.summary, 160)}</p>
     </div>
     <dl class="loomos-facts">
       <div><dt>Location</dt><dd>${escapeHtml(kernel.location)}</dd></div>
       <div><dt>Time</dt><dd>${escapeHtml(kernel.timeframe || `${kernel.date} ${kernel.time}`)}</dd></div>
       <div><dt>POV</dt><dd>${escapeHtml(kernel.pov)}</dd></div>
       <div><dt>Tone</dt><dd>${escapeHtml(kernel.tone)}</dd></div>
-      <div><dt>Objective</dt><dd>${escapeHtml(kernel.objective)}</dd></div>
-      <div><dt>Risk</dt><dd>${escapeHtml(kernel.currentRisk)}</dd></div>
-      <div><dt>Next focus</dt><dd>${escapeHtml(kernel.nextFocus)}</dd></div>
+      <div><dt>Objective</dt><dd>${clampProse(kernel.objective, 120)}</dd></div>
+      <div><dt>Risk</dt><dd>${clampProse(kernel.currentRisk, 120)}</dd></div>
+      <div><dt>Next focus</dt><dd>${clampProse(kernel.nextFocus, 120)}</dd></div>
       <div><dt>Stop mode</dt><dd>${escapeHtml(kernel.stopMode)}</dd></div>
     </dl>
     <div class="loomos-subhead">Constraints</div>
@@ -67,14 +82,14 @@ function renderKernel(state: LoomOSState): string {
 function renderDelta(state: LoomOSState): string {
   const delta = state.delta;
   return section("delta", "Delta", delta.headline || "No major change", `
-    <div class="loomos-callout">${escapeHtml(delta.headline)}</div>
+    <div class="loomos-callout">${clampProse(delta.headline, 140)}</div>
     <div class="loomos-list">
       ${delta.changes.length === 0
         ? `<p class="loomos-muted">No meaningful changes recorded.</p>`
         : delta.changes.map((change) => `
           <article class="loomos-row loomos-importance-${change.importance}">
             <div class="loomos-row-title">
-              <strong>${escapeHtml(change.text)}</strong>
+              <strong>${clampProse(change.text, 120)}</strong>
               <span>${escapeHtml(change.module)}</span>
             </div>
             <small>${escapeHtml(change.age)} | ${escapeHtml(change.importance)}</small>
@@ -108,7 +123,7 @@ function renderMeters(state: LoomOSState): string {
                   <span>${escapeHtml(meter.pct)} (${meter.value}/100) ${trendIcon}</span>
                 </div>
                 <div class="loomos-meter-track"><i style="width:${Math.max(0, Math.min(100, meter.value))}%; ${colorStyle}"></i></div>
-                <small><strong>${escapeHtml(meter.band)}</strong> | ${escapeHtml(meter.note)}</small>
+                <small><strong>${escapeHtml(meter.band)}</strong> | ${clampProse(meter.note, 100)}</small>
               </article>
             `;
           }).join("")}
@@ -118,7 +133,7 @@ function renderMeters(state: LoomOSState): string {
 
 function renderCast(state: LoomOSState, settings: LoomOSSettings): string {
   return section("cast", "Cast Matrix", `${state.castMatrix.length} tracked`, `
-    <div class="loomos-card-grid">
+    <div class="loomos-list">
       ${state.castMatrix.length === 0
         ? `<p class="loomos-muted">No cast evidence in this state.</p>`
         : state.castMatrix.map((member) => {
@@ -140,23 +155,23 @@ function renderCast(state: LoomOSState, settings: LoomOSSettings): string {
                 <div class="loomos-chip-row" style="margin: 4px 0 8px;">
                   <span class="loomos-chip">📍 ${escapeHtml(member.location)}</span>
                   <span class="loomos-chip">🎭 ${escapeHtml(member.emotionalState)}</span>
-                  <span class="loomos-chip">⚠️ Threat: ${escapeHtml(member.threat.pct)} (${escapeHtml(member.threat.band)})</span>
+                  <span class="loomos-chip">⚠️ Threat: ${escapeHtml(member.threat.pct)}</span>
                 </div>
-                <p><strong>Intent:</strong> ${escapeHtml(member.intent)}</p>
-                <p><strong>Status:</strong> ${escapeHtml(member.status)}</p>
+                <p><strong>Intent:</strong> ${clampProse(member.intent, 100)}</p>
+                <p><strong>Status:</strong> ${clampProse(member.status, 100)}</p>
                 
                 ${hasExtra ? `
                   <details class="loomos-cast-extra">
                     <summary>Visuals & Pockets</summary>
                     <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
-                      ${member.pose ? `<p><strong>Pose:</strong> ${escapeHtml(member.pose)}</p>` : ""}
-                      ${member.proximity ? `<p><strong>Proximity:</strong> ${escapeHtml(member.proximity)}</p>` : ""}
-                      ${member.hands ? `<p><strong>Hands:</strong> ${escapeHtml(member.hands)}</p>` : ""}
-                      ${member.visualAnchor ? `<p><strong>Visual Anchor:</strong> ${escapeHtml(member.visualAnchor)}</p>` : ""}
-                      ${visible(settings, "clothing") && member.clothingSummary ? `<p><strong>Clothing:</strong> ${escapeHtml(member.clothingSummary)}</p>` : ""}
+                      ${member.pose ? `<p><strong>Pose:</strong> ${clampProse(member.pose, 100)}</p>` : ""}
+                      ${member.proximity ? `<p><strong>Proximity:</strong> ${clampProse(member.proximity, 100)}</p>` : ""}
+                      ${member.hands ? `<p><strong>Hands:</strong> ${clampProse(member.hands, 100)}</p>` : ""}
+                      ${member.visualAnchor ? `<p><strong>Visual Anchor:</strong> ${clampProse(member.visualAnchor, 100)}</p>` : ""}
+                      ${visible(settings, "clothing") && member.clothingSummary ? `<p><strong>Clothing:</strong> ${clampProse(member.clothingSummary, 100)}</p>` : ""}
                       ${member.goals.length > 0 ? `<div class="loomos-subhead">Goals</div>${chips(member.goals)}` : ""}
                       ${visible(settings, "relationships") && member.relationships.length > 0 ? `<div class="loomos-subhead">Relationships</div>${chips(member.relationships)}` : ""}
-                      ${visible(settings, "inventory") && member.pockets.length > 0 ? `<div class="loomos-subhead">Pockets</div>${chips(member.pockets.map(item => `${item.name} x${item.qty}${item.known ? "" : " (unknown)"}`))} : ""` : ""}
+                      ${visible(settings, "inventory") && member.pockets.length > 0 ? `<div class="loomos-subhead">Pockets</div>${chips(member.pockets.map(item => `${item.name} x${item.qty}${item.known ? "" : " (unknown)"}`))}` : ""}
                       ${member.stableFacts.length > 0 ? `<div class="loomos-subhead">Stable Facts</div>${chips(member.stableFacts)}` : ""}
                     </div>
                   </details>
@@ -180,7 +195,7 @@ function renderWorld(state: LoomOSState, settings: LoomOSSettings): string {
           <div><dt>Crowd</dt><dd>${escapeHtml(scene.crowdNoise)} / ${escapeHtml(scene.crowdFlow)}</dd></div>
           <div><dt>Light</dt><dd>${escapeHtml(scene.light.primary)} | ${escapeHtml(scene.light.quality)}</dd></div>
           <div><dt>Exit</dt><dd>${escapeHtml(scene.access.exit)}</dd></div>
-          <div><dt>Sightline</dt><dd>${escapeHtml(scene.access.lineOfSight)}</dd></div>
+          <div><dt>Sightline</dt><dd>${clampProse(scene.access.lineOfSight, 100)}</dd></div>
         </dl>
         <div class="loomos-subhead">Spatial facts</div>${chips(scene.spatial)}
         <div class="loomos-subhead">Carryover</div>${chips([
@@ -226,9 +241,9 @@ function renderStory(state: LoomOSState): string {
               <strong>${escapeHtml(thread.title)}</strong>
               <span>${escapeHtml(thread.status)} | ${thread.urgency}/5</span>
             </div>
-            <p>${escapeHtml(thread.summary)}</p>
+            <p>${clampProse(thread.summary, 120)}</p>
             <div class="loomos-meter-track"><i style="width:${Math.max(0, Math.min(100, thread.progress * 10))}%"></i></div>
-            <small>Next pressure: ${escapeHtml(thread.nextPressure)}</small>
+            <small>Next pressure: ${clampProse(thread.nextPressure, 100)}</small>
           </article>
         `).join("")}
     </div>
@@ -258,11 +273,11 @@ function renderContinuity(state: LoomOSState): string {
         : firewall.risks.map((risk) => `
           <article class="loomos-row loomos-severity-${risk.severity}">
             <div class="loomos-row-title">
-              <strong>${escapeHtml(risk.issue)}</strong>
+              <strong>${clampProse(risk.issue, 100)}</strong>
               <span class="loomos-badge loomos-badge-severity-${risk.severity}">${escapeHtml(risk.severity)}</span>
             </div>
-            <p>${escapeHtml(risk.evidence)}</p>
-            <small>Guardrail: ${escapeHtml(risk.recommendation)}</small>
+            <p>${clampProse(risk.evidence, 140)}</p>
+            <small>Guardrail: ${clampProse(risk.recommendation, 120)}</small>
           </article>
         `).join("")}
     </div>
@@ -312,33 +327,33 @@ function renderTools(state: LoomOSState, settings: LoomOSSettings): string {
   if (visible(settings, "actionResolver") && tools.actionResolver) {
     blocks.push(`<article class="loomos-card">
       <span class="loomos-kicker">Action Resolver</span>
-      <strong>${escapeHtml(tools.actionResolver.userAction)}</strong>
-      <p>${escapeHtml(tools.actionResolver.worldResponse)}</p>
-      <small>Risk: ${escapeHtml(tools.actionResolver.risk)}</small>
+      <strong>${clampProse(tools.actionResolver.userAction, 100)}</strong>
+      <p>${clampProse(tools.actionResolver.worldResponse, 120)}</p>
+      <small>Risk: ${clampProse(tools.actionResolver.risk, 100)}</small>
       ${chips(tools.actionResolver.blockers)}
     </article>`);
   }
   if (visible(settings, "dialogueState") && tools.dialogueState) {
     blocks.push(`<article class="loomos-card">
       <span class="loomos-kicker">Dialogue</span>
-      <strong>${escapeHtml(tools.dialogueState.openThread)}</strong>
-      <p>${escapeHtml(tools.dialogueState.socialMask)}</p>
+      <strong>${clampProse(tools.dialogueState.openThread, 100)}</strong>
+      <p>${clampProse(tools.dialogueState.socialMask, 120)}</p>
       ${chips(tools.dialogueState.levers)}
     </article>`);
   }
   if (visible(settings, "directorStyle") && tools.directorStyle) {
     blocks.push(`<article class="loomos-card">
       <span class="loomos-kicker">Director Style</span>
-      <strong>${escapeHtml(tools.directorStyle.primary)}</strong>
-      <p>${escapeHtml(tools.directorStyle.push)}</p>
+      <strong>${clampProse(tools.directorStyle.primary, 100)}</strong>
+      <p>${clampProse(tools.directorStyle.push, 120)}</p>
       ${chips(tools.directorStyle.voiceCues)}
     </article>`);
   }
   if (visible(settings, "closenessState") && tools.closenessState) {
     blocks.push(`<article class="loomos-card">
       <span class="loomos-kicker">Closeness</span>
-      <strong>${escapeHtml(tools.closenessState.emotional)}</strong>
-      <p>${escapeHtml(tools.closenessState.physical)}</p>
+      <strong>${clampProse(tools.closenessState.emotional, 100)}</strong>
+      <p>${clampProse(tools.closenessState.physical, 120)}</p>
       ${chips(tools.closenessState.boundaries)}
     </article>`);
   }
@@ -346,8 +361,8 @@ function renderTools(state: LoomOSState, settings: LoomOSSettings): string {
     blocks.push(`<article class="loomos-card">
       <span class="loomos-kicker">Image Prompt</span>
       <strong>${escapeHtml(tools.imagePrompt.shot)} | ${escapeHtml(tools.imagePrompt.medium)}</strong>
-      <p>${escapeHtml(tools.imagePrompt.subject)}</p>
-      <small>${escapeHtml(tools.imagePrompt.hint)}</small>
+      <p>${clampProse(tools.imagePrompt.subject, 120)}</p>
+      <small>${clampProse(tools.imagePrompt.hint, 100)}</small>
     </article>`);
   }
   return blocks.length === 0
@@ -364,8 +379,8 @@ function renderAudit(state: LoomOSState): string {
             <strong>${escapeHtml(entry.system)}</strong>
             <span>${escapeHtml(entry.marker)}</span>
           </div>
-          <p>${escapeHtml(entry.result)}</p>
-          <small>${entry.repaired ? "Repaired | " : ""}${escapeHtml(entry.notes)}</small>
+          <p>${clampProse(entry.result, 120)}</p>
+          <small>${entry.repaired ? "Repaired | " : ""}${clampProse(entry.notes, 100)}</small>
         </article>
       `).join("") || `<p class="loomos-muted">No audit entries.</p>`}
     </div>
@@ -384,13 +399,14 @@ function renderOverviewCard(state: LoomOSState, settings: LoomOSSettings): strin
   return `
     <div class="loomos-shell loomos-overview-card">
       <div class="loomos-kicker">Overview</div>
-      <div class="loomos-overview-headline">"${escapeHtml(deltaHeadline)}"</div>
+      <div class="loomos-overview-headline">${clampProse(deltaHeadline, 140)}</div>
       <div class="loomos-overview-details">
-        <div><strong>Location:</strong> <span>${escapeHtml(location)} (${escapeHtml(time)})</span></div>
+        <div><strong>Location:</strong> <span>${escapeHtml(location)} · ${escapeHtml(time)}</span></div>
         <div class="loomos-overview-stats">
           <span>👥 ${activeCastCount} Cast</span>
           <span>🧵 ${threadCount} Threads</span>
           <span>⚠️ ${riskCount} Risks</span>
+          <span>📦 ${state.activeModules.length} Modules</span>
           <span class="loomos-overview-inject-${settings.injectionEnabled ? "active" : "inactive"}">💉 Inject: ${injectionStatus}</span>
         </div>
       </div>
@@ -418,7 +434,7 @@ function renderCustomModules(state: LoomOSState, settings: LoomOSSettings): stri
           <ul class="loomos-bullet-list">
             ${compiled.items.map(it => `
               <li>
-                <strong>${escapeHtml(it.title)}</strong>: ${escapeHtml(it.text)}
+                <strong>${escapeHtml(it.title)}</strong>: ${clampProse(it.text, 100)}
                 <span class="loomos-badge loomos-badge-severity-${it.importance}" style="font-size: 7px; vertical-align: middle; margin-left: 4px;">${it.importance}</span>
               </li>
             `).join("")}
@@ -429,7 +445,7 @@ function renderCustomModules(state: LoomOSState, settings: LoomOSSettings): stri
           <div class="loomos-chip-row" style="margin-top: 4px;">
             ${compiled.items.map(it => `
               <span class="loomos-chip" style="${it.color ? `border-color:${escapeHtml(it.color)}` : ""}">
-                <strong>${escapeHtml(it.title)}</strong>: ${escapeHtml(it.text)}
+                <strong>${escapeHtml(it.title)}</strong>: ${clampProse(it.text, 80)}
                 <span class="loomos-badge loomos-badge-severity-${it.importance}" style="font-size: 7px; margin-left: 2px;">${it.importance}</span>
               </span>
             `).join("")}
@@ -464,7 +480,7 @@ function renderCustomModules(state: LoomOSState, settings: LoomOSSettings): stri
                   <strong>${escapeHtml(it.title)}</strong>
                   <span class="loomos-badge loomos-badge-severity-${it.importance}">${it.importance}</span>
                 </div>
-                <p>${escapeHtml(it.text)}</p>
+                <p>${clampProse(it.text, 120)}</p>
               </div>
             `).join("")}
           </div>
@@ -489,25 +505,60 @@ function renderCustomModules(state: LoomOSState, settings: LoomOSSettings): stri
 export function renderDashboard(
   state: LoomOSState,
   settings: LoomOSSettings,
+  activeTab = "overview",
 ): string {
-  const sections = [
-    visible(settings, "sceneKernel") ? renderKernel(state) : "",
-    visible(settings, "deltas") ? renderDelta(state) : "",
-    visible(settings, "meters") ? renderMeters(state) : "",
-    visible(settings, "castCore") ? renderCast(state, settings) : "",
-    visible(settings, "worldSpace") || visible(settings, "secretsRumors")
-      ? renderWorld(state, settings)
-      : "",
-    visible(settings, "storyThreads") ? renderStory(state) : "",
-    visible(settings, "continuity") ? renderContinuity(state) : "",
-    renderTools(state, settings),
-    ...renderCustomModules(state, settings),
-    visible(settings, "auditLog") ? renderAudit(state) : "",
-  ].filter(Boolean);
+  if (activeTab === "overview") {
+    const overview = renderOverviewCard(state, settings);
+    const sections = [
+      visible(settings, "sceneKernel") ? renderKernel(state) : "",
+      visible(settings, "deltas") ? renderDelta(state) : "",
+      visible(settings, "meters") ? renderMeters(state) : "",
+      renderTools(state, settings),
+      ...renderCustomModules(state, settings),
+    ].filter(Boolean);
+    return sections.length > 0
+      ? `<div class="loomos-dashboard">${overview}${sections.join("")}</div>`
+      : `<div class="loomos-dashboard">${overview}<div class="loomos-empty"><h3>All overview display modules are hidden</h3><p>Enable display for Kernel, Deltas, Meters, or Tools in the Settings tab.</p></div></div>`;
+  }
+  
+  if (activeTab === "cast") {
+    const sections = [
+      visible(settings, "castCore") ? renderCast(state, settings) : "",
+    ].filter(Boolean);
+    return sections.length > 0
+      ? `<div class="loomos-dashboard">${sections.join("")}</div>`
+      : `<div class="loomos-empty"><h3>Cast Core display is hidden</h3><p>Enable Cast Core display in settings.</p></div>`;
+  }
+  
+  if (activeTab === "world") {
+    const sections = [
+      visible(settings, "worldSpace") || visible(settings, "secretsRumors")
+        ? renderWorld(state, settings)
+        : "",
+    ].filter(Boolean);
+    return sections.length > 0
+      ? `<div class="loomos-dashboard">${sections.join("")}</div>`
+      : `<div class="loomos-empty"><h3>World modules are hidden</h3><p>Enable World & Space or Secrets & Rumors display in settings.</p></div>`;
+  }
+  
+  if (activeTab === "story") {
+    const sections = [
+      visible(settings, "storyThreads") ? renderStory(state) : "",
+    ].filter(Boolean);
+    return sections.length > 0
+      ? `<div class="loomos-dashboard">${sections.join("")}</div>`
+      : `<div class="loomos-empty"><h3>Story threads display is hidden</h3><p>Enable Story Threads display in settings.</p></div>`;
+  }
+  
+  if (activeTab === "continuity") {
+    const sections = [
+      visible(settings, "continuity") ? renderContinuity(state) : "",
+      visible(settings, "auditLog") ? renderAudit(state) : "",
+    ].filter(Boolean);
+    return sections.length > 0
+      ? `<div class="loomos-dashboard">${sections.join("")}</div>`
+      : `<div class="loomos-empty"><h3>Continuity and Audit display are hidden</h3><p>Enable Continuity Firewall or Audit Log display in settings.</p></div>`;
+  }
 
-  const overview = renderOverviewCard(state, settings);
-
-  return sections.length > 0
-    ? `<div class="loomos-dashboard">${overview}${sections.join("")}</div>`
-    : `<div class="loomos-empty"><h3>All display modules are hidden</h3><p>Enable Display for one or more modules in the drawer settings. Stored state has not been deleted.</p></div>`;
+  return "";
 }

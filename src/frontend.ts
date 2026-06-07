@@ -99,6 +99,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   let chatStates: Array<{ messageId: string; swipeId: number }> = [];
   let modal: SpindleModalHandle | null = null;
   let modalListenerCleanup: (() => void) | null = null;
+  let activeTab = "overview";
 
   const tab = ctx.ui.registerDrawerTab({
     id: "command-deck",
@@ -110,6 +111,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     iconSvg: ICON,
   });
   tab.root.classList.add("loomos-root");
+  tab.root.dataset.view = "drawer";
 
   const inputAction = ctx.ui.registerInputBarAction({
     id: "open-command-deck",
@@ -176,18 +178,19 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function captureUiState() {
     const openDetails = new Set<string>();
-    tab.root.querySelectorAll("details[data-details], details[data-section]").forEach((d) => {
-      const key = d.getAttribute("data-details") || d.getAttribute("data-section");
+    tab.root.querySelectorAll("details[data-details], details[data-section], details[data-group]").forEach((d) => {
+      const key = d.getAttribute("data-details") || d.getAttribute("data-section") || d.getAttribute("data-group");
       if (key && (d as HTMLDetailsElement).open) openDetails.add(key);
     });
     if (modal) {
-      modal.root.querySelectorAll("details[data-details], details[data-section]").forEach((d) => {
-        const key = d.getAttribute("data-details") || d.getAttribute("data-section");
+      modal.root.querySelectorAll("details[data-details], details[data-section], details[data-group]").forEach((d) => {
+        const key = d.getAttribute("data-details") || d.getAttribute("data-section") || d.getAttribute("data-group");
         if (key && (d as HTMLDetailsElement).open) openDetails.add("modal:" + key);
       });
     }
 
     const searchQuery = tab.root.querySelector<HTMLInputElement>("[data-module-search]")?.value ?? "";
+    const savedTab = activeTab;
     
     const scrollPositions = new Map<HTMLElement, number>();
     let curr: HTMLElement | null = tab.root;
@@ -237,34 +240,37 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       scrollPositions,
       openDetails,
       searchQuery,
+      savedTab,
       focusedSelector,
       selectionStart,
       selectionEnd
     };
   }
 
-  function restoreUiState(state: ReturnType<typeof captureUiState>) {
-    tab.root.querySelectorAll<HTMLDetailsElement>("details[data-details], details[data-section]").forEach((d) => {
-      const key = d.getAttribute("data-details") || d.getAttribute("data-section");
-      if (key) d.open = state.openDetails.has(key);
+  function restoreUiState(uiSnapshot: ReturnType<typeof captureUiState>) {
+    activeTab = uiSnapshot.savedTab;
+
+    tab.root.querySelectorAll<HTMLDetailsElement>("details[data-details], details[data-section], details[data-group]").forEach((d) => {
+      const key = d.getAttribute("data-details") || d.getAttribute("data-section") || d.getAttribute("data-group");
+      if (key) d.open = uiSnapshot.openDetails.has(key);
     });
     if (modal) {
-      modal.root.querySelectorAll<HTMLDetailsElement>("details[data-details], details[data-section]").forEach((d) => {
-        const key = d.getAttribute("data-details") || d.getAttribute("data-section");
-        if (key) d.open = state.openDetails.has("modal:" + key);
+      modal.root.querySelectorAll<HTMLDetailsElement>("details[data-details], details[data-section], details[data-group]").forEach((d) => {
+        const key = d.getAttribute("data-details") || d.getAttribute("data-section") || d.getAttribute("data-group");
+        if (key) d.open = uiSnapshot.openDetails.has("modal:" + key);
       });
     }
 
     const searchInput = tab.root.querySelector<HTMLInputElement>("[data-module-search]");
     if (searchInput) {
-      searchInput.value = state.searchQuery;
-      const query = state.searchQuery.toLowerCase();
+      searchInput.value = uiSnapshot.searchQuery;
+      const query = uiSnapshot.searchQuery.toLowerCase();
       tab.root.querySelectorAll<HTMLElement>("[data-module-row]").forEach((row) => {
         row.hidden = Boolean(query) && !(row.dataset.search ?? "").includes(query);
       });
     }
 
-    for (const [el, scrollTop] of state.scrollPositions.entries()) {
+    for (const [el, scrollTop] of uiSnapshot.scrollPositions.entries()) {
       try {
         el.scrollTop = scrollTop;
       } catch {
@@ -272,13 +278,13 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       }
     }
 
-    if (state.focusedSelector) {
-      const el = tab.root.querySelector(state.focusedSelector) || (modal && modal.root.querySelector(state.focusedSelector));
+    if (uiSnapshot.focusedSelector) {
+      const el = tab.root.querySelector(uiSnapshot.focusedSelector) || (modal && modal.root.querySelector(uiSnapshot.focusedSelector));
       if (el instanceof HTMLElement) {
         el.focus();
-        if (el instanceof HTMLInputElement && state.selectionStart !== null && state.selectionEnd !== null) {
+        if (el instanceof HTMLInputElement && uiSnapshot.selectionStart !== null && uiSnapshot.selectionEnd !== null) {
           try {
-            el.setSelectionRange(state.selectionStart, state.selectionEnd);
+            el.setSelectionRange(uiSnapshot.selectionStart, uiSnapshot.selectionEnd);
           } catch {
             // ignore
           }
@@ -315,13 +321,57 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         widgetId: "loomos-action-history",
         html: `
           <style>
-            :root{color-scheme:light dark}body{margin:0;padding:2px 0;font:11px system-ui,sans-serif;color:var(--lumiverse-text-dim)}
-            .bar{align-items:center;display:flex;gap:8px}
-            button{background:var(--lumiverse-fill-subtle);border:1px solid var(--lumiverse-border);border-radius:6px;color:var(--lumiverse-text);cursor:pointer;padding:3px 6px;font-size:10px}
-            button:hover{border-color:var(--lumiverse-accent)}
+            :root { color-scheme: light dark; }
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              padding: 2px 0;
+              font-family: system-ui, -apple-system, sans-serif;
+              color: var(--lumiverse-text-dim, #aaa);
+            }
+            .bar {
+              display: inline-flex;
+              align-items: center;
+              gap: 8px;
+              background: var(--lumiverse-fill-subtle, rgba(255, 255, 255, 0.02));
+              border: 1px solid var(--lumiverse-border, rgba(255, 255, 255, 0.05));
+              border-radius: 6px;
+              padding: 3px 6px;
+              max-width: 100%;
+              flex-wrap: nowrap;
+            }
+            button {
+              background: var(--lumiverse-fill, rgba(255, 255, 255, 0.05));
+              border: 1px solid var(--lumiverse-border, rgba(255, 255, 255, 0.1));
+              border-radius: 4px;
+              color: var(--lumiverse-text, #f5f5f5);
+              cursor: pointer;
+              font-size: 10px;
+              font-weight: 500;
+              height: 22px;
+              padding: 0 6px;
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              white-space: nowrap;
+              transition: all 0.2s ease;
+            }
+            button:hover {
+              border-color: var(--lumiverse-accent, #7c6cff);
+              background: rgba(124, 108, 255, 0.08);
+            }
+            .label-wrapper {
+              display: inline-flex;
+              align-items: center;
+              gap: 4px;
+              font-size: 10px;
+              white-space: nowrap;
+            }
           </style>
           <div class="bar">
-            <span>📝 LoomOS State (swipe ${item.swipeId})</span>
+            <div class="label-wrapper">
+              <span>📝 LoomOS State (swipe ${item.swipeId})</span>
+            </div>
             <button id="open" type="button">Open State</button>
           </div>
           <script>
@@ -361,20 +411,101 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         widgetId: "loomos-action",
         html: `
           <style>
-            :root{color-scheme:light dark}*{box-sizing:border-box}body{margin:0;padding:4px 0;font:12px/1.25 system-ui,sans-serif;color:var(--lumiverse-text)}
-            .bar{align-items:center;display:flex;flex-wrap:wrap;gap:6px}
-            button{background:var(--lumiverse-fill-subtle);border:1px solid var(--lumiverse-border);border-radius:7px;color:var(--lumiverse-text);cursor:pointer;min-height:30px;padding:5px 8px}
-            button.primary{border-color:var(--lumiverse-accent)}
-            button.danger{border-color:#df5259;background:rgba(223,82,89,0.15)}
-            button.pulse{animation:loomos-pulse 1.6s infinite}
-            button:disabled{cursor:not-allowed;opacity:.5}
-            .state{color:var(--lumiverse-text-dim);font-size:10px}
-            @keyframes loomos-pulse{0%{opacity:1}50%{opacity:0.6}100%{opacity:1}}
+            :root { color-scheme: light dark; }
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              padding: 2px 0;
+              font-family: system-ui, -apple-system, sans-serif;
+              color: var(--lumiverse-text, #f5f5f5);
+            }
+            .bar {
+              display: inline-flex;
+              align-items: center;
+              gap: 8px;
+              background: var(--lumiverse-fill-subtle, rgba(255, 255, 255, 0.03));
+              border: 1px solid var(--lumiverse-border, rgba(255, 255, 255, 0.08));
+              border-radius: 8px;
+              padding: 4px 8px;
+              max-width: 100%;
+              flex-wrap: nowrap;
+            }
+            button {
+              background: var(--lumiverse-fill, rgba(255, 255, 255, 0.05));
+              border: 1px solid var(--lumiverse-border, rgba(255, 255, 255, 0.1));
+              border-radius: 6px;
+              color: var(--lumiverse-text, #f5f5f5);
+              cursor: pointer;
+              font-size: 11px;
+              font-weight: 600;
+              height: 28px;
+              padding: 0 10px;
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              white-space: nowrap;
+              transition: all 0.2s ease;
+            }
+            button:hover {
+              border-color: var(--lumiverse-accent, #7c6cff);
+              background: rgba(124, 108, 255, 0.08);
+            }
+            button.primary {
+              background: var(--lumiverse-accent, #7c6cff);
+              color: var(--lumiverse-accent-fg, #fff);
+              border-color: var(--lumiverse-accent, #7c6cff);
+            }
+            button.primary:hover {
+              opacity: 0.9;
+              filter: brightness(1.1);
+            }
+            button.danger {
+              border-color: #df5259;
+              background: rgba(223, 82, 89, 0.15);
+              color: #ff6b72;
+            }
+            button.pulse {
+              animation: loomos-pulse 1.6s infinite;
+            }
+            button:disabled {
+              cursor: not-allowed;
+              opacity: 0.48;
+            }
+            .status-wrapper {
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+              font-size: 10px;
+              color: var(--lumiverse-text-dim, #aaa);
+              margin-left: 4px;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+            }
+            .status-dot {
+              width: 6px;
+              height: 6px;
+              border-radius: 50%;
+              background-color: #71717a;
+              display: inline-block;
+            }
+            .status-dot.active {
+              background-color: #10b981;
+              box-shadow: 0 0 6px #10b981;
+            }
+            @keyframes loomos-pulse {
+              0% { opacity: 1; }
+              50% { opacity: 0.5; }
+              100% { opacity: 1; }
+            }
           </style>
           <div class="bar">
-            <button id="open" type="button">Open LoomOS</button>
+            <button id="open" type="button">🔮 Open LoomOS</button>
             <button id="generate" class="${generateClass}" type="button"${disabled(!permissions.generation || !permissions.chatMutation)}>${escapeHtml(generateLabel)}</button>
-            <span class="state">${hasState ? `Exact state loaded (${swipeText})` : `No state for ${swipeText}`}</span>
+            <div class="status-wrapper">
+              <i class="status-dot ${hasState ? "active" : ""}"></i>
+              <span>${hasState ? `Exact state loaded (${swipeText})` : `No state for ${swipeText}`}</span>
+            </div>
           </div>
           <script>
             document.getElementById("open").addEventListener("click",()=>window.spindleSandbox.postMessage({type:"open"}));
@@ -593,11 +724,19 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     for (const [groupName, groupModules] of groups.entries()) {
       const groupVisibleCount = groupModules.filter((m) => m.visible).length;
       if (groupVisibleCount === 0) continue;
+      const enabledCount = groupModules.filter((m) => m.visible && m.control.track).length;
+      const groupDesc = `${enabledCount} of ${groupVisibleCount} tracked`;
 
       groupsHtml += `
-        <div class="loomos-module-group-card" style="margin-top: 10px;">
-          <div class="loomos-module-group-title">${escapeHtml(groupName)}</div>
-          <div class="loomos-module-group-list">
+        <details class="loomos-module-group-details" data-group="grp_${escapeHtml(groupName)}">
+          <summary class="loomos-module-group-summary">
+            <div class="loomos-module-group-header">
+              <strong>${escapeHtml(groupName)}</strong>
+              <span class="loomos-badge">${escapeHtml(groupDesc)}</span>
+            </div>
+            <span class="loomos-module-group-desc">${groupVisibleCount} modules in this group</span>
+          </summary>
+          <div class="loomos-module-group-content">
             ${groupModules.map((m) => {
               if (!m.visible) return "";
               
@@ -661,7 +800,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
               `;
             }).join("")}
           </div>
-        </div>
+        </details>
       `;
     }
 
@@ -726,7 +865,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function diagnosticText(): string {
     const lines = [
-      `version: 0.1.2`,
+      `version: 0.1.3`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -746,37 +885,55 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     </div>`;
   }
 
-  function toolbarHtml(): string {
+  function tabsNavHtml(): string {
+    const tabs = [
+      { id: "overview", label: "Overview" },
+      { id: "cast", label: "Cast" },
+      { id: "world", label: "World" },
+      { id: "story", label: "Story" },
+      { id: "continuity", label: "Continuity" },
+    ];
+    return `<nav class="loomos-tabs-nav">${tabs.map(t =>
+      `<button class="loomos-tab-btn${activeTab === t.id ? " active" : ""}" data-tab="${t.id}">${t.label}</button>`
+    ).join("")}</nav>`;
+  }
+
+  function stickyHeaderHtml(showTabs: boolean): string {
     const canGenerate = permissions.generation && permissions.chatMutation;
     const busy = activeGenerationRequestId !== null;
     const missingPermission = !permissions.generation
       || !permissions.chatMutation
       || (settings.injectionEnabled && !permissions.interceptor);
-    return `<div class="loomos-toolbar">
-      <button class="loomos-button loomos-button-primary" data-action="viewer">Open Viewer</button>
-      ${busy 
-        ? `<button class="loomos-button loomos-button-danger loomos-button-pulse" data-action="cancel">Stop Compile</button>`
-        : `<button class="loomos-button" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh State" : "Generate State"}</button>`
-      }
-      <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation || busy)}>Reload</button>
-      ${state && !busy ? `<button class="loomos-button loomos-button-danger" data-action="delete">Delete Exact State</button>` : ""}
-      ${missingPermission ? `<button class="loomos-button" data-action="permissions">Enable Features</button>` : ""}
-    </div>`;
-  }
-
-  function renderDrawer(): void {
-    tab.root.dataset.skin = settings.skin;
-    tab.root.innerHTML = `
-      <div class="loomos-shell">
+    return `
+      <div class="loomos-header-sticky">
         <div class="loomos-header">
           <div class="loomos-title"><strong>LoomOS Command Deck</strong><span>${escapeHtml(exactLabel())}</span></div>
           <span class="loomos-status" title="${escapeHtml(elapsedLabel())}">${escapeHtml(elapsedLabel())}</span>
         </div>
-        ${toolbarHtml()}
-      </div>
+        <div class="loomos-header-actions">
+          <button class="loomos-button loomos-button-primary" data-action="viewer">Open Viewer</button>
+          ${busy
+            ? `<button class="loomos-button loomos-button-danger loomos-button-pulse" data-action="cancel">Stop Compile</button>`
+            : `<button class="loomos-button" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh" : "Generate"}</button>`
+          }
+          <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation || busy)}>Reload</button>
+          ${state && !busy ? `<button class="loomos-button loomos-button-danger" data-action="delete">Delete</button>` : ""}
+          ${missingPermission ? `<button class="loomos-button" data-action="permissions">Enable</button>` : ""}
+        </div>
+        ${showTabs ? tabsNavHtml() : ""}
+      </div>`;
+  }
+
+  function renderDrawer(): void {
+    tab.root.dataset.skin = settings.skin;
+    tab.root.dataset.view = "drawer";
+    tab.root.innerHTML = `
+      ${stickyHeaderHtml(Boolean(state))}
       ${compileStatusCardHtml()}
       ${renderSettings()}
-      ${state ? renderDashboard(state, settings) : emptyStateHtml()}
+      <div class="loomos-tab-pane">
+        ${state ? renderDashboard(state, settings, activeTab) : emptyStateHtml()}
+      </div>
       <details class="loomos-shell loomos-settings" data-details="diagnostics">
         <summary>Pipeline Diagnostics</summary>
         <pre class="loomos-diagnostic">${escapeHtml(diagnosticText())}</pre>
@@ -787,17 +944,14 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     if (!modal) return;
     modal.root.className = "loomos-root";
     modal.root.dataset.skin = settings.skin;
+    modal.root.dataset.view = "modal";
     modal.setTitle(`LoomOS | ${exactLabel()}`);
     modal.root.innerHTML = `
-      <div class="loomos-shell">
-        <div class="loomos-header">
-          <div class="loomos-title"><strong>${state ? escapeHtml(state.kernel.scene || "Story State") : "Exact Swipe State"}</strong><span>${escapeHtml(exactLabel())}</span></div>
-          <span class="loomos-status">${escapeHtml(elapsedLabel())}</span>
-        </div>
-        ${toolbarHtml()}
-      </div>
+      ${stickyHeaderHtml(Boolean(state))}
       ${compileStatusCardHtml()}
-      ${state ? renderDashboard(state, settings) : emptyStateHtml()}`;
+      <div class="loomos-tab-pane">
+        ${state ? renderDashboard(state, settings, activeTab) : emptyStateHtml()}
+      </div>`;
   }
 
   function renderAll(): void {
@@ -1553,6 +1707,17 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   function handleActionClick(event: Event): void {
     const target = event.target as HTMLElement | null;
     if (!target) return;
+
+    // Tab click handling
+    const tabBtn = target.closest<HTMLElement>("[data-tab]");
+    if (tabBtn) {
+      const newTab = tabBtn.dataset.tab;
+      if (newTab && newTab !== activeTab) {
+        activeTab = newTab;
+        renderAll();
+      }
+      return;
+    }
 
     const actionBtn = target.closest<HTMLElement>("[data-action]");
     if (actionBtn) {
