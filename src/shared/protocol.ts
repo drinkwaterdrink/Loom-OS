@@ -24,7 +24,8 @@ export type FrontendRequest =
   | { type: "delete_state"; requestId: string; identity: IdentityRequest }
   | { type: "generate_state"; requestId: string; identity: IdentityRequest }
   | { type: "cancel_generation"; requestId: string }
-  | { type: "refresh_permissions"; requestId: string };
+  | { type: "refresh_permissions"; requestId: string }
+  | { type: "get_chat_states"; requestId: string; chatId: string };
 
 export type BackendResponse =
   | {
@@ -52,4 +53,10 @@ export type BackendResponse =
       report?: GenerationPipelineReport;
     }
   | { type: "permissions"; requestId?: string; permissions: PermissionSnapshot }
-  | { type: "error"; requestId?: string; message: string };
+  | { type: "error"; requestId?: string; message: string }
+  | {
+      type: "chat_states";
+      requestId?: string;
+      chatId: string;
+      states: Array<{ messageId: string; swipeId: number }>;
+    };

@@ -20,6 +20,7 @@ const gauge = {
 };
 
 export const compiledState: LoomOSCompiledState = {
+  customModuleData: [],
   activeModules: [
     "sceneKernel",
     "deltas",

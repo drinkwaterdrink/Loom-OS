@@ -20,7 +20,7 @@ export const MODULE_KEYS = [
 ] as const;
 
 export type ModuleKey = typeof MODULE_KEYS[number];
-export type ModulePreset = "lite" | "balanced" | "full" | "experimental" | "custom";
+export type ModulePreset = "lite" | "balanced" | "full" | "experimental" | "custom" | string;
 
 export interface ModuleControl {
   track: boolean;

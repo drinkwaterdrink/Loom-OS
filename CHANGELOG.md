@@ -2,6 +2,27 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.2] - 2026-06-07
+
+### Added
+
+- **Custom Module Preset Manager**: Fully integrated creation, duplication, deletion, renaming, and JSON import/export of user-defined module configurations.
+- **Safe Custom Module Definitions**: Support for user-defined tracking modules with customizable LLM instructions, token limits, and multiple render formats (cards, bullets, chips, progress gauges).
+- **Stop/Cancel Compiler Action**: Generation buttons in the drawer, modal, and latest-message widget now toggle to a cancel state to abort active compiler runs.
+- **Dashboard Overview Block**: Summary metrics showing delta headline, location/time, cast count, thread count, risk levels, and injection status.
+- **Collapsible Cast Cards**: Polished cast details with expandable visual anchors, pocket inventories, stable facts, and status chips.
+- **Search & Bulk Actions**: Added module list searching with count indicators ("X of Y modules shown") and bulk actions to reset presets or inject recommended modules.
+
+### Changed
+
+- **Scroll & UI State Preservation**: Frontend preserves scroll offsets, `<details>` open/closed states, focused input selectors, and cursor selection ranges across dynamic panel re-renders.
+- **Debounced Settings Save**: Rapid settings toggle checkboxes are debounced to prevent state loss and excessive storage writes.
+
+### Fixed
+
+- Resolved TypeScript type checking issues for custom preset assignments, Zod schema mappings, and details element restoration.
+- Fixed test runner schema validation to require `customModuleData` field in fixtures.
+
 ## [0.1.1] - 2026-06-07
 
 ### Added

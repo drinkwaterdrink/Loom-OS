@@ -4158,13 +4158,7 @@ var AutoGenerationModeSchema = external_exports.enum([
   "every",
   "manual"
 ]);
-var ModulePresetSchema = external_exports.enum([
-  "lite",
-  "balanced",
-  "full",
-  "experimental",
-  "custom"
-]);
+var ModulePresetSchema = external_exports.string();
 var ModuleKeySchema = external_exports.enum(MODULE_KEYS);
 var ModuleControlSchema = external_exports.object({
   track: external_exports.boolean(),
@@ -4176,6 +4170,26 @@ var ModuleSettingsSchema = external_exports.object(
     MODULE_KEYS.map((key) => [key, ModuleControlSchema])
   )
 ).strict();
+var CustomModulePresetSchema = external_exports.object({
+  id: external_exports.string().min(1).max(160),
+  name: external_exports.string().trim().min(1).max(160),
+  description: external_exports.string().trim().max(500).default(""),
+  createdAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
+  updatedAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
+  moduleSettings: ModuleSettingsSchema
+}).strict();
+var CustomModuleSchema = external_exports.object({
+  id: external_exports.string().min(1).max(160),
+  label: external_exports.string().trim().min(1).max(160),
+  group: external_exports.string().trim().min(1).max(160).default("Custom"),
+  description: external_exports.string().trim().max(500).default(""),
+  enabled: external_exports.boolean().default(true),
+  display: external_exports.boolean().default(true),
+  inject: external_exports.boolean().default(true),
+  compilerInstruction: external_exports.string().trim().max(1600),
+  outputMode: external_exports.enum(["cards", "bullets", "chips", "gauge"]).default("cards"),
+  maxItems: external_exports.number().int().min(1).max(24).default(6)
+}).strict();
 var RawSettingsSchema = external_exports.object({
   schemaVersion: external_exports.literal(2).default(2),
   skin: LoomOSSkinSchema.default("auto"),
@@ -4187,7 +4201,9 @@ var RawSettingsSchema = external_exports.object({
   generationTimeoutSeconds: external_exports.number().int().min(30).max(300).default(180),
   connectionId: external_exports.string().trim().max(200).default(""),
   modulePreset: ModulePresetSchema.default("balanced"),
-  moduleSettings: ModuleSettingsSchema.default(BALANCED_MODULE_SETTINGS)
+  moduleSettings: ModuleSettingsSchema.default(BALANCED_MODULE_SETTINGS),
+  customModulePresets: external_exports.array(CustomModulePresetSchema).default([]),
+  customModules: external_exports.array(CustomModuleSchema).default([])
 }).strict();
 function settingsInput(value) {
   if (typeof value !== "object" || value === null) return value;
@@ -4220,7 +4236,9 @@ function settingsInput(value) {
     generationTimeoutSeconds: source.generationTimeoutSeconds,
     connectionId: source.connectionId,
     modulePreset: source.modulePreset,
-    moduleSettings
+    moduleSettings,
+    customModulePresets: source.customModulePresets,
+    customModules: source.customModules
   };
 }
 var LoomOSSettingsSchema = external_exports.preprocess(settingsInput, RawSettingsSchema);
@@ -4479,6 +4497,18 @@ var AuditEntrySchema = external_exports.object({
   repaired: external_exports.boolean(),
   notes: MediumText
 }).strict();
+var CustomModuleItemSchema = external_exports.object({
+  title: ShortText,
+  text: MediumText,
+  importance: external_exports.enum(["low", "medium", "high", "critical"]),
+  color: ColorText.optional()
+}).strict();
+var CustomModuleDataSchema = external_exports.object({
+  moduleId: external_exports.string().min(1).max(160),
+  label: ShortText,
+  summary: MediumText.default(""),
+  items: external_exports.array(CustomModuleItemSchema).max(24).default([])
+}).strict();
 var LoomOSCompiledStateSchema = external_exports.object({
   activeModules: external_exports.array(ModuleKeySchema).max(MODULE_KEYS.length),
   kernel: KernelSchema,
@@ -4496,7 +4526,8 @@ var LoomOSCompiledStateSchema = external_exports.object({
     closenessState: null,
     imagePrompt: null
   }),
-  auditLog: external_exports.array(AuditEntrySchema).max(12).default([])
+  auditLog: external_exports.array(AuditEntrySchema).max(12).default([]),
+  customModuleData: external_exports.array(CustomModuleDataSchema).default([])
 }).strict();
 var LoomOSStateSchema = LoomOSCompiledStateSchema.extend({
   schemaVersion: external_exports.literal(2),
@@ -4677,8 +4708,35 @@ Exact JSON field contract (values below are type examples, not story facts):
 For disabled optional modules: meters=[], scene=null, worldState=null, the
 corresponding tools member=null, and auditLog=[]. Empty optional arrays inside an
 enabled object are valid. Do not emit example rows when there is no evidence.`;
-function buildStateCompilerPrompt(enabledModules) {
+function buildStateCompilerPrompt(enabledModules, customModules) {
   const enabled = MODULE_CATALOG.filter((module) => enabledModules.includes(module.key)).map((module) => `- ${module.key}: ${module.description}`).join("\n");
+  const enabledCustom = (customModules || []).filter((m) => m.enabled).map((m) => `- customModuleData[moduleId=${m.id}] (${m.label}): ${m.compilerInstruction} (maxItems: ${m.maxItems || 6})`).join("\n");
+  const trackingText = enabled + (enabledCustom ? "\n\nEnabled custom tracking modules:\n" + enabledCustom : "");
+  let customContract = "";
+  let customShape = "";
+  if (customModules && customModules.some((m) => m.enabled)) {
+    customContract = `
+- customModuleData: Array of compiled custom modules. For each enabled custom module, append an entry with the exact moduleId, label, a turn summary, and an array of items (up to its maxItems limit) containing title, text, importance (low/medium/high/critical), and optional color.`;
+    customShape = `,
+  "customModuleData": [
+    {
+      "moduleId": "custom_module_id",
+      "label": "Custom Module Label",
+      "summary": "Turn summary",
+      "items": [
+        {
+          "title": "Item title",
+          "text": "Item text description",
+          "importance": "medium",
+          "color": "#ff0000"
+        }
+      ]
+    }
+  ]`;
+  }
+  const coreContractWithCustom = CORE_CONTRACT + customContract;
+  const closingBraceIdx = STATE_SHAPE_GUIDE.lastIndexOf("}");
+  const shapeGuideWithCustom = STATE_SHAPE_GUIDE.substring(0, closingBraceIdx) + customShape + "\n}";
   return `You are LoomOS, a strict story-state compiler.
 
 Analyze only the supplied identity, previous state seed, and transcript.
@@ -4686,11 +4744,11 @@ Do not continue the story. Do not roleplay. Do not address the user.
 Return exactly one JSON object with no Markdown fences or commentary.
 
 Enabled tracking modules:
-${enabled}
+${trackingText}
 
-${CORE_CONTRACT}
+${coreContractWithCustom}
 
-${STATE_SHAPE_GUIDE}
+${shapeGuideWithCustom}
 
 Rules:
 - Ground every claim in the transcript or previous seed.
@@ -4766,7 +4824,7 @@ function compilerUserMessage(request) {
 async function compileStateWithRepair(request) {
   request.onPhase?.("building_prompt", 1, "Building the enabled-module compiler prompt.");
   const firstMessages = [
-    { role: "system", content: buildStateCompilerPrompt(request.enabledModules) },
+    { role: "system", content: buildStateCompilerPrompt(request.enabledModules, request.customModules) },
     { role: "user", content: compilerUserMessage(request) }
   ];
   request.onPhase?.("requesting", 1, "Requesting structured state from the selected connection.");
@@ -4785,7 +4843,7 @@ async function compileStateWithRepair(request) {
         role: "system",
         content: `${STATE_REPAIR_PROMPT}
 
-${buildStateCompilerPrompt(request.enabledModules)}`
+${buildStateCompilerPrompt(request.enabledModules, request.customModules)}`
       },
       {
         role: "user",
@@ -4940,6 +4998,20 @@ async function buildCompactInjection(state, settings, countTokens) {
   }
   if (enabled("continuity")) {
     fragments.push(...state.continuityFirewall.risks.filter((risk) => risk.severity === "high" || risk.severity === "critical").slice(0, 4).map((risk) => `risk.${risk.severity}: ${xmlEscape(risk.issue)}`));
+  }
+  const enabledCustomMods = settings.customModules || [];
+  for (const cm of enabledCustomMods) {
+    if (cm.enabled && cm.inject) {
+      const compiled = state.customModuleData?.find((m) => m.moduleId === cm.id);
+      if (compiled && compiled.items.length > 0) {
+        fragments.push(
+          `cmod.${xmlEscape(cm.label, 80)}: ${xmlEscape(compiled.summary)}`,
+          ...compiled.items.slice(0, 3).map(
+            (it) => `item.${xmlEscape(cm.label, 60)}: ${xmlEscape(it.title)} - ${xmlEscape(it.text)}`
+          )
+        );
+      }
+    }
   }
   const selected = [];
   for (const fragment of fragments.filter((item) => !item.endsWith(": "))) {
@@ -5174,7 +5246,16 @@ function buildStateSeedForCompiler(state, settings) {
       access: state.scene.access,
       spatial: state.scene.spatial.slice(0, 6).map(compactText),
       items: modules.inventory.track ? state.scene.items.slice(0, 6) : void 0
-    } : void 0
+    } : void 0,
+    custom: (state.customModuleData || []).filter((m) => settings.customModules?.find((cm) => cm.id === m.moduleId && cm.enabled)).map((m) => ({
+      id: m.moduleId,
+      summary: compactText(m.summary),
+      items: m.items.slice(0, 4).map((it) => ({
+        title: it.title,
+        text: compactText(it.text),
+        importance: it.importance
+      }))
+    }))
   };
   return trimJsonToBudget(seed, settings.compilerSeedTokenBudget);
 }
@@ -5329,6 +5410,28 @@ async function deleteState(identity, userId) {
 async function invalidateMessageStates(chatId, messageId, userId) {
   const paths = await spindle.userStorage.list(messageStatePrefix(chatId, messageId), userId);
   await Promise.all(paths.map((path) => spindle.userStorage.delete(path, userId)));
+}
+async function listChatStates(chatId, userId) {
+  const prefix = `chats/${encodeStorageSegment(chatId)}/messages`;
+  try {
+    const files = await spindle.userStorage.list(prefix, userId);
+    const results = [];
+    for (const file of files) {
+      const parts = file.split("/");
+      if (parts.length >= 6 && parts[4] === "swipes" && parts[5]?.endsWith(".json")) {
+        const messageId = decodeURIComponent(parts[3]);
+        const swipeIdStr = parts[5].replace(".json", "");
+        const swipeId = parseInt(swipeIdStr, 10);
+        if (messageId && !isNaN(swipeId)) {
+          results.push({ messageId, swipeId });
+        }
+      }
+    }
+    return results;
+  } catch (error) {
+    spindle.log.warn(`LoomOS could not list chat states: ${errorMessage(error)}`);
+    return [];
+  }
 }
 async function sendExactState(userId, identity, requestId) {
   send({
@@ -5489,6 +5592,7 @@ async function generateState(requestId, requested, userId) {
       seedState: seed.state,
       seedText: seed.text,
       enabledModules,
+      customModules: settings.customModules,
       connectionId: connection.id,
       signal: controller.signal,
       onPhase: progress,
@@ -5633,6 +5737,11 @@ async function handleFrontendRequest(payload, userId) {
       case "refresh_permissions":
         send({ type: "permissions", requestId, permissions: permissionSnapshot() }, userId);
         return;
+      case "get_chat_states": {
+        const states = await listChatStates(request.chatId, userId);
+        send({ type: "chat_states", requestId, chatId: request.chatId, states }, userId);
+        return;
+      }
     }
   } catch (error) {
     send({ type: "error", requestId, message: errorMessage(error) }, userId);

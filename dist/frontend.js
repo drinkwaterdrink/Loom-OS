@@ -4178,13 +4178,7 @@ var AutoGenerationModeSchema = external_exports.enum([
   "every",
   "manual"
 ]);
-var ModulePresetSchema = external_exports.enum([
-  "lite",
-  "balanced",
-  "full",
-  "experimental",
-  "custom"
-]);
+var ModulePresetSchema = external_exports.string();
 var ModuleKeySchema = external_exports.enum(MODULE_KEYS);
 var ModuleControlSchema = external_exports.object({
   track: external_exports.boolean(),
@@ -4196,6 +4190,26 @@ var ModuleSettingsSchema = external_exports.object(
     MODULE_KEYS.map((key) => [key, ModuleControlSchema])
   )
 ).strict();
+var CustomModulePresetSchema = external_exports.object({
+  id: external_exports.string().min(1).max(160),
+  name: external_exports.string().trim().min(1).max(160),
+  description: external_exports.string().trim().max(500).default(""),
+  createdAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
+  updatedAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
+  moduleSettings: ModuleSettingsSchema
+}).strict();
+var CustomModuleSchema = external_exports.object({
+  id: external_exports.string().min(1).max(160),
+  label: external_exports.string().trim().min(1).max(160),
+  group: external_exports.string().trim().min(1).max(160).default("Custom"),
+  description: external_exports.string().trim().max(500).default(""),
+  enabled: external_exports.boolean().default(true),
+  display: external_exports.boolean().default(true),
+  inject: external_exports.boolean().default(true),
+  compilerInstruction: external_exports.string().trim().max(1600),
+  outputMode: external_exports.enum(["cards", "bullets", "chips", "gauge"]).default("cards"),
+  maxItems: external_exports.number().int().min(1).max(24).default(6)
+}).strict();
 var RawSettingsSchema = external_exports.object({
   schemaVersion: external_exports.literal(2).default(2),
   skin: LoomOSSkinSchema.default("auto"),
@@ -4207,7 +4221,9 @@ var RawSettingsSchema = external_exports.object({
   generationTimeoutSeconds: external_exports.number().int().min(30).max(300).default(180),
   connectionId: external_exports.string().trim().max(200).default(""),
   modulePreset: ModulePresetSchema.default("balanced"),
-  moduleSettings: ModuleSettingsSchema.default(BALANCED_MODULE_SETTINGS)
+  moduleSettings: ModuleSettingsSchema.default(BALANCED_MODULE_SETTINGS),
+  customModulePresets: external_exports.array(CustomModulePresetSchema).default([]),
+  customModules: external_exports.array(CustomModuleSchema).default([])
 }).strict();
 function settingsInput(value) {
   if (typeof value !== "object" || value === null) return value;
@@ -4240,7 +4256,9 @@ function settingsInput(value) {
     generationTimeoutSeconds: source.generationTimeoutSeconds,
     connectionId: source.connectionId,
     modulePreset: source.modulePreset,
-    moduleSettings
+    moduleSettings,
+    customModulePresets: source.customModulePresets,
+    customModules: source.customModules
   };
 }
 var LoomOSSettingsSchema = external_exports.preprocess(settingsInput, RawSettingsSchema);
@@ -4499,6 +4517,18 @@ var AuditEntrySchema = external_exports.object({
   repaired: external_exports.boolean(),
   notes: MediumText
 }).strict();
+var CustomModuleItemSchema = external_exports.object({
+  title: ShortText,
+  text: MediumText,
+  importance: external_exports.enum(["low", "medium", "high", "critical"]),
+  color: ColorText.optional()
+}).strict();
+var CustomModuleDataSchema = external_exports.object({
+  moduleId: external_exports.string().min(1).max(160),
+  label: ShortText,
+  summary: MediumText.default(""),
+  items: external_exports.array(CustomModuleItemSchema).max(24).default([])
+}).strict();
 var LoomOSCompiledStateSchema = external_exports.object({
   activeModules: external_exports.array(ModuleKeySchema).max(MODULE_KEYS.length),
   kernel: KernelSchema,
@@ -4516,7 +4546,8 @@ var LoomOSCompiledStateSchema = external_exports.object({
     closenessState: null,
     imagePrompt: null
   }),
-  auditLog: external_exports.array(AuditEntrySchema).max(12).default([])
+  auditLog: external_exports.array(AuditEntrySchema).max(12).default([]),
+  customModuleData: external_exports.array(CustomModuleDataSchema).default([])
 }).strict();
 var LoomOSStateSchema = LoomOSCompiledStateSchema.extend({
   schemaVersion: external_exports.literal(2),
@@ -4642,51 +4673,69 @@ function renderDelta(state) {
 function renderMeters(state) {
   return section("meters", "Meters", `${state.meters.length} diagnostics`, `
     <div class="loomos-meter-grid">
-      ${state.meters.length === 0 ? `<p class="loomos-muted">No meter evidence in this state.</p>` : state.meters.map((meter) => `
-          <article class="loomos-meter">
-            <div class="loomos-row-title">
-              <strong>${escapeHtml(meter.label)}</strong>
-              <span>${escapeHtml(meter.pct)} | ${escapeHtml(meter.trend)}</span>
-            </div>
-            <div class="loomos-meter-track"><i style="width:${Math.max(0, Math.min(100, meter.value))}%"></i></div>
-            <small>${escapeHtml(meter.band)} | ${escapeHtml(meter.note)}</small>
-          </article>
-        `).join("")}
+      ${state.meters.length === 0 ? `<p class="loomos-muted">No meter evidence in this state.</p>` : state.meters.map((meter) => {
+    const trendIcon = {
+      up: "\u{1F4C8}",
+      down: "\u{1F4C9}",
+      steady: "\u27A1\uFE0F",
+      unknown: ""
+    }[meter.trend] || "";
+    const colorStyle = meter.color ? `background-color: ${escapeHtml(meter.color)}` : "";
+    return `
+              <article class="loomos-meter">
+                <div class="loomos-row-title">
+                  <strong>${escapeHtml(meter.label)}</strong>
+                  <span>${escapeHtml(meter.pct)} (${meter.value}/100) ${trendIcon}</span>
+                </div>
+                <div class="loomos-meter-track"><i style="width:${Math.max(0, Math.min(100, meter.value))}%; ${colorStyle}"></i></div>
+                <small><strong>${escapeHtml(meter.band)}</strong> | ${escapeHtml(meter.note)}</small>
+              </article>
+            `;
+  }).join("")}
     </div>
   `);
 }
 function renderCast(state, settings) {
   return section("cast", "Cast Matrix", `${state.castMatrix.length} tracked`, `
     <div class="loomos-card-grid">
-      ${state.castMatrix.length === 0 ? `<p class="loomos-muted">No cast evidence in this state.</p>` : state.castMatrix.map((member) => `
-          <article class="loomos-card">
-            <div class="loomos-card-heading">
-              <div>
-                <span class="loomos-kicker">${escapeHtml(member.kind)}</span>
-                <strong>${escapeHtml(member.name)}${member.qty > 1 ? ` x${member.qty}` : ""}</strong>
-              </div>
-              <span class="loomos-badge">${escapeHtml(member.awareness)}</span>
-            </div>
-            <p>${escapeHtml(member.status)}</p>
-            <dl class="loomos-facts loomos-facts-tight">
-              <div><dt>Location</dt><dd>${escapeHtml(member.location)}</dd></div>
-              <div><dt>Intent</dt><dd>${escapeHtml(member.intent)}</dd></div>
-              <div><dt>Emotion</dt><dd>${escapeHtml(member.emotionalState)}</dd></div>
-              <div><dt>Threat</dt><dd>${escapeHtml(member.threat.pct)} | ${escapeHtml(member.threat.band)}</dd></div>
-              ${visible(settings, "castVisuals") ? `<div><dt>Pose</dt><dd>${escapeHtml(member.pose)}</dd></div>
-                   <div><dt>Proximity</dt><dd>${escapeHtml(member.proximity)}</dd></div>
-                   <div><dt>Hands</dt><dd>${escapeHtml(member.hands)}</dd></div>
-                   <div><dt>Spotlight</dt><dd>${escapeHtml(member.spotlight.pct)} | ${escapeHtml(member.spotlight.trend)}</dd></div>` : ""}
-            </dl>
-            ${visible(settings, "castVisuals") && member.visualAnchor ? `<div class="loomos-note">${escapeHtml(member.visualAnchor)}</div>` : ""}
-            ${visible(settings, "clothing") && member.clothingSummary ? `<div class="loomos-subhead">Clothing</div><p>${escapeHtml(member.clothingSummary)}</p>` : ""}
-            <div class="loomos-subhead">Goals</div>${chips(member.goals)}
-            ${visible(settings, "relationships") ? `<div class="loomos-subhead">Relationships</div>${chips(member.relationships)}` : ""}
-            ${visible(settings, "inventory") ? `<div class="loomos-subhead">Inventory</div>${chips(member.pockets.map(
-    (item) => `${item.name} x${item.qty}${item.known ? "" : " (unknown)"}`
-  ))}` : ""}
-          </article>
-        `).join("")}
+      ${state.castMatrix.length === 0 ? `<p class="loomos-muted">No cast evidence in this state.</p>` : state.castMatrix.map((member) => {
+    const hasExtra = member.pose || member.proximity || member.hands || member.visualAnchor || visible(settings, "clothing") && member.clothingSummary || member.goals.length > 0 || visible(settings, "relationships") && member.relationships.length > 0 || visible(settings, "inventory") && member.pockets.length > 0 || member.stableFacts.length > 0;
+    return `
+              <article class="loomos-card">
+                <div class="loomos-card-heading">
+                  <div>
+                    <span class="loomos-kicker">${escapeHtml(member.kind)}</span>
+                    <strong>${escapeHtml(member.name)}${member.qty > 1 ? ` x${member.qty}` : ""}</strong>
+                  </div>
+                  <span class="loomos-badge">${escapeHtml(member.awareness)}</span>
+                </div>
+                <div class="loomos-chip-row" style="margin: 4px 0 8px;">
+                  <span class="loomos-chip">\u{1F4CD} ${escapeHtml(member.location)}</span>
+                  <span class="loomos-chip">\u{1F3AD} ${escapeHtml(member.emotionalState)}</span>
+                  <span class="loomos-chip">\u26A0\uFE0F Threat: ${escapeHtml(member.threat.pct)} (${escapeHtml(member.threat.band)})</span>
+                </div>
+                <p><strong>Intent:</strong> ${escapeHtml(member.intent)}</p>
+                <p><strong>Status:</strong> ${escapeHtml(member.status)}</p>
+                
+                ${hasExtra ? `
+                  <details class="loomos-cast-extra">
+                    <summary>Visuals & Pockets</summary>
+                    <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
+                      ${member.pose ? `<p><strong>Pose:</strong> ${escapeHtml(member.pose)}</p>` : ""}
+                      ${member.proximity ? `<p><strong>Proximity:</strong> ${escapeHtml(member.proximity)}</p>` : ""}
+                      ${member.hands ? `<p><strong>Hands:</strong> ${escapeHtml(member.hands)}</p>` : ""}
+                      ${member.visualAnchor ? `<p><strong>Visual Anchor:</strong> ${escapeHtml(member.visualAnchor)}</p>` : ""}
+                      ${visible(settings, "clothing") && member.clothingSummary ? `<p><strong>Clothing:</strong> ${escapeHtml(member.clothingSummary)}</p>` : ""}
+                      ${member.goals.length > 0 ? `<div class="loomos-subhead">Goals</div>${chips(member.goals)}` : ""}
+                      ${visible(settings, "relationships") && member.relationships.length > 0 ? `<div class="loomos-subhead">Relationships</div>${chips(member.relationships)}` : ""}
+                      ${visible(settings, "inventory") && member.pockets.length > 0 ? `<div class="loomos-subhead">Pockets</div>${chips(member.pockets.map((item) => `${item.name} x${item.qty}${item.known ? "" : " (unknown)"}`))} : ""` : ""}
+                      ${member.stableFacts.length > 0 ? `<div class="loomos-subhead">Stable Facts</div>${chips(member.stableFacts)}` : ""}
+                    </div>
+                  </details>
+                ` : ""}
+              </article>
+            `;
+  }).join("")}
     </div>
   `, true);
 }
@@ -4762,32 +4811,55 @@ function renderStory(state) {
 function renderContinuity(state) {
   const firewall = state.continuityFirewall;
   return section("continuity", "Continuity Firewall", `${firewall.risks.length} risks`, `
-    <div class="loomos-stat-grid">
-      <div><strong>${firewall.establishedFacts.length}</strong><span>facts</span></div>
-      <div><strong>${firewall.antiRetconAnchors.length}</strong><span>anchors</span></div>
-      <div><strong>${firewall.pendingConsequences.length}</strong><span>pending</span></div>
-      <div><strong>${firewall.offscreenState.length}</strong><span>offscreen</span></div>
-    </div>
     <div class="loomos-list">
-      ${firewall.risks.length === 0 ? `<p class="loomos-muted">No continuity conflicts detected.</p>` : firewall.risks.map((risk) => `
+      ${firewall.risks.length === 0 ? `<p class="loomos-muted" style="margin-bottom: 12px;">\u2705 No continuity conflicts detected.</p>` : firewall.risks.map((risk) => `
           <article class="loomos-row loomos-severity-${risk.severity}">
             <div class="loomos-row-title">
               <strong>${escapeHtml(risk.issue)}</strong>
-              <span>${escapeHtml(risk.severity)}</span>
+              <span class="loomos-badge loomos-badge-severity-${risk.severity}">${escapeHtml(risk.severity)}</span>
             </div>
             <p>${escapeHtml(risk.evidence)}</p>
             <small>Guardrail: ${escapeHtml(risk.recommendation)}</small>
           </article>
         `).join("")}
     </div>
-    <div class="loomos-two-column">
-      <div><div class="loomos-subhead">Anti-retcon anchors</div>${chips(firewall.antiRetconAnchors)}</div>
-      <div><div class="loomos-subhead">Pending consequences</div>${chips(firewall.pendingConsequences)}</div>
-      <div><div class="loomos-subhead">Banned next</div>${chips(firewall.bannedNext.map(
-    (item) => `${item.text}${item.persistent ? " (persistent)" : ""}`
-  ))}</div>
-      <div><div class="loomos-subhead">Impossible next</div>${chips(firewall.impossibleNext)}</div>
+    
+    <div class="loomos-stat-grid" style="margin-top: 10px;">
+      <div><strong>${firewall.establishedFacts.length}</strong><span>facts</span></div>
+      <div><strong>${firewall.antiRetconAnchors.length}</strong><span>anchors</span></div>
+      <div><strong>${firewall.pendingConsequences.length}</strong><span>pending</span></div>
+      <div><strong>${firewall.offscreenState.length}</strong><span>offscreen</span></div>
     </div>
+    
+    <details class="loomos-cast-extra" style="margin-top: 10px;">
+      <summary>Established Facts & Anchors</summary>
+      <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
+        <div class="loomos-subhead">Established Facts (${firewall.establishedFacts.length})</div>
+        ${chips(firewall.establishedFacts)}
+        <div class="loomos-subhead">Anti-retcon Anchors (${firewall.antiRetconAnchors.length})</div>
+        ${chips(firewall.antiRetconAnchors)}
+      </div>
+    </details>
+    
+    <details class="loomos-cast-extra" style="margin-top: 6px;">
+      <summary>Consequences & Offscreen State</summary>
+      <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
+        <div class="loomos-subhead">Pending Consequences (${firewall.pendingConsequences.length})</div>
+        ${chips(firewall.pendingConsequences)}
+        <div class="loomos-subhead">Offscreen State (${firewall.offscreenState.length})</div>
+        ${chips(firewall.offscreenState)}
+      </div>
+    </details>
+    
+    <details class="loomos-cast-extra" style="margin-top: 6px;">
+      <summary>Banned / Impossible Next</summary>
+      <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
+        <div class="loomos-subhead">Banned next moves</div>
+        ${chips(firewall.bannedNext.map((item) => `${item.text}${item.persistent ? " (persistent)" : ""}`))}
+        <div class="loomos-subhead">Impossible next moves</div>
+        ${chips(firewall.impossibleNext)}
+      </div>
+    </details>
   `, true);
 }
 function renderTools(state, settings) {
@@ -4852,6 +4924,112 @@ function renderAudit(state) {
     </div>
   `);
 }
+function renderOverviewCard(state, settings) {
+  const deltaHeadline = state.delta?.headline || "No major changes";
+  const location = state.kernel?.location || "Unknown location";
+  const time = state.kernel?.timeframe || state.kernel?.time || "Unknown time";
+  const activeCastCount = state.castMatrix?.filter((c) => c.kind === "pov" || c.kind === "main" || c.kind === "npc").length ?? 0;
+  const threadCount = state.storyState?.threadLoom?.filter((t) => t.status !== "resolved").length ?? 0;
+  const riskCount = state.continuityFirewall?.risks?.length ?? 0;
+  const injectionStatus = settings.injectionEnabled ? "Enabled" : "Disabled";
+  return `
+    <div class="loomos-shell loomos-overview-card">
+      <div class="loomos-kicker">Overview</div>
+      <div class="loomos-overview-headline">"${escapeHtml(deltaHeadline)}"</div>
+      <div class="loomos-overview-details">
+        <div><strong>Location:</strong> <span>${escapeHtml(location)} (${escapeHtml(time)})</span></div>
+        <div class="loomos-overview-stats">
+          <span>\u{1F465} ${activeCastCount} Cast</span>
+          <span>\u{1F9F5} ${threadCount} Threads</span>
+          <span>\u26A0\uFE0F ${riskCount} Risks</span>
+          <span class="loomos-overview-inject-${settings.injectionEnabled ? "active" : "inactive"}">\u{1F489} Inject: ${injectionStatus}</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function renderCustomModules(state, settings) {
+  const customMods = settings.customModules || [];
+  const results = [];
+  for (const cm of customMods) {
+    if (!cm.display) continue;
+    const compiled = state.customModuleData?.find((m) => m.moduleId === cm.id);
+    if (!compiled) continue;
+    const itemCount = compiled.items?.length ?? 0;
+    let body = "";
+    if (itemCount === 0) {
+      body = `<p class="loomos-muted">No evidence compiled for this custom module.</p>`;
+    } else {
+      if (cm.outputMode === "bullets") {
+        body = `
+          <ul class="loomos-bullet-list">
+            ${compiled.items.map((it) => `
+              <li>
+                <strong>${escapeHtml(it.title)}</strong>: ${escapeHtml(it.text)}
+                <span class="loomos-badge loomos-badge-severity-${it.importance}" style="font-size: 7px; vertical-align: middle; margin-left: 4px;">${it.importance}</span>
+              </li>
+            `).join("")}
+          </ul>
+        `;
+      } else if (cm.outputMode === "chips") {
+        body = `
+          <div class="loomos-chip-row" style="margin-top: 4px;">
+            ${compiled.items.map((it) => `
+              <span class="loomos-chip" style="${it.color ? `border-color:${escapeHtml(it.color)}` : ""}">
+                <strong>${escapeHtml(it.title)}</strong>: ${escapeHtml(it.text)}
+                <span class="loomos-badge loomos-badge-severity-${it.importance}" style="font-size: 7px; margin-left: 2px;">${it.importance}</span>
+              </span>
+            `).join("")}
+          </div>
+        `;
+      } else if (cm.outputMode === "gauge") {
+        body = `
+          <div class="loomos-meter-grid">
+            ${compiled.items.map((it) => {
+          const match = it.text.match(/(\d+)%/);
+          const pctValue = match ? Number(match[1]) : 50;
+          const colorStyle = it.color ? `background-color: ${escapeHtml(it.color)}` : "";
+          return `
+                <div class="loomos-meter">
+                  <div class="loomos-row-title">
+                    <strong>${escapeHtml(it.title)}</strong>
+                    <span>${escapeHtml(it.text)}</span>
+                  </div>
+                  <div class="loomos-meter-track"><i style="width:${pctValue}%; ${colorStyle}"></i></div>
+                  <small>Importance: <strong>${it.importance}</strong></small>
+                </div>
+              `;
+        }).join("")}
+          </div>
+        `;
+      } else {
+        body = `
+          <div class="loomos-card-grid">
+            ${compiled.items.map((it) => `
+              <div class="loomos-card" style="${it.color ? `border-left: 3px solid ${escapeHtml(it.color)}` : ""}">
+                <div class="loomos-card-heading">
+                  <strong>${escapeHtml(it.title)}</strong>
+                  <span class="loomos-badge loomos-badge-severity-${it.importance}">${it.importance}</span>
+                </div>
+                <p>${escapeHtml(it.text)}</p>
+              </div>
+            `).join("")}
+          </div>
+        `;
+      }
+    }
+    results.push(
+      section(
+        "cmod_" + cm.id,
+        cm.label,
+        compiled.summary || `${itemCount} items`,
+        body,
+        false
+      )
+    );
+  }
+  return results;
+}
 function renderDashboard(state, settings) {
   const sections = [
     visible(settings, "sceneKernel") ? renderKernel(state) : "",
@@ -4862,9 +5040,11 @@ function renderDashboard(state, settings) {
     visible(settings, "storyThreads") ? renderStory(state) : "",
     visible(settings, "continuity") ? renderContinuity(state) : "",
     renderTools(state, settings),
+    ...renderCustomModules(state, settings),
     visible(settings, "auditLog") ? renderAudit(state) : ""
   ].filter(Boolean);
-  return sections.length > 0 ? `<div class="loomos-dashboard">${sections.join("")}</div>` : `<div class="loomos-empty"><h3>All display modules are hidden</h3><p>Enable Display for one or more modules in the drawer settings. Stored state has not been deleted.</p></div>`;
+  const overview = renderOverviewCard(state, settings);
+  return sections.length > 0 ? `<div class="loomos-dashboard">${overview}${sections.join("")}</div>` : `<div class="loomos-empty"><h3>All display modules are hidden</h3><p>Enable Display for one or more modules in the drawer settings. Stored state has not been deleted.</p></div>`;
 }
 
 // src/frontend/styles.ts
@@ -5009,6 +5189,350 @@ var LOOMOS_STYLES = `
     .loomos-module-head, .loomos-module-row { grid-template-columns: minmax(118px, 1fr) repeat(3, 44px); padding-inline: 6px; }
     .loomos-module-row small { display: none; }
   }
+
+  /* Upgraded LoomOS command deck design elements */
+  .loomos-overview-card {
+    background: linear-gradient(135deg, var(--loomos-panel), var(--loomos-bg));
+    border-left: 4px solid var(--loomos-accent);
+    padding: 12px 14px;
+    margin-bottom: 8px;
+  }
+  .loomos-overview-headline {
+    font-size: 15px;
+    font-weight: 700;
+    font-style: italic;
+    color: var(--loomos-ink);
+    margin: 6px 0 10px;
+    line-height: 1.35;
+  }
+  .loomos-overview-details {
+    display: grid;
+    gap: 6px;
+    font-size: 11px;
+  }
+  .loomos-overview-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 4px;
+    color: var(--loomos-muted);
+  }
+  .loomos-overview-inject-active {
+    color: #4cd27e;
+  }
+  .loomos-overview-inject-inactive {
+    color: var(--loomos-muted);
+  }
+
+  .loomos-preset-manager {
+    border-bottom: 1px solid var(--loomos-border);
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+  }
+  .loomos-preset-select-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .loomos-preset-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .loomos-preset-dirty-warning {
+    color: #ba8b43;
+    font-size: 10px;
+    margin-top: 4px;
+    font-weight: 700;
+  }
+
+  .loomos-search-bar {
+    align-items: center;
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+    position: relative;
+  }
+  .loomos-search-bar input {
+    flex: 1;
+    padding-right: 24px;
+  }
+  .loomos-button-clear {
+    background: transparent;
+    border: none;
+    color: var(--loomos-muted);
+    cursor: pointer;
+    font-size: 16px;
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    padding: 0 4px;
+  }
+  .loomos-button-clear:hover {
+    color: var(--loomos-ink);
+  }
+  .loomos-search-count {
+    color: var(--loomos-muted);
+    font-size: 10px;
+    white-space: nowrap;
+  }
+  .loomos-bulk-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+  .loomos-btn-sm {
+    font-size: 10px;
+    min-height: 26px;
+    padding: 2px 6px;
+  }
+  .loomos-module-groups {
+    display: grid;
+    gap: 12px;
+  }
+  .loomos-module-group-card {
+    background: var(--loomos-panel);
+    border: 1px solid var(--loomos-border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .loomos-module-group-title {
+    background: color-mix(in srgb, var(--loomos-bg) 40%, var(--loomos-panel));
+    border-bottom: 1px solid var(--loomos-border);
+    color: var(--loomos-ink);
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: .06em;
+    padding: 6px 10px;
+    text-transform: uppercase;
+  }
+  .loomos-module-group-list {
+    display: grid;
+    gap: 0;
+  }
+  .loomos-module-card {
+    border-bottom: 1px solid var(--loomos-border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+  }
+  .loomos-module-card:last-child {
+    border-bottom: none;
+  }
+  .loomos-module-info {
+    min-width: 0;
+  }
+  .loomos-module-title-row {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: space-between;
+  }
+  .loomos-module-title-row strong {
+    font-size: 12px;
+  }
+  .loomos-pills {
+    display: flex;
+    gap: 4px;
+  }
+  .loomos-pill {
+    border: 1px solid var(--loomos-border);
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 1px 4px;
+    text-transform: uppercase;
+  }
+  .pill-core {
+    border-color: #ba8b43;
+    color: #ba8b43;
+  }
+  .pill-experimental {
+    border-color: #d24c52;
+    color: #d24c52;
+  }
+  .pill-injected {
+    border-color: #25f2d0;
+    color: #25f2d0;
+  }
+  .pill-hidden {
+    border-color: var(--loomos-muted);
+    color: var(--loomos-muted);
+  }
+  .pill-custom {
+    border-color: #7c6cff;
+    color: #7c6cff;
+  }
+  .loomos-module-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-start;
+  }
+  .loomos-toggle-target {
+    align-items: center;
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 6px;
+    cursor: pointer;
+    display: inline-flex;
+    gap: 6px;
+    min-height: 38px;
+    padding: 4px 8px;
+    user-select: none;
+  }
+  .loomos-toggle-target:hover {
+    border-color: var(--loomos-accent);
+  }
+  .loomos-toggle-target input {
+    margin: 0;
+  }
+  .loomos-toggle-target span {
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .loomos-compile-status {
+    background: color-mix(in srgb, var(--loomos-accent) 8%, var(--loomos-bg));
+    border-color: var(--loomos-accent);
+  }
+  .loomos-badge-compiling {
+    background: var(--loomos-accent);
+    color: #fff;
+    font-weight: 800;
+  }
+  .loomos-button-pulse, .loomos-pulse {
+    animation: loomos-glow-pulse 1.8s infinite;
+  }
+  @keyframes loomos-glow-pulse {
+    0% { box-shadow: 0 0 0 0px color-mix(in srgb, var(--loomos-accent) 30%, transparent); }
+    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--loomos-accent) 0%, transparent); }
+    100% { box-shadow: 0 0 0 0px color-mix(in srgb, var(--loomos-accent) 30%, transparent); }
+  }
+  @keyframes loomos-bar-pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+  }
+
+  .loomos-prompt-dialog {
+    display: grid;
+    gap: 12px;
+    padding: 15px;
+  }
+  .loomos-dialog-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 10px;
+  }
+  .loomos-custom-add-wrap {
+    margin-top: 10px;
+    text-align: right;
+  }
+  .loomos-custom-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .loomos-link-btn {
+    background: transparent;
+    border: none;
+    color: var(--loomos-accent);
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 0;
+    text-decoration: underline;
+  }
+  .loomos-link-btn-danger {
+    color: #e56b70;
+  }
+
+  .loomos-badge-severity-critical { background: #df5259; color: #fff; font-size: 8px; text-transform: uppercase; border-radius: 4px; padding: 1px 4px; }
+  .loomos-badge-severity-high { background: #d58a42; color: #fff; font-size: 8px; text-transform: uppercase; border-radius: 4px; padding: 1px 4px; }
+  .loomos-badge-severity-medium { background: var(--loomos-border); color: var(--loomos-ink); font-size: 8px; text-transform: uppercase; border-radius: 4px; padding: 1px 4px; }
+  .loomos-badge-severity-low { background: var(--loomos-border); color: var(--loomos-muted); font-size: 8px; text-transform: uppercase; border-radius: 4px; padding: 1px 4px; }
+
+  .loomos-bullet-list {
+    margin: 4px 0 0;
+    padding-left: 18px;
+  }
+  .loomos-bullet-list li {
+    margin-bottom: 4px;
+  }
+
+  .loomos-performance-info {
+    background: var(--loomos-panel);
+    border: 1px solid var(--loomos-border);
+    border-radius: 10px;
+    padding: 10px;
+    margin-top: 12px;
+  }
+  .loomos-perf-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    margin-bottom: 6px;
+  }
+  .loomos-perf-badge {
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 1px 6px;
+  }
+  .intensity-lite { background: rgba(76, 210, 126, 0.15); color: #4cd27e; border: 1px solid #4cd27e; }
+  .intensity-balanced { background: rgba(124, 108, 255, 0.15); color: #7c6cff; border: 1px solid #7c6cff; }
+  .intensity-heavy { background: rgba(223, 82, 89, 0.15); color: #df5259; border: 1px solid #df5259; }
+  .loomos-perf-warning {
+    background: rgba(186, 139, 67, 0.12);
+    border: 1px solid #ba8b43;
+    border-radius: 6px;
+    color: #ead9b7;
+    font-size: 10px;
+    margin: 8px 0;
+    padding: 8px;
+  }
+  .loomos-perf-details {
+    color: var(--loomos-muted);
+    font-size: 10px;
+    margin-top: 8px;
+    line-height: 1.35;
+  }
+  .loomos-perf-details p {
+    margin: 4px 0;
+  }
+
+  .loomos-cast-extra {
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    margin-top: 6px;
+    background: var(--loomos-bg);
+  }
+  .loomos-cast-extra > summary {
+    padding: 6px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    color: var(--loomos-muted);
+  }
+  .loomos-cast-extra[open] > summary {
+    border-bottom: 1px solid var(--loomos-border);
+  }
+  .loomos-cast-extra-body {
+    padding: 8px;
+    font-size: 11px;
+  }
+
+  .loomos-root {
+    padding-bottom: 64px !important;
+  }
 `;
 
 // src/frontend.ts
@@ -5044,9 +5568,6 @@ function skinLabel(value) {
     minimal: "Minimal"
   }[value];
 }
-function presetLabel(value) {
-  return value[0].toUpperCase() + value.slice(1);
-}
 function setup(ctx) {
   const cleanups = [];
   const removeStyle = ctx.dom.addStyle(LOOMOS_STYLES);
@@ -5061,7 +5582,8 @@ function setup(ctx) {
   let activeGenerationRequestId = null;
   let generationStartedAt = 0;
   let elapsedTimer = null;
-  let messageActionCleanup = null;
+  const messageWidgetCleanups = /* @__PURE__ */ new Map();
+  let chatStates = [];
   let modal = null;
   let modalListenerCleanup = null;
   const tab = ctx.ui.registerDrawerTab({
@@ -5119,72 +5641,480 @@ function setup(ctx) {
     if (!activeGenerationRequestId || generationStartedAt === 0) return status;
     return `${status} | ${Math.floor((Date.now() - generationStartedAt) / 1e3)}s`;
   }
-  function widgetHtml() {
-    const hasState = hasExactStateForLatest();
-    const busy = activeGenerationRequestId !== null;
-    const generateLabel = busy ? "Compiling..." : hasState ? "Refresh" : "Generate";
-    return `
-      <style>
-        :root{color-scheme:light dark}*{box-sizing:border-box}body{margin:0;padding:5px 0;font:12px/1.25 system-ui,sans-serif;color:var(--lumiverse-text)}
-        .bar{align-items:center;display:flex;flex-wrap:wrap;gap:6px}button{background:var(--lumiverse-fill-subtle);border:1px solid var(--lumiverse-border);border-radius:7px;color:var(--lumiverse-text);cursor:pointer;min-height:30px;padding:5px 8px}
-        button.primary{border-color:var(--lumiverse-accent)}button:disabled{cursor:not-allowed;opacity:.5}.state{color:var(--lumiverse-text-dim);font-size:10px}
-      </style>
-      <div class="bar">
-        <button id="open" type="button">Open LoomOS</button>
-        <button id="generate" class="primary" type="button"${disabled(!permissions.generation || !permissions.chatMutation || busy)}>${escapeHtml(generateLabel)}</button>
-        <span class="state">${hasState ? "Exact swipe state loaded" : "No state for this swipe"}</span>
-      </div>
-      <script>
-        document.getElementById("open").addEventListener("click",()=>window.spindleSandbox.postMessage({type:"open"}));
-        document.getElementById("generate").addEventListener("click",()=>window.spindleSandbox.postMessage({type:"generate"}));
-      <\/script>`;
-  }
-  function refreshMessageAction() {
-    messageActionCleanup?.();
-    messageActionCleanup = null;
-    const messageId = ctx.messages.getLatestMessageId();
-    if (!messageId) return;
-    messageActionCleanup = ctx.messages.renderWidget({
-      messageId,
-      widgetId: "loomos-action",
-      html: widgetHtml(),
-      minHeight: 38,
-      maxHeight: 80
-    }, (payload) => {
-      if (!isRecord(payload) || typeof payload.type !== "string") return;
-      if (payload.type === "open") openViewer();
-      if (payload.type === "generate") startGeneration();
+  function captureUiState() {
+    const openDetails = /* @__PURE__ */ new Set();
+    tab.root.querySelectorAll("details[data-details], details[data-section]").forEach((d) => {
+      const key = d.getAttribute("data-details") || d.getAttribute("data-section");
+      if (key && d.open) openDetails.add(key);
     });
+    if (modal) {
+      modal.root.querySelectorAll("details[data-details], details[data-section]").forEach((d) => {
+        const key = d.getAttribute("data-details") || d.getAttribute("data-section");
+        if (key && d.open) openDetails.add("modal:" + key);
+      });
+    }
+    const searchQuery = tab.root.querySelector("[data-module-search]")?.value ?? "";
+    const scrollPositions = /* @__PURE__ */ new Map();
+    let curr = tab.root;
+    while (curr) {
+      scrollPositions.set(curr, curr.scrollTop);
+      curr = curr.parentElement;
+    }
+    if (modal) {
+      let mcurr = modal.root;
+      while (mcurr) {
+        scrollPositions.set(mcurr, mcurr.scrollTop);
+        mcurr = mcurr.parentElement;
+      }
+    }
+    let focusedSelector = null;
+    let selectionStart = null;
+    let selectionEnd = null;
+    const active = document.activeElement;
+    if (active && (tab.root.contains(active) || modal && modal.root.contains(active))) {
+      if (active.hasAttribute("data-setting")) {
+        focusedSelector = `[data-setting="${active.getAttribute("data-setting")}"]`;
+      } else if (active.hasAttribute("data-module") && active.hasAttribute("data-axis")) {
+        focusedSelector = `[data-module="${active.getAttribute("data-module")}"][data-axis="${active.getAttribute("data-axis")}"]`;
+      } else if (active.hasAttribute("data-custom-module") && active.hasAttribute("data-axis")) {
+        focusedSelector = `[data-custom-module="${active.getAttribute("data-custom-module")}"][data-axis="${active.getAttribute("data-axis")}"]`;
+      } else if (active.hasAttribute("data-module-search")) {
+        focusedSelector = "[data-module-search]";
+      } else if (active.hasAttribute("data-action")) {
+        focusedSelector = `[data-action="${active.getAttribute("data-action")}"]`;
+      } else if (active.hasAttribute("data-preset-action")) {
+        focusedSelector = `[data-preset-action="${active.getAttribute("data-preset-action")}"]`;
+      } else if (active.hasAttribute("data-custom-action")) {
+        focusedSelector = `[data-custom-action="${active.getAttribute("data-custom-action")}"]`;
+        if (active.hasAttribute("data-custom-id")) {
+          focusedSelector += `[data-custom-id="${active.getAttribute("data-custom-id")}"]`;
+        }
+      }
+      if (active instanceof HTMLInputElement) {
+        selectionStart = active.selectionStart;
+        selectionEnd = active.selectionEnd;
+      }
+    }
+    return {
+      scrollPositions,
+      openDetails,
+      searchQuery,
+      focusedSelector,
+      selectionStart,
+      selectionEnd
+    };
+  }
+  function restoreUiState(state2) {
+    tab.root.querySelectorAll("details[data-details], details[data-section]").forEach((d) => {
+      const key = d.getAttribute("data-details") || d.getAttribute("data-section");
+      if (key) d.open = state2.openDetails.has(key);
+    });
+    if (modal) {
+      modal.root.querySelectorAll("details[data-details], details[data-section]").forEach((d) => {
+        const key = d.getAttribute("data-details") || d.getAttribute("data-section");
+        if (key) d.open = state2.openDetails.has("modal:" + key);
+      });
+    }
+    const searchInput = tab.root.querySelector("[data-module-search]");
+    if (searchInput) {
+      searchInput.value = state2.searchQuery;
+      const query = state2.searchQuery.toLowerCase();
+      tab.root.querySelectorAll("[data-module-row]").forEach((row) => {
+        row.hidden = Boolean(query) && !(row.dataset.search ?? "").includes(query);
+      });
+    }
+    for (const [el, scrollTop] of state2.scrollPositions.entries()) {
+      try {
+        el.scrollTop = scrollTop;
+      } catch {
+      }
+    }
+    if (state2.focusedSelector) {
+      const el = tab.root.querySelector(state2.focusedSelector) || modal && modal.root.querySelector(state2.focusedSelector);
+      if (el instanceof HTMLElement) {
+        el.focus();
+        if (el instanceof HTMLInputElement && state2.selectionStart !== null && state2.selectionEnd !== null) {
+          try {
+            el.setSelectionRange(state2.selectionStart, state2.selectionEnd);
+          } catch {
+          }
+        }
+      }
+    }
+  }
+  function clearAllMessageWidgets() {
+    for (const cleanup of messageWidgetCleanups.values()) {
+      try {
+        cleanup();
+      } catch {
+      }
+    }
+    messageWidgetCleanups.clear();
+  }
+  function refreshAllMessageWidgets() {
+    clearAllMessageWidgets();
+    const activeChat = ctx.getActiveChat();
+    if (!activeChat.chatId) return;
+    const latestId = ctx.messages.getLatestMessageId();
+    for (const item of chatStates) {
+      if (item.messageId === latestId) continue;
+      const cleanup = ctx.messages.renderWidget({
+        messageId: item.messageId,
+        widgetId: "loomos-action-history",
+        html: `
+          <style>
+            :root{color-scheme:light dark}body{margin:0;padding:2px 0;font:11px system-ui,sans-serif;color:var(--lumiverse-text-dim)}
+            .bar{align-items:center;display:flex;gap:8px}
+            button{background:var(--lumiverse-fill-subtle);border:1px solid var(--lumiverse-border);border-radius:6px;color:var(--lumiverse-text);cursor:pointer;padding:3px 6px;font-size:10px}
+            button:hover{border-color:var(--lumiverse-accent)}
+          </style>
+          <div class="bar">
+            <span>\u{1F4DD} LoomOS State (swipe ${item.swipeId})</span>
+            <button id="open" type="button">Open State</button>
+          </div>
+          <script>
+            document.getElementById("open").addEventListener("click",()=>window.spindleSandbox.postMessage({type:"open"}));
+          <\/script>
+        `,
+        minHeight: 24,
+        maxHeight: 40
+      }, (payload) => {
+        if (isRecord(payload) && payload.type === "open") {
+          activeIdentity = {
+            chatId: activeChat.chatId,
+            messageId: item.messageId,
+            swipeId: item.swipeId
+          };
+          status = `Loaded historical state for swipe ${item.swipeId}`;
+          send({ type: "get_state", requestId: requestId("state-hist"), identity: activeIdentity });
+          openViewer();
+        }
+      });
+      if (cleanup) {
+        messageWidgetCleanups.set(item.messageId, cleanup);
+      }
+    }
+    if (latestId) {
+      const hasState = hasExactStateForLatest();
+      const busy = activeGenerationRequestId !== null;
+      const generateLabel = busy ? "Stop" : hasState ? "Refresh" : "Generate";
+      const generateClass = busy ? "danger pulse" : "primary";
+      const swipeText = activeIdentity ? `swipe ${activeIdentity.swipeId}` : "this swipe";
+      const cleanup = ctx.messages.renderWidget({
+        messageId: latestId,
+        widgetId: "loomos-action",
+        html: `
+          <style>
+            :root{color-scheme:light dark}*{box-sizing:border-box}body{margin:0;padding:4px 0;font:12px/1.25 system-ui,sans-serif;color:var(--lumiverse-text)}
+            .bar{align-items:center;display:flex;flex-wrap:wrap;gap:6px}
+            button{background:var(--lumiverse-fill-subtle);border:1px solid var(--lumiverse-border);border-radius:7px;color:var(--lumiverse-text);cursor:pointer;min-height:30px;padding:5px 8px}
+            button.primary{border-color:var(--lumiverse-accent)}
+            button.danger{border-color:#df5259;background:rgba(223,82,89,0.15)}
+            button.pulse{animation:loomos-pulse 1.6s infinite}
+            button:disabled{cursor:not-allowed;opacity:.5}
+            .state{color:var(--lumiverse-text-dim);font-size:10px}
+            @keyframes loomos-pulse{0%{opacity:1}50%{opacity:0.6}100%{opacity:1}}
+          </style>
+          <div class="bar">
+            <button id="open" type="button">Open LoomOS</button>
+            <button id="generate" class="${generateClass}" type="button"${disabled(!permissions.generation || !permissions.chatMutation)}>${escapeHtml(generateLabel)}</button>
+            <span class="state">${hasState ? `Exact state loaded (${swipeText})` : `No state for ${swipeText}`}</span>
+          </div>
+          <script>
+            document.getElementById("open").addEventListener("click",()=>window.spindleSandbox.postMessage({type:"open"}));
+            document.getElementById("generate").addEventListener("click",()=>window.spindleSandbox.postMessage({type:"generate"}));
+          <\/script>
+        `,
+        minHeight: 38,
+        maxHeight: 80
+      }, (payload) => {
+        if (!isRecord(payload) || typeof payload.type !== "string") return;
+        if (payload.type === "open") openViewer();
+        if (payload.type === "generate") {
+          if (activeGenerationRequestId) {
+            send({ type: "cancel_generation", requestId: activeGenerationRequestId });
+          } else {
+            startGeneration();
+          }
+        }
+      });
+      if (cleanup) {
+        messageWidgetCleanups.set(latestId, cleanup);
+      }
+    }
+  }
+  function compileStatusCardHtml() {
+    if (!activeGenerationRequestId) return "";
+    const elapsed = generationStartedAt ? Math.floor((Date.now() - generationStartedAt) / 1e3) : 0;
+    const phaseLabel = pipeline ? pipeline.phase.replace("_", " ") : "resolving";
+    return `
+      <div class="loomos-shell loomos-compile-status loomos-pulse" style="margin-top: 8px;">
+        <div class="loomos-row-title">
+          <strong>Compiling Story State...</strong>
+          <span class="loomos-badge loomos-badge-compiling">${elapsed}s</span>
+        </div>
+        <p>${escapeHtml(status)}</p>
+        <div class="loomos-meter-track"><i style="width: 100%; animation: loomos-bar-pulse 2s infinite;"></i></div>
+        <small>Phase: ${escapeHtml(phaseLabel)} | Attempt: ${pipeline ? pipeline.attempt : 1}/2</small>
+      </div>
+    `;
+  }
+  function checkIfPresetDirty() {
+    const active = settings.modulePreset;
+    let baseline;
+    if (active === "custom") return false;
+    if (active.startsWith("custom:")) {
+      const presetId = active.substring(7);
+      const custom2 = settings.customModulePresets?.find((p) => p.id === presetId);
+      if (!custom2) return false;
+      baseline = custom2.moduleSettings;
+    } else {
+      baseline = moduleSettingsForPreset(active);
+    }
+    for (const key of MODULE_KEYS) {
+      const current = settings.moduleSettings[key];
+      const base = baseline[key];
+      if (!base) continue;
+      if (current.track !== base.track || current.display !== base.display || current.inject !== base.inject) {
+        return true;
+      }
+    }
+    return false;
+  }
+  function renderPresetManager() {
+    const presets = settings.customModulePresets || [];
+    const activePreset = settings.modulePreset;
+    const isDirty2 = checkIfPresetDirty();
+    return `
+      <div class="loomos-preset-manager">
+        <span class="loomos-subhead">Preset Manager</span>
+        <div class="loomos-preset-select-row">
+          <select class="loomos-select" data-setting="modulePreset">
+            <option value="lite"${selected("lite", activePreset)}>Lite (Built-in)</option>
+            <option value="balanced"${selected("balanced", activePreset)}>Balanced (Built-in)</option>
+            <option value="full"${selected("full", activePreset)}>Full (Built-in)</option>
+            <option value="experimental"${selected("experimental", activePreset)}>Experimental (Built-in)</option>
+            ${presets.map((p) => `
+              <option value="custom:${escapeHtml(p.id)}"${selected("custom:" + p.id, activePreset)}>${escapeHtml(p.name)} (Custom)</option>
+            `).join("")}
+            <option value="custom"${selected("custom", activePreset)}>Custom Settings (Modified)</option>
+          </select>
+          <div class="loomos-preset-actions">
+            <button type="button" class="loomos-button loomos-btn-sm" data-preset-action="save-as" title="Save current settings as new custom preset">Save As...</button>
+            ${activePreset.startsWith("custom:") ? `
+              <button type="button" class="loomos-button loomos-btn-sm" data-preset-action="update" title="Update active custom preset with current settings"${disabled(!isDirty2)}>Save Changes</button>
+              <button type="button" class="loomos-button loomos-btn-sm" data-preset-action="duplicate" title="Duplicate active custom preset">Duplicate</button>
+              <button type="button" class="loomos-button loomos-btn-sm" data-preset-action="rename" title="Rename active custom preset">Rename</button>
+              <button type="button" class="loomos-button loomos-btn-sm loomos-button-danger" data-preset-action="delete" title="Delete active custom preset">Delete</button>
+            ` : ""}
+            <button type="button" class="loomos-button loomos-btn-sm" data-preset-action="import" title="Import a preset JSON">Import</button>
+            ${activePreset.startsWith("custom:") || activePreset === "custom" ? `
+              <button type="button" class="loomos-button loomos-btn-sm" data-preset-action="export" title="Export active preset as JSON">Export</button>
+            ` : ""}
+          </div>
+        </div>
+        ${isDirty2 && activePreset.startsWith("custom:") ? `
+          <div class="loomos-preset-dirty-warning">\u26A0\uFE0F Active preset "${escapeHtml(presets.find((p) => "custom:" + p.id === activePreset)?.name || "")}" has unsaved changes.</div>
+        ` : ""}
+      </div>
+    `;
+  }
+  function renderTokenDiagnostics() {
+    const trackedCount = MODULE_KEYS.filter((k) => settings.moduleSettings[k].track).length;
+    const injectedCount = MODULE_KEYS.filter((k) => settings.moduleSettings[k].inject).length;
+    let intensity = "Balanced";
+    let intensityClass = "intensity-balanced";
+    if (trackedCount <= 6) {
+      intensity = "Lite";
+      intensityClass = "intensity-lite";
+    } else if (trackedCount >= 15) {
+      intensity = "Experimental / Heavy";
+      intensityClass = "intensity-heavy";
+    } else if (trackedCount > 10) {
+      intensity = "Heavy";
+      intensityClass = "intensity-heavy";
+    }
+    const tooManyInjected = injectedCount > 8;
+    return `
+      <div class="loomos-performance-info">
+        <span class="loomos-subhead">Token & Performance Guidance</span>
+        <div class="loomos-perf-row">
+          <span>Tracker Intensity:</span>
+          <span class="loomos-perf-badge ${intensityClass}">${intensity}</span>
+        </div>
+        <div class="loomos-perf-row">
+          <span>Active Modules:</span>
+          <span>${trackedCount} tracked | ${injectedCount} injected</span>
+        </div>
+        ${tooManyInjected ? `
+          <div class="loomos-perf-warning">
+            \u26A0\uFE0F Warning: ${injectedCount} modules are set to inject. This might consume substantial context tokens. 
+            <button type="button" class="loomos-link-btn" data-bulk-action="inject-recommended">Apply Recommended</button>
+          </div>
+        ` : ""}
+        <div class="loomos-perf-details">
+          <p><strong>Inject Budget (${settings.injectionTokenBudget} tokens)</strong>: Limits future story state injection size in normal generations.</p>
+          <p><strong>Seed Budget (${settings.compilerSeedTokenBudget} tokens)</strong>: Limits prior state size when compiling turn deltas.</p>
+        </div>
+      </div>
+    `;
   }
   function renderModuleMatrix() {
+    const query = tab.root.querySelector("[data-module-search]")?.value.trim().toLowerCase() ?? "";
+    const modules = MODULE_CATALOG.map((m) => {
+      const control2 = settings.moduleSettings[m.key];
+      const isCore = CORE_TRACKING_MODULES.has(m.key);
+      const isExperimental = ["dialogueState", "directorStyle", "closenessState", "imagePrompt"].includes(m.key);
+      let pills = "";
+      if (isCore) pills += `<span class="loomos-pill pill-core">Core</span>`;
+      if (isExperimental) pills += `<span class="loomos-pill pill-experimental">Experimental</span>`;
+      if (control2.inject) pills += `<span class="loomos-pill pill-injected">Injected</span>`;
+      if (!control2.display) pills += `<span class="loomos-pill pill-hidden">Hidden</span>`;
+      const searchText = `${m.label} ${m.group} ${m.description}`.toLowerCase();
+      const visible2 = !query || searchText.includes(query);
+      return {
+        key: m.key,
+        label: m.label,
+        group: m.group,
+        description: m.description,
+        control: control2,
+        isCore,
+        pills,
+        visible: visible2,
+        isCustom: false
+      };
+    });
+    const customModules = (settings.customModules || []).map((m) => {
+      const pills = `<span class="loomos-pill pill-custom">Custom</span>` + (m.inject ? ` <span class="loomos-pill pill-injected">Injected</span>` : "") + (!m.display ? ` <span class="loomos-pill pill-hidden">Hidden</span>` : "");
+      const searchText = `${m.label} ${m.group} ${m.description} ${m.compilerInstruction}`.toLowerCase();
+      const visible2 = !query || searchText.includes(query);
+      return {
+        key: m.id,
+        label: m.label,
+        group: "Custom Modules",
+        description: m.description || `Output Mode: ${m.outputMode} | Max Items: ${m.maxItems}`,
+        control: { track: m.enabled, display: m.display, inject: m.inject },
+        isCore: false,
+        pills,
+        visible: visible2,
+        isCustom: true,
+        outputMode: m.outputMode,
+        compilerInstruction: m.compilerInstruction,
+        maxItems: m.maxItems
+      };
+    });
+    const allModules = [...modules, ...customModules];
+    const visibleCount = allModules.filter((m) => m.visible).length;
+    const totalCount = allModules.length;
+    const groups = /* @__PURE__ */ new Map();
+    for (const m of allModules) {
+      if (!groups.has(m.group)) groups.set(m.group, []);
+      groups.get(m.group).push(m);
+    }
+    let groupsHtml = "";
+    for (const [groupName, groupModules] of groups.entries()) {
+      const groupVisibleCount = groupModules.filter((m) => m.visible).length;
+      if (groupVisibleCount === 0) continue;
+      groupsHtml += `
+        <div class="loomos-module-group-card" style="margin-top: 10px;">
+          <div class="loomos-module-group-title">${escapeHtml(groupName)}</div>
+          <div class="loomos-module-group-list">
+            ${groupModules.map((m) => {
+        if (!m.visible) return "";
+        if (m.isCustom) {
+          return `
+                  <div class="loomos-module-card" data-module-row="${escapeHtml(m.key)}" data-custom="true" data-search="${escapeHtml((m.label + " " + m.group + " " + m.description).toLowerCase())}">
+                    <div class="loomos-module-info">
+                      <div class="loomos-module-title-row">
+                        <strong>${escapeHtml(m.label)}</strong>
+                        <div class="loomos-pills">${m.pills}</div>
+                      </div>
+                      <small>${escapeHtml(m.description)}</small>
+                      <div class="loomos-custom-actions">
+                        <button type="button" class="loomos-link-btn" data-custom-action="edit" data-custom-id="${escapeHtml(m.key)}">Edit</button>
+                        <button type="button" class="loomos-link-btn" data-custom-action="duplicate" data-custom-id="${escapeHtml(m.key)}">Duplicate</button>
+                        <button type="button" class="loomos-link-btn loomos-link-btn-danger" data-custom-action="delete" data-custom-id="${escapeHtml(m.key)}">Delete</button>
+                      </div>
+                    </div>
+                    <div class="loomos-module-toggles">
+                      <label class="loomos-toggle-target" title="Include custom module in compiler output">
+                        <input type="checkbox" data-custom-module="${escapeHtml(m.key)}" data-axis="track"${checked(m.control.track)}>
+                        <span>Track</span>
+                      </label>
+                      <label class="loomos-toggle-target" title="Show or hide custom module in dashboard">
+                        <input type="checkbox" data-custom-module="${escapeHtml(m.key)}" data-axis="display"${checked(m.control.display)}>
+                        <span>Display</span>
+                      </label>
+                      <label class="loomos-toggle-target" title="Allow compact custom state injection">
+                        <input type="checkbox" data-custom-module="${escapeHtml(m.key)}" data-axis="inject"${checked(m.control.inject)}>
+                        <span>Inject</span>
+                      </label>
+                    </div>
+                  </div>
+                `;
+        }
+        return `
+                <div class="loomos-module-card" data-module-row="${escapeHtml(m.key)}" data-search="${escapeHtml((m.label + " " + m.group + " " + m.description).toLowerCase())}">
+                  <div class="loomos-module-info">
+                    <div class="loomos-module-title-row">
+                      <strong>${escapeHtml(m.label)}</strong>
+                      <div class="loomos-pills">${m.pills}</div>
+                    </div>
+                    <small>${escapeHtml(m.description)}</small>
+                  </div>
+                  <div class="loomos-module-toggles">
+                    <label class="loomos-toggle-target" title="${m.isCore ? "Core tracking is always enabled" : "Include in compiler output"}">
+                      <input type="checkbox" data-module="${escapeHtml(m.key)}" data-axis="track"${checked(m.control.track)}${disabled(m.isCore)}>
+                      <span>Track${m.isCore ? " \u{1F512}" : ""}</span>
+                    </label>
+                    <label class="loomos-toggle-target" title="Show or hide in dashboard">
+                      <input type="checkbox" data-module="${escapeHtml(m.key)}" data-axis="display"${checked(m.control.display)}>
+                      <span>Display</span>
+                    </label>
+                    <label class="loomos-toggle-target" title="Allow compact state injection">
+                      <input type="checkbox" data-module="${escapeHtml(m.key)}" data-axis="inject"${checked(m.control.inject)}>
+                      <span>Inject</span>
+                    </label>
+                  </div>
+                </div>
+              `;
+      }).join("")}
+          </div>
+        </div>
+      `;
+    }
     return `
-      <div class="loomos-module-wrap">
-        <div class="loomos-module-head"><span>Module</span><span>Track</span><span>Display</span><span>Inject</span></div>
-        ${MODULE_CATALOG.map((module) => {
-      const control2 = settings.moduleSettings[module.key];
-      const core = CORE_TRACKING_MODULES.has(module.key);
-      return `<div class="loomos-module-row" data-module-row="${module.key}" data-search="${escapeHtml(`${module.label} ${module.group} ${module.description}`.toLowerCase())}">
-            <label><strong>${escapeHtml(module.label)}</strong><small>${escapeHtml(module.description)}</small></label>
-            <input type="checkbox" aria-label="Track ${escapeHtml(module.label)}" data-module="${module.key}" data-axis="track"${checked(control2.track)}${disabled(core)} title="${core ? "Core tracking is always enabled" : "Include in compiler output"}">
-            <input type="checkbox" aria-label="Display ${escapeHtml(module.label)}" data-module="${module.key}" data-axis="display"${checked(control2.display)} title="Show or hide without deleting stored data">
-            <input type="checkbox" aria-label="Inject ${escapeHtml(module.label)}" data-module="${module.key}" data-axis="inject"${checked(control2.inject)} title="Allow compact prompt injection">
-          </div>`;
-    }).join("")}
-      </div>`;
+      <div class="loomos-module-selector" style="grid-column: 1 / -1; margin-top: 12px;">
+        <span class="loomos-subhead">Tracker Module Matrix</span>
+        <div class="loomos-search-bar" style="margin-top: 4px;">
+          <input class="loomos-input" type="search" data-module-search placeholder="Filter modules (cast, inventory, custom...)" value="${escapeHtml(query)}">
+          ${query ? `<button class="loomos-button-clear" type="button" data-action="clear-search" title="Clear search">\xD7</button>` : ""}
+          <span class="loomos-search-count">${visibleCount} of ${totalCount} shown</span>
+        </div>
+        <div class="loomos-bulk-actions">
+          <button type="button" class="loomos-button loomos-btn-sm" data-bulk-action="enable-display">Show Matching</button>
+          <button type="button" class="loomos-button loomos-btn-sm" data-bulk-action="disable-display">Hide Matching</button>
+          <button type="button" class="loomos-button loomos-btn-sm" data-bulk-action="inject-recommended">Inject Recommended</button>
+          <button type="button" class="loomos-button loomos-btn-sm" data-bulk-action="reset-presets">Reset Preset</button>
+        </div>
+        <div class="loomos-module-groups">
+          ${groupsHtml || `<div class="loomos-empty-search" style="padding: 15px; text-align: center; color: var(--loomos-muted);">No matching modules found.</div>`}
+        </div>
+        <div class="loomos-custom-add-wrap">
+          <button type="button" class="loomos-button loomos-button-primary loomos-btn-sm" data-custom-action="add">+ Add Custom Tracker Module</button>
+        </div>
+      </div>
+    `;
   }
   function renderSettings() {
     return `
-      <details class="loomos-shell loomos-settings">
+      <details class="loomos-shell loomos-settings" data-details="settings">
         <summary>Tracker Settings</summary>
         <div class="loomos-settings-grid">
+          ${renderPresetManager()}
           <label class="loomos-field"><span>Skin</span><select class="loomos-select" data-setting="skin">
             ${["auto", "dark_academia", "cyberpunk", "fantasy", "horror", "noir", "minimal"].map(
       (skin) => `<option value="${skin}"${selected(skin, settings.skin)}>${skinLabel(skin)}</option>`
-    ).join("")}
-          </select></label>
-          <label class="loomos-field"><span>Module preset</span><select class="loomos-select" data-setting="modulePreset">
-            ${["lite", "balanced", "full", "experimental", "custom"].map(
-      (preset) => `<option value="${preset}"${selected(preset, settings.modulePreset)}>${presetLabel(preset)}</option>`
     ).join("")}
           </select></label>
           <label class="loomos-field"><span>Generation connection</span><select class="loomos-select" data-setting="connectionId">
@@ -5204,15 +6134,15 @@ function setup(ctx) {
           <label class="loomos-field"><span>Recent messages</span><input class="loomos-input" type="number" min="4" max="80" data-setting="recentMessageLimit" value="${settings.recentMessageLimit}"></label>
           <label class="loomos-field"><span>Seed token budget</span><input class="loomos-input" type="number" min="200" max="2400" step="50" data-setting="compilerSeedTokenBudget" value="${settings.compilerSeedTokenBudget}"></label>
           <label class="loomos-field"><span>Generation timeout (seconds)</span><input class="loomos-input" type="number" min="30" max="300" step="10" data-setting="generationTimeoutSeconds" value="${settings.generationTimeoutSeconds}"></label>
-          <label class="loomos-field"><span>Find a module</span><input class="loomos-input" type="search" data-module-search placeholder="Cast, inventory, continuity..."></label>
-          <p class="loomos-hint">Track changes compiler output. Display only changes the UI and never deletes data. Inject controls the compact future-context summary. Core tracking stays on for continuity safety.</p>
+          
+          ${renderTokenDiagnostics()}
           ${renderModuleMatrix()}
         </div>
       </details>`;
   }
   function diagnosticText() {
     const lines = [
-      `version: 0.1.1`,
+      `version: 0.1.2`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -5232,13 +6162,13 @@ function setup(ctx) {
   }
   function toolbarHtml() {
     const canGenerate = permissions.generation && permissions.chatMutation;
+    const busy = activeGenerationRequestId !== null;
     const missingPermission = !permissions.generation || !permissions.chatMutation || settings.injectionEnabled && !permissions.interceptor;
     return `<div class="loomos-toolbar">
       <button class="loomos-button loomos-button-primary" data-action="viewer">Open Viewer</button>
-      <button class="loomos-button" data-action="generate"${disabled(!canGenerate || Boolean(activeGenerationRequestId))}>${state ? "Refresh State" : "Generate State"}</button>
-      <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation)}>Reload</button>
-      ${activeGenerationRequestId ? `<button class="loomos-button" data-action="cancel">Cancel</button>` : ""}
-      ${state ? `<button class="loomos-button loomos-button-danger" data-action="delete">Delete Exact State</button>` : ""}
+      ${busy ? `<button class="loomos-button loomos-button-danger loomos-button-pulse" data-action="cancel">Stop Compile</button>` : `<button class="loomos-button" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh State" : "Generate State"}</button>`}
+      <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation || busy)}>Reload</button>
+      ${state && !busy ? `<button class="loomos-button loomos-button-danger" data-action="delete">Delete Exact State</button>` : ""}
       ${missingPermission ? `<button class="loomos-button" data-action="permissions">Enable Features</button>` : ""}
     </div>`;
   }
@@ -5252,9 +6182,10 @@ function setup(ctx) {
         </div>
         ${toolbarHtml()}
       </div>
+      ${compileStatusCardHtml()}
       ${renderSettings()}
       ${state ? renderDashboard(state, settings) : emptyStateHtml()}
-      <details class="loomos-shell loomos-settings">
+      <details class="loomos-shell loomos-settings" data-details="diagnostics">
         <summary>Pipeline Diagnostics</summary>
         <pre class="loomos-diagnostic">${escapeHtml(diagnosticText())}</pre>
       </details>`;
@@ -5272,12 +6203,15 @@ function setup(ctx) {
         </div>
         ${toolbarHtml()}
       </div>
+      ${compileStatusCardHtml()}
       ${state ? renderDashboard(state, settings) : emptyStateHtml()}`;
   }
   function renderAll() {
+    const uiState = captureUiState();
     renderDrawer();
     renderViewer();
-    refreshMessageAction();
+    refreshAllMessageWidgets();
+    restoreUiState(uiState);
   }
   function openViewer() {
     if (modal) {
@@ -5317,6 +6251,17 @@ function setup(ctx) {
       };
       return [key, value];
     }));
+    const customModules = (settings.customModules || []).map((m) => {
+      const trackInput = root.querySelector(`[data-custom-module="${m.id}"][data-axis="track"]`);
+      const displayInput = root.querySelector(`[data-custom-module="${m.id}"][data-axis="display"]`);
+      const injectInput = root.querySelector(`[data-custom-module="${m.id}"][data-axis="inject"]`);
+      return {
+        ...m,
+        enabled: trackInput ? trackInput.checked : m.enabled,
+        display: displayInput ? displayInput.checked : m.display,
+        inject: injectInput ? injectInput.checked : m.inject
+      };
+    });
     return LoomOSSettingsSchema.parse({
       ...settings,
       skin: root.querySelector('[data-setting="skin"]')?.value,
@@ -5328,31 +6273,53 @@ function setup(ctx) {
       compilerSeedTokenBudget: Number(root.querySelector('[data-setting="compilerSeedTokenBudget"]')?.value),
       recentMessageLimit: Number(root.querySelector('[data-setting="recentMessageLimit"]')?.value),
       generationTimeoutSeconds: Number(root.querySelector('[data-setting="generationTimeoutSeconds"]')?.value),
-      moduleSettings
+      moduleSettings,
+      customModules
     });
   }
-  function saveCurrentSettings() {
+  let saveSettingsTimeout = null;
+  function saveCurrentSettingsDebounced() {
     try {
       settings = readSettings();
-      status = "Saving settings";
-      send({ type: "save_settings", requestId: requestId("settings"), settings });
-      renderAll();
+      if (saveSettingsTimeout) clearTimeout(saveSettingsTimeout);
+      saveSettingsTimeout = setTimeout(() => {
+        send({ type: "save_settings", requestId: requestId("settings"), settings });
+      }, 600);
     } catch (error) {
       status = error instanceof Error ? error.message : String(error);
       renderAll();
     }
   }
-  function applyPreset(preset) {
+  function applyModulePreset(preset) {
+    let nextSettings;
+    if (preset.startsWith("custom:")) {
+      const presetId = preset.substring(7);
+      const custom2 = settings.customModulePresets?.find((p) => p.id === presetId);
+      if (custom2) {
+        nextSettings = custom2.moduleSettings;
+      } else {
+        return;
+      }
+    } else if (preset !== "custom") {
+      nextSettings = moduleSettingsForPreset(preset);
+    } else {
+      return;
+    }
     settings = LoomOSSettingsSchema.parse({
       ...settings,
       modulePreset: preset,
-      moduleSettings: moduleSettingsForPreset(preset)
+      moduleSettings: nextSettings
     });
-    status = `${presetLabel(preset)} preset applied`;
+    status = `Preset applied`;
     send({ type: "save_settings", requestId: requestId("preset"), settings });
     renderAll();
   }
   function startGeneration() {
+    if (saveSettingsTimeout) {
+      clearTimeout(saveSettingsTimeout);
+      saveSettingsTimeout = null;
+      send({ type: "save_settings", requestId: requestId("settings"), settings });
+    }
     const identity = currentRequest();
     if (!identity?.messageId) {
       status = "Open a chat with at least one message first.";
@@ -5430,8 +6397,12 @@ function setup(ctx) {
       return;
     }
     status = "Loading exact swipe";
-    if (asReady) send({ type: "ready", active });
-    else send({ type: "get_state", requestId: requestId("sync"), identity: active });
+    if (asReady) {
+      send({ type: "ready", active });
+    } else {
+      send({ type: "get_state", requestId: requestId("sync"), identity: active });
+    }
+    send({ type: "get_chat_states", requestId: requestId("chat-states-sync"), chatId: active.chatId });
     renderAll();
   }
   function identityFromEvent(payload) {
@@ -5440,6 +6411,415 @@ function setup(ctx) {
     const chatId = typeof payload.chatId === "string" ? payload.chatId : typeof message.chat_id === "string" ? message.chat_id : null;
     if (!chatId || typeof message.id !== "string" || typeof message.swipe_id !== "number") return null;
     return { chatId, messageId: message.id, swipeId: message.swipe_id };
+  }
+  async function handlePresetAction(action) {
+    const activePreset = settings.modulePreset;
+    const presets = settings.customModulePresets || [];
+    if (action === "save-as") {
+      const pm = ctx.ui.showModal({ title: "Save Custom Preset", width: 440, maxHeight: 300 });
+      pm.root.innerHTML = `
+        <div class="loomos-root loomos-prompt-dialog" data-skin="${settings.skin}">
+          <label class="loomos-field">
+            <span>Preset Name</span>
+            <input class="loomos-input" type="text" id="preset-name" placeholder="My Custom Preset" required>
+          </label>
+          <label class="loomos-field">
+            <span>Description</span>
+            <input class="loomos-input" type="text" id="preset-desc" placeholder="Lite tracking plus cast visuals">
+          </label>
+          <div class="loomos-dialog-buttons">
+            <button type="button" class="loomos-button loomos-button-primary" id="preset-confirm">Save</button>
+            <button type="button" class="loomos-button" id="preset-cancel">Cancel</button>
+          </div>
+        </div>
+      `;
+      const onConfirm = () => {
+        const name = pm.root.querySelector("#preset-name")?.value.trim();
+        const desc = pm.root.querySelector("#preset-desc")?.value.trim() || "";
+        if (!name) return;
+        const newId = crypto.randomUUID();
+        const newPreset = {
+          id: newId,
+          name,
+          description: desc,
+          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          moduleSettings: { ...settings.moduleSettings }
+        };
+        settings.customModulePresets = [...presets, newPreset];
+        settings.modulePreset = "custom:" + newId;
+        send({ type: "save_settings", requestId: requestId("preset-save"), settings });
+        status = `Preset "${name}" saved`;
+        pm.dismiss();
+        renderAll();
+      };
+      pm.root.querySelector("#preset-confirm")?.addEventListener("click", onConfirm);
+      pm.root.querySelector("#preset-cancel")?.addEventListener("click", () => pm.dismiss());
+    }
+    if (action === "update" && activePreset.startsWith("custom:")) {
+      const presetId = activePreset.substring(7);
+      const idx = presets.findIndex((p) => p.id === presetId);
+      if (idx >= 0) {
+        presets[idx] = {
+          ...presets[idx],
+          moduleSettings: { ...settings.moduleSettings },
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        settings.customModulePresets = [...presets];
+        send({ type: "save_settings", requestId: requestId("preset-update"), settings });
+        status = `Preset "${presets[idx].name}" updated`;
+        renderAll();
+      }
+    }
+    if (action === "duplicate" && activePreset.startsWith("custom:")) {
+      const presetId = activePreset.substring(7);
+      const original = presets.find((p) => p.id === presetId);
+      if (original) {
+        const newId = crypto.randomUUID();
+        const duplicatePreset = {
+          id: newId,
+          name: original.name + " (Copy)",
+          description: original.description,
+          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          moduleSettings: { ...original.moduleSettings }
+        };
+        settings.customModulePresets = [...presets, duplicatePreset];
+        settings.modulePreset = "custom:" + newId;
+        settings.moduleSettings = { ...original.moduleSettings };
+        send({ type: "save_settings", requestId: requestId("preset-dup"), settings });
+        status = `Preset duplicated as "${duplicatePreset.name}"`;
+        renderAll();
+      }
+    }
+    if (action === "rename" && activePreset.startsWith("custom:")) {
+      const presetId = activePreset.substring(7);
+      const original = presets.find((p) => p.id === presetId);
+      if (!original) return;
+      const pm = ctx.ui.showModal({ title: "Rename Preset", width: 440, maxHeight: 240 });
+      pm.root.innerHTML = `
+        <div class="loomos-root loomos-prompt-dialog" data-skin="${settings.skin}">
+          <label class="loomos-field">
+            <span>New Name</span>
+            <input class="loomos-input" type="text" id="preset-name" value="${escapeHtml(original.name)}" required>
+          </label>
+          <div class="loomos-dialog-buttons">
+            <button type="button" class="loomos-button loomos-button-primary" id="preset-confirm">Rename</button>
+            <button type="button" class="loomos-button" id="preset-cancel">Cancel</button>
+          </div>
+        </div>
+      `;
+      const onConfirm = () => {
+        const name = pm.root.querySelector("#preset-name")?.value.trim();
+        if (!name) return;
+        const idx = presets.findIndex((p) => p.id === presetId);
+        if (idx >= 0) {
+          presets[idx] = {
+            ...presets[idx],
+            name,
+            updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+          };
+          settings.customModulePresets = [...presets];
+          send({ type: "save_settings", requestId: requestId("preset-rename"), settings });
+          status = `Preset renamed to "${name}"`;
+        }
+        pm.dismiss();
+        renderAll();
+      };
+      pm.root.querySelector("#preset-confirm")?.addEventListener("click", onConfirm);
+      pm.root.querySelector("#preset-cancel")?.addEventListener("click", () => pm.dismiss());
+    }
+    if (action === "delete" && activePreset.startsWith("custom:")) {
+      const presetId = activePreset.substring(7);
+      const original = presets.find((p) => p.id === presetId);
+      if (!original) return;
+      const { confirmed } = await ctx.ui.showConfirm({
+        title: "Delete Preset",
+        message: `Delete the custom preset "${original.name}"? This cannot be undone.`,
+        variant: "danger",
+        confirmLabel: "Delete"
+      });
+      if (confirmed) {
+        settings.customModulePresets = presets.filter((p) => p.id !== presetId);
+        settings.modulePreset = "balanced";
+        settings.moduleSettings = moduleSettingsForPreset("balanced");
+        send({ type: "save_settings", requestId: requestId("preset-delete"), settings });
+        status = `Preset "${original.name}" deleted`;
+        renderAll();
+      }
+    }
+    if (action === "export" && (activePreset.startsWith("custom:") || activePreset === "custom")) {
+      let exportObj;
+      if (activePreset.startsWith("custom:")) {
+        const presetId = activePreset.substring(7);
+        const original = presets.find((p) => p.id === presetId);
+        if (original) {
+          exportObj = original;
+        }
+      } else {
+        exportObj = {
+          id: "exported-settings",
+          name: "Exported Custom Settings",
+          description: "Direct export of unsaved settings",
+          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          moduleSettings: settings.moduleSettings
+        };
+      }
+      if (exportObj) {
+        const jsonStr = JSON.stringify(exportObj, null, 2);
+        const pm = ctx.ui.showModal({ title: "Export Preset", width: 500, maxHeight: 400 });
+        pm.root.innerHTML = `
+          <div class="loomos-root loomos-prompt-dialog" data-skin="${settings.skin}">
+            <label class="loomos-field">
+              <span>Copy JSON Content:</span>
+              <textarea class="loomos-input" id="export-json" style="height: 180px; font-family: monospace; font-size: 11px;" readonly>${escapeHtml(jsonStr)}</textarea>
+            </label>
+            <div class="loomos-dialog-buttons">
+              <button type="button" class="loomos-button loomos-button-primary" id="export-copy">Copy to Clipboard</button>
+              <button type="button" class="loomos-button" id="export-close">Close</button>
+            </div>
+          </div>
+        `;
+        pm.root.querySelector("#export-copy")?.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(jsonStr);
+            status = "Copied to clipboard";
+            pm.dismiss();
+            renderAll();
+          } catch {
+            const txt = pm.root.querySelector("#export-json");
+            if (txt) {
+              txt.select();
+              document.execCommand("copy");
+              status = "Copied to clipboard";
+              pm.dismiss();
+              renderAll();
+            }
+          }
+        });
+        pm.root.querySelector("#export-close")?.addEventListener("click", () => pm.dismiss());
+      }
+    }
+    if (action === "import") {
+      const pm = ctx.ui.showModal({ title: "Import Preset", width: 500, maxHeight: 400 });
+      pm.root.innerHTML = `
+        <div class="loomos-root loomos-prompt-dialog" data-skin="${settings.skin}">
+          <label class="loomos-field">
+            <span>Paste Preset JSON:</span>
+            <textarea class="loomos-input" id="import-json" style="height: 180px; font-family: monospace; font-size: 11px;" placeholder='{
+  "name": "My Preset",
+  "moduleSettings": { ... }
+}' required></textarea>
+          </label>
+          <div class="loomos-dialog-buttons">
+            <button type="button" class="loomos-button loomos-button-primary" id="import-confirm">Import</button>
+            <button type="button" class="loomos-button" id="import-cancel">Cancel</button>
+          </div>
+        </div>
+      `;
+      const onConfirm = () => {
+        const jsonStr = pm.root.querySelector("#import-json")?.value.trim();
+        if (!jsonStr) return;
+        try {
+          const parsed = JSON.parse(jsonStr);
+          const result = CustomModulePresetSchema.safeParse({
+            id: parsed.id || crypto.randomUUID(),
+            name: parsed.name || "Imported Preset",
+            description: parsed.description || "Imported from JSON",
+            createdAt: parsed.createdAt || (/* @__PURE__ */ new Date()).toISOString(),
+            updatedAt: parsed.updatedAt || (/* @__PURE__ */ new Date()).toISOString(),
+            moduleSettings: parsed.moduleSettings
+          });
+          if (result.success) {
+            const imported = result.data;
+            if (presets.some((p) => p.id === imported.id)) {
+              imported.id = crypto.randomUUID();
+            }
+            settings.customModulePresets = [...presets, imported];
+            settings.modulePreset = "custom:" + imported.id;
+            settings.moduleSettings = imported.moduleSettings;
+            send({ type: "save_settings", requestId: requestId("preset-import"), settings });
+            status = `Preset "${imported.name}" imported`;
+            pm.dismiss();
+            renderAll();
+          } else {
+            alert("Invalid preset schema: " + result.error.issues.map((i) => i.message).join(", "));
+          }
+        } catch (err) {
+          alert("Failed to parse JSON: " + (err instanceof Error ? err.message : String(err)));
+        }
+      };
+      pm.root.querySelector("#import-confirm")?.addEventListener("click", onConfirm);
+      pm.root.querySelector("#import-cancel")?.addEventListener("click", () => pm.dismiss());
+    }
+  }
+  async function handleCustomModuleAction(action, moduleId) {
+    const customMods = settings.customModules || [];
+    if (action === "add" || action === "edit" && moduleId) {
+      const isEdit = action === "edit";
+      const original = isEdit ? customMods.find((m) => m.id === moduleId) : null;
+      if (isEdit && !original) return;
+      const pm = ctx.ui.showModal({ title: isEdit ? "Edit Custom Module" : "Add Custom Module", width: 500, maxHeight: 600 });
+      pm.root.innerHTML = `
+        <div class="loomos-root loomos-prompt-dialog" data-skin="${settings.skin}">
+          <label class="loomos-field">
+            <span>Label</span>
+            <input class="loomos-input" type="text" id="mod-label" value="${original ? escapeHtml(original.label) : ""}" placeholder="e.g. Magic Rules" required>
+          </label>
+          <label class="loomos-field">
+            <span>Group</span>
+            <input class="loomos-input" type="text" id="mod-group" value="${original ? escapeHtml(original.group) : "Custom"}" placeholder="e.g. World or Custom">
+          </label>
+          <label class="loomos-field">
+            <span>Description</span>
+            <input class="loomos-input" type="text" id="mod-desc" value="${original ? escapeHtml(original.description) : ""}" placeholder="Short summary of this module">
+          </label>
+          <label class="loomos-field">
+            <span>Compiler Instruction (max 1600 chars)</span>
+            <textarea class="loomos-input" id="mod-instruction" style="height: 100px;" placeholder="Instructions for the compiler. e.g. Track active spell effects, magic costs, and rules. Include severity or cost." required>${original ? escapeHtml(original.compilerInstruction) : ""}</textarea>
+          </label>
+          <label class="loomos-field">
+            <span>Output Mode</span>
+            <select class="loomos-select" id="mod-output-mode">
+              <option value="cards"${original && original.outputMode === "cards" ? " selected" : ""}>Cards (grid of key-value panels)</option>
+              <option value="bullets"${original && original.outputMode === "bullets" ? " selected" : ""}>Bullets (simple list)</option>
+              <option value="chips"${original && original.outputMode === "chips" ? " selected" : ""}>Chips (inline badges)</option>
+              <option value="gauge"${original && original.outputMode === "gauge" ? " selected" : ""}>Gauge (progress bar)</option>
+            </select>
+          </label>
+          <label class="loomos-field">
+            <span>Max Items (1 to 24)</span>
+            <input class="loomos-input" type="number" id="mod-max" min="1" max="24" value="${original ? original.maxItems : 6}">
+          </label>
+          <div class="loomos-dialog-buttons">
+            <button type="button" class="loomos-button loomos-button-primary" id="mod-confirm">${isEdit ? "Save Changes" : "Add Module"}</button>
+            <button type="button" class="loomos-button" id="mod-cancel">Cancel</button>
+          </div>
+        </div>
+      `;
+      const onConfirm = () => {
+        const label = pm.root.querySelector("#mod-label")?.value.trim();
+        const group = pm.root.querySelector("#mod-group")?.value.trim() || "Custom";
+        const desc = pm.root.querySelector("#mod-desc")?.value.trim() || "";
+        const instruction = pm.root.querySelector("#mod-instruction")?.value.trim();
+        const outputMode = pm.root.querySelector("#mod-output-mode")?.value;
+        const maxItems = Number(pm.root.querySelector("#mod-max")?.value || 6);
+        if (!label || !instruction) return;
+        const validated = CustomModuleSchema.parse({
+          id: original ? original.id : "cmod_" + crypto.randomUUID().replace(/-/g, "").substring(0, 12),
+          label,
+          group,
+          description: desc,
+          enabled: original ? original.enabled : true,
+          display: original ? original.display : true,
+          inject: original ? original.inject : true,
+          compilerInstruction: instruction,
+          outputMode,
+          maxItems
+        });
+        if (isEdit) {
+          settings.customModules = customMods.map((m) => m.id === moduleId ? validated : m);
+        } else {
+          settings.customModules = [...customMods, validated];
+        }
+        send({ type: "save_settings", requestId: requestId("custom-mod"), settings });
+        status = isEdit ? `Custom module "${label}" updated` : `Custom module "${label}" added`;
+        pm.dismiss();
+        renderAll();
+      };
+      pm.root.querySelector("#mod-confirm")?.addEventListener("click", onConfirm);
+      pm.root.querySelector("#mod-cancel")?.addEventListener("click", () => pm.dismiss());
+    }
+    if (action === "duplicate" && moduleId) {
+      const original = customMods.find((m) => m.id === moduleId);
+      if (original) {
+        const newId = "cmod_" + crypto.randomUUID().replace(/-/g, "").substring(0, 12);
+        const dup = CustomModuleSchema.parse({
+          ...original,
+          id: newId,
+          label: original.label + " (Copy)",
+          enabled: original.enabled,
+          display: original.display,
+          inject: original.inject
+        });
+        settings.customModules = [...customMods, dup];
+        send({ type: "save_settings", requestId: requestId("custom-dup"), settings });
+        status = `Custom module duplicated as "${dup.label}"`;
+        renderAll();
+      }
+    }
+    if (action === "delete" && moduleId) {
+      const original = customMods.find((m) => m.id === moduleId);
+      if (!original) return;
+      const { confirmed } = await ctx.ui.showConfirm({
+        title: "Delete Custom Module",
+        message: `Delete custom module "${original.label}"? Old states containing this module's compiled data will retain their data but it will no longer compile on new generations.`,
+        variant: "danger",
+        confirmLabel: "Delete"
+      });
+      if (confirmed) {
+        settings.customModules = customMods.filter((m) => m.id !== moduleId);
+        send({ type: "save_settings", requestId: requestId("custom-delete"), settings });
+        status = `Custom module "${original.label}" deleted`;
+        renderAll();
+      }
+    }
+  }
+  function handleBulkAction(action) {
+    const query = tab.root.querySelector("[data-module-search]")?.value.trim().toLowerCase() ?? "";
+    const matchesQuery = (label, group, description) => {
+      if (!query) return true;
+      const text = `${label} ${group} ${description}`.toLowerCase();
+      return text.includes(query);
+    };
+    if (action === "enable-display") {
+      for (const m of MODULE_CATALOG) {
+        if (matchesQuery(m.label, m.group, m.description)) {
+          settings.moduleSettings[m.key].display = true;
+        }
+      }
+      if (settings.customModules) {
+        for (const m of settings.customModules) {
+          if (matchesQuery(m.label, m.group, m.description || "")) {
+            m.display = true;
+          }
+        }
+      }
+      status = "Enabled display for matches";
+    }
+    if (action === "disable-display") {
+      for (const m of MODULE_CATALOG) {
+        if (matchesQuery(m.label, m.group, m.description)) {
+          settings.moduleSettings[m.key].display = false;
+        }
+      }
+      if (settings.customModules) {
+        for (const m of settings.customModules) {
+          if (matchesQuery(m.label, m.group, m.description || "")) {
+            m.display = false;
+          }
+        }
+      }
+      status = "Disabled display for matches";
+    }
+    if (action === "inject-recommended") {
+      for (const m of MODULE_CATALOG) {
+        settings.moduleSettings[m.key].inject = BALANCED_MODULE_SETTINGS[m.key].inject;
+      }
+      status = "Reset injection to recommended modules";
+    }
+    if (action === "reset-presets") {
+      const activePreset = settings.modulePreset;
+      if (activePreset === "custom" || activePreset.startsWith("custom:")) {
+        applyModulePreset("balanced");
+      } else {
+        applyModulePreset(activePreset);
+      }
+      return;
+    }
+    saveCurrentSettingsDebounced();
+    renderAll();
   }
   function handleBackendMessage(payload) {
     if (!isRecord(payload) || typeof payload.type !== "string") return;
@@ -5452,6 +6832,9 @@ function setup(ctx) {
         activeIdentity = response.identity;
         state = response.state;
         status = response.identity ? response.state ? "Exact swipe state loaded" : "Ready to generate" : "No active message";
+        if (activeIdentity?.chatId) {
+          send({ type: "get_chat_states", requestId: requestId("chat-states"), chatId: activeIdentity.chatId });
+        }
         break;
       case "settings":
         settings = response.settings;
@@ -5465,6 +6848,9 @@ function setup(ctx) {
         activeIdentity = response.identity;
         state = response.state;
         status = response.state ? "Exact swipe state loaded" : "No state for this swipe";
+        if (activeIdentity?.chatId) {
+          send({ type: "get_chat_states", requestId: requestId("chat-states"), chatId: activeIdentity.chatId });
+        }
         break;
       case "permissions":
         permissions = response.permissions;
@@ -5480,6 +6866,15 @@ function setup(ctx) {
           if (activeGenerationRequestId === response.requestId) activeGenerationRequestId = null;
           stopElapsedTimer();
           status = response.message ?? (response.status === "completed" ? "State compiled" : response.status);
+          if (activeIdentity?.chatId) {
+            send({ type: "get_chat_states", requestId: requestId("chat-states"), chatId: activeIdentity.chatId });
+          }
+        }
+        break;
+      case "chat_states":
+        if (response.chatId === ctx.getActiveChat().chatId) {
+          chatStates = response.states;
+          refreshAllMessageWidgets();
         }
         break;
       case "error":
@@ -5493,33 +6888,65 @@ function setup(ctx) {
     renderAll();
   }
   function handleActionClick(event) {
-    const target = event.target?.closest("[data-action]");
-    const action = target?.dataset.action;
-    if (!action) return;
-    if (action === "viewer") openViewer();
-    if (action === "generate") startGeneration();
-    if (action === "reload") reloadState();
-    if (action === "cancel" && activeGenerationRequestId) {
-      send({ type: "cancel_generation", requestId: activeGenerationRequestId });
+    const target = event.target;
+    if (!target) return;
+    const actionBtn = target.closest("[data-action]");
+    if (actionBtn) {
+      const action = actionBtn.dataset.action;
+      if (action === "viewer") openViewer();
+      if (action === "generate") startGeneration();
+      if (action === "reload") reloadState();
+      if (action === "cancel" && activeGenerationRequestId) {
+        send({ type: "cancel_generation", requestId: activeGenerationRequestId });
+      }
+      if (action === "delete") void deleteCurrentState();
+      if (action === "permissions") void requestPermissions();
+      if (action === "clear-search") {
+        const searchInput = tab.root.querySelector("[data-module-search]");
+        if (searchInput) {
+          searchInput.value = "";
+          renderAll();
+        }
+      }
+      return;
     }
-    if (action === "delete") void deleteCurrentState();
-    if (action === "permissions") void requestPermissions();
+    const presetBtn = target.closest("[data-preset-action]");
+    if (presetBtn) {
+      const actionCamel = presetBtn.getAttribute("data-preset-action");
+      if (actionCamel) void handlePresetAction(actionCamel);
+      return;
+    }
+    const customBtn = target.closest("[data-custom-action]");
+    if (customBtn) {
+      const action = customBtn.getAttribute("data-custom-action");
+      const id = customBtn.getAttribute("data-custom-id") || void 0;
+      if (action) void handleCustomModuleAction(action, id);
+      return;
+    }
+    const bulkBtn = target.closest("[data-bulk-action]");
+    if (bulkBtn) {
+      const action = bulkBtn.getAttribute("data-bulk-action");
+      if (action) handleBulkAction(action);
+      return;
+    }
   }
   function handleRootChange(event) {
     const target = event.target;
     if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
     if (target.dataset.setting === "modulePreset") {
-      const preset = target.value;
-      if (preset !== "custom") {
-        applyPreset(preset);
-        return;
+      applyModulePreset(target.value);
+      return;
+    }
+    if (target.matches("[data-module], [data-custom-module]")) {
+      if (!settings.modulePreset.startsWith("custom:")) {
+        settings.modulePreset = "custom";
+        const selectEl = tab.root.querySelector('[data-setting="modulePreset"]');
+        if (selectEl) selectEl.value = "custom";
       }
+      saveCurrentSettingsDebounced();
+    } else if (target.matches("[data-setting]")) {
+      saveCurrentSettingsDebounced();
     }
-    if (target.matches("[data-module]")) {
-      const preset = tab.root.querySelector('[data-setting="modulePreset"]');
-      if (preset) preset.value = "custom";
-    }
-    if (target.matches("[data-setting], [data-module]")) saveCurrentSettings();
   }
   function handleRootInput(event) {
     const target = event.target;
@@ -5528,6 +6955,16 @@ function setup(ctx) {
     tab.root.querySelectorAll("[data-module-row]").forEach((row) => {
       row.hidden = Boolean(query) && !(row.dataset.search ?? "").includes(query);
     });
+    const allModules = tab.root.querySelectorAll("[data-module-row]");
+    const visibleModules = tab.root.querySelectorAll("[data-module-row]:not([hidden])");
+    const countSpan = tab.root.querySelector(".loomos-search-count");
+    if (countSpan) {
+      countSpan.textContent = `${visibleModules.length} of ${allModules.length} shown`;
+    }
+    const clearBtn = tab.root.querySelector('[data-action="clear-search"]');
+    if (clearBtn) {
+      clearBtn.style.display = query ? "block" : "none";
+    }
   }
   tab.root.addEventListener("click", handleActionClick);
   tab.root.addEventListener("change", handleRootChange);
@@ -5547,15 +6984,19 @@ function setup(ctx) {
     if (identity?.messageId && identity.messageId === latest) {
       status = "Loading selected swipe";
       send({ type: "get_state", requestId: requestId("swipe"), identity });
+      send({ type: "get_chat_states", requestId: requestId("chat-states-swipe"), chatId: identity.chatId });
       renderAll();
     }
   }));
   cleanups.push(ctx.events.on("SWIPE_EDITED", (payload) => {
     const identity = identityFromEvent(payload);
-    if (identity) send({ type: "get_state", requestId: requestId("swipe-edit"), identity });
+    if (identity) {
+      send({ type: "get_state", requestId: requestId("swipe-edit"), identity });
+      send({ type: "get_chat_states", requestId: requestId("chat-states-swipe-edit"), chatId: identity.chatId });
+    }
   }));
-  cleanups.push(ctx.events.on("CHARACTER_MESSAGE_RENDERED", refreshMessageAction));
-  cleanups.push(ctx.events.on("USER_MESSAGE_RENDERED", refreshMessageAction));
+  cleanups.push(ctx.events.on("CHARACTER_MESSAGE_RENDERED", refreshAllMessageWidgets));
+  cleanups.push(ctx.events.on("USER_MESSAGE_RENDERED", refreshAllMessageWidgets));
   renderAll();
   syncFromHost(true);
   return () => {
@@ -5567,10 +7008,9 @@ function setup(ctx) {
     }
     disposed = true;
     stopElapsedTimer();
+    clearAllMessageWidgets();
     modalListenerCleanup?.();
     modalListenerCleanup = null;
-    messageActionCleanup?.();
-    messageActionCleanup = null;
     for (const cleanup of cleanups.splice(0).reverse()) {
       try {
         cleanup();

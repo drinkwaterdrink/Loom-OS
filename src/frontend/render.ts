@@ -93,16 +93,25 @@ function renderMeters(state: LoomOSState): string {
     <div class="loomos-meter-grid">
       ${state.meters.length === 0
         ? `<p class="loomos-muted">No meter evidence in this state.</p>`
-        : state.meters.map((meter) => `
-          <article class="loomos-meter">
-            <div class="loomos-row-title">
-              <strong>${escapeHtml(meter.label)}</strong>
-              <span>${escapeHtml(meter.pct)} | ${escapeHtml(meter.trend)}</span>
-            </div>
-            <div class="loomos-meter-track"><i style="width:${Math.max(0, Math.min(100, meter.value))}%"></i></div>
-            <small>${escapeHtml(meter.band)} | ${escapeHtml(meter.note)}</small>
-          </article>
-        `).join("")}
+        : state.meters.map((meter) => {
+            const trendIcon = {
+              up: "📈",
+              down: "📉",
+              steady: "➡️",
+              unknown: ""
+            }[meter.trend] || "";
+            const colorStyle = meter.color ? `background-color: ${escapeHtml(meter.color)}` : "";
+            return `
+              <article class="loomos-meter">
+                <div class="loomos-row-title">
+                  <strong>${escapeHtml(meter.label)}</strong>
+                  <span>${escapeHtml(meter.pct)} (${meter.value}/100) ${trendIcon}</span>
+                </div>
+                <div class="loomos-meter-track"><i style="width:${Math.max(0, Math.min(100, meter.value))}%; ${colorStyle}"></i></div>
+                <small><strong>${escapeHtml(meter.band)}</strong> | ${escapeHtml(meter.note)}</small>
+              </article>
+            `;
+          }).join("")}
     </div>
   `);
 }
@@ -112,45 +121,49 @@ function renderCast(state: LoomOSState, settings: LoomOSSettings): string {
     <div class="loomos-card-grid">
       ${state.castMatrix.length === 0
         ? `<p class="loomos-muted">No cast evidence in this state.</p>`
-        : state.castMatrix.map((member) => `
-          <article class="loomos-card">
-            <div class="loomos-card-heading">
-              <div>
-                <span class="loomos-kicker">${escapeHtml(member.kind)}</span>
-                <strong>${escapeHtml(member.name)}${member.qty > 1 ? ` x${member.qty}` : ""}</strong>
-              </div>
-              <span class="loomos-badge">${escapeHtml(member.awareness)}</span>
-            </div>
-            <p>${escapeHtml(member.status)}</p>
-            <dl class="loomos-facts loomos-facts-tight">
-              <div><dt>Location</dt><dd>${escapeHtml(member.location)}</dd></div>
-              <div><dt>Intent</dt><dd>${escapeHtml(member.intent)}</dd></div>
-              <div><dt>Emotion</dt><dd>${escapeHtml(member.emotionalState)}</dd></div>
-              <div><dt>Threat</dt><dd>${escapeHtml(member.threat.pct)} | ${escapeHtml(member.threat.band)}</dd></div>
-              ${visible(settings, "castVisuals")
-                ? `<div><dt>Pose</dt><dd>${escapeHtml(member.pose)}</dd></div>
-                   <div><dt>Proximity</dt><dd>${escapeHtml(member.proximity)}</dd></div>
-                   <div><dt>Hands</dt><dd>${escapeHtml(member.hands)}</dd></div>
-                   <div><dt>Spotlight</dt><dd>${escapeHtml(member.spotlight.pct)} | ${escapeHtml(member.spotlight.trend)}</dd></div>`
-                : ""}
-            </dl>
-            ${visible(settings, "castVisuals") && member.visualAnchor
-              ? `<div class="loomos-note">${escapeHtml(member.visualAnchor)}</div>`
-              : ""}
-            ${visible(settings, "clothing") && member.clothingSummary
-              ? `<div class="loomos-subhead">Clothing</div><p>${escapeHtml(member.clothingSummary)}</p>`
-              : ""}
-            <div class="loomos-subhead">Goals</div>${chips(member.goals)}
-            ${visible(settings, "relationships")
-              ? `<div class="loomos-subhead">Relationships</div>${chips(member.relationships)}`
-              : ""}
-            ${visible(settings, "inventory")
-              ? `<div class="loomos-subhead">Inventory</div>${chips(member.pockets.map((item) =>
-                  `${item.name} x${item.qty}${item.known ? "" : " (unknown)"}`
-                ))}`
-              : ""}
-          </article>
-        `).join("")}
+        : state.castMatrix.map((member) => {
+            const hasExtra = member.pose || member.proximity || member.hands || member.visualAnchor || 
+                             (visible(settings, "clothing") && member.clothingSummary) || 
+                             member.goals.length > 0 || 
+                             (visible(settings, "relationships") && member.relationships.length > 0) || 
+                             (visible(settings, "inventory") && member.pockets.length > 0) || 
+                             member.stableFacts.length > 0;
+            return `
+              <article class="loomos-card">
+                <div class="loomos-card-heading">
+                  <div>
+                    <span class="loomos-kicker">${escapeHtml(member.kind)}</span>
+                    <strong>${escapeHtml(member.name)}${member.qty > 1 ? ` x${member.qty}` : ""}</strong>
+                  </div>
+                  <span class="loomos-badge">${escapeHtml(member.awareness)}</span>
+                </div>
+                <div class="loomos-chip-row" style="margin: 4px 0 8px;">
+                  <span class="loomos-chip">📍 ${escapeHtml(member.location)}</span>
+                  <span class="loomos-chip">🎭 ${escapeHtml(member.emotionalState)}</span>
+                  <span class="loomos-chip">⚠️ Threat: ${escapeHtml(member.threat.pct)} (${escapeHtml(member.threat.band)})</span>
+                </div>
+                <p><strong>Intent:</strong> ${escapeHtml(member.intent)}</p>
+                <p><strong>Status:</strong> ${escapeHtml(member.status)}</p>
+                
+                ${hasExtra ? `
+                  <details class="loomos-cast-extra">
+                    <summary>Visuals & Pockets</summary>
+                    <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
+                      ${member.pose ? `<p><strong>Pose:</strong> ${escapeHtml(member.pose)}</p>` : ""}
+                      ${member.proximity ? `<p><strong>Proximity:</strong> ${escapeHtml(member.proximity)}</p>` : ""}
+                      ${member.hands ? `<p><strong>Hands:</strong> ${escapeHtml(member.hands)}</p>` : ""}
+                      ${member.visualAnchor ? `<p><strong>Visual Anchor:</strong> ${escapeHtml(member.visualAnchor)}</p>` : ""}
+                      ${visible(settings, "clothing") && member.clothingSummary ? `<p><strong>Clothing:</strong> ${escapeHtml(member.clothingSummary)}</p>` : ""}
+                      ${member.goals.length > 0 ? `<div class="loomos-subhead">Goals</div>${chips(member.goals)}` : ""}
+                      ${visible(settings, "relationships") && member.relationships.length > 0 ? `<div class="loomos-subhead">Relationships</div>${chips(member.relationships)}` : ""}
+                      ${visible(settings, "inventory") && member.pockets.length > 0 ? `<div class="loomos-subhead">Pockets</div>${chips(member.pockets.map(item => `${item.name} x${item.qty}${item.known ? "" : " (unknown)"}`))} : ""` : ""}
+                      ${member.stableFacts.length > 0 ? `<div class="loomos-subhead">Stable Facts</div>${chips(member.stableFacts)}` : ""}
+                    </div>
+                  </details>
+                ` : ""}
+              </article>
+            `;
+          }).join("")}
     </div>
   `, true);
 }
@@ -239,34 +252,57 @@ function renderStory(state: LoomOSState): string {
 function renderContinuity(state: LoomOSState): string {
   const firewall = state.continuityFirewall;
   return section("continuity", "Continuity Firewall", `${firewall.risks.length} risks`, `
-    <div class="loomos-stat-grid">
-      <div><strong>${firewall.establishedFacts.length}</strong><span>facts</span></div>
-      <div><strong>${firewall.antiRetconAnchors.length}</strong><span>anchors</span></div>
-      <div><strong>${firewall.pendingConsequences.length}</strong><span>pending</span></div>
-      <div><strong>${firewall.offscreenState.length}</strong><span>offscreen</span></div>
-    </div>
     <div class="loomos-list">
       ${firewall.risks.length === 0
-        ? `<p class="loomos-muted">No continuity conflicts detected.</p>`
+        ? `<p class="loomos-muted" style="margin-bottom: 12px;">✅ No continuity conflicts detected.</p>`
         : firewall.risks.map((risk) => `
           <article class="loomos-row loomos-severity-${risk.severity}">
             <div class="loomos-row-title">
               <strong>${escapeHtml(risk.issue)}</strong>
-              <span>${escapeHtml(risk.severity)}</span>
+              <span class="loomos-badge loomos-badge-severity-${risk.severity}">${escapeHtml(risk.severity)}</span>
             </div>
             <p>${escapeHtml(risk.evidence)}</p>
             <small>Guardrail: ${escapeHtml(risk.recommendation)}</small>
           </article>
         `).join("")}
     </div>
-    <div class="loomos-two-column">
-      <div><div class="loomos-subhead">Anti-retcon anchors</div>${chips(firewall.antiRetconAnchors)}</div>
-      <div><div class="loomos-subhead">Pending consequences</div>${chips(firewall.pendingConsequences)}</div>
-      <div><div class="loomos-subhead">Banned next</div>${chips(firewall.bannedNext.map((item) =>
-        `${item.text}${item.persistent ? " (persistent)" : ""}`
-      ))}</div>
-      <div><div class="loomos-subhead">Impossible next</div>${chips(firewall.impossibleNext)}</div>
+    
+    <div class="loomos-stat-grid" style="margin-top: 10px;">
+      <div><strong>${firewall.establishedFacts.length}</strong><span>facts</span></div>
+      <div><strong>${firewall.antiRetconAnchors.length}</strong><span>anchors</span></div>
+      <div><strong>${firewall.pendingConsequences.length}</strong><span>pending</span></div>
+      <div><strong>${firewall.offscreenState.length}</strong><span>offscreen</span></div>
     </div>
+    
+    <details class="loomos-cast-extra" style="margin-top: 10px;">
+      <summary>Established Facts & Anchors</summary>
+      <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
+        <div class="loomos-subhead">Established Facts (${firewall.establishedFacts.length})</div>
+        ${chips(firewall.establishedFacts)}
+        <div class="loomos-subhead">Anti-retcon Anchors (${firewall.antiRetconAnchors.length})</div>
+        ${chips(firewall.antiRetconAnchors)}
+      </div>
+    </details>
+    
+    <details class="loomos-cast-extra" style="margin-top: 6px;">
+      <summary>Consequences & Offscreen State</summary>
+      <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
+        <div class="loomos-subhead">Pending Consequences (${firewall.pendingConsequences.length})</div>
+        ${chips(firewall.pendingConsequences)}
+        <div class="loomos-subhead">Offscreen State (${firewall.offscreenState.length})</div>
+        ${chips(firewall.offscreenState)}
+      </div>
+    </details>
+    
+    <details class="loomos-cast-extra" style="margin-top: 6px;">
+      <summary>Banned / Impossible Next</summary>
+      <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
+        <div class="loomos-subhead">Banned next moves</div>
+        ${chips(firewall.bannedNext.map((item) => `${item.text}${item.persistent ? " (persistent)" : ""}`))}
+        <div class="loomos-subhead">Impossible next moves</div>
+        ${chips(firewall.impossibleNext)}
+      </div>
+    </details>
   `, true);
 }
 
@@ -336,6 +372,120 @@ function renderAudit(state: LoomOSState): string {
   `);
 }
 
+function renderOverviewCard(state: LoomOSState, settings: LoomOSSettings): string {
+  const deltaHeadline = state.delta?.headline || "No major changes";
+  const location = state.kernel?.location || "Unknown location";
+  const time = state.kernel?.timeframe || state.kernel?.time || "Unknown time";
+  const activeCastCount = state.castMatrix?.filter(c => c.kind === "pov" || c.kind === "main" || c.kind === "npc").length ?? 0;
+  const threadCount = state.storyState?.threadLoom?.filter(t => t.status !== "resolved").length ?? 0;
+  const riskCount = state.continuityFirewall?.risks?.length ?? 0;
+  const injectionStatus = settings.injectionEnabled ? "Enabled" : "Disabled";
+
+  return `
+    <div class="loomos-shell loomos-overview-card">
+      <div class="loomos-kicker">Overview</div>
+      <div class="loomos-overview-headline">"${escapeHtml(deltaHeadline)}"</div>
+      <div class="loomos-overview-details">
+        <div><strong>Location:</strong> <span>${escapeHtml(location)} (${escapeHtml(time)})</span></div>
+        <div class="loomos-overview-stats">
+          <span>👥 ${activeCastCount} Cast</span>
+          <span>🧵 ${threadCount} Threads</span>
+          <span>⚠️ ${riskCount} Risks</span>
+          <span class="loomos-overview-inject-${settings.injectionEnabled ? "active" : "inactive"}">💉 Inject: ${injectionStatus}</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderCustomModules(state: LoomOSState, settings: LoomOSSettings): string[] {
+  const customMods = settings.customModules || [];
+  const results: string[] = [];
+
+  for (const cm of customMods) {
+    if (!cm.display) continue;
+    const compiled = state.customModuleData?.find(m => m.moduleId === cm.id);
+    if (!compiled) continue;
+
+    const itemCount = compiled.items?.length ?? 0;
+    let body = "";
+
+    if (itemCount === 0) {
+      body = `<p class="loomos-muted">No evidence compiled for this custom module.</p>`;
+    } else {
+      if (cm.outputMode === "bullets") {
+        body = `
+          <ul class="loomos-bullet-list">
+            ${compiled.items.map(it => `
+              <li>
+                <strong>${escapeHtml(it.title)}</strong>: ${escapeHtml(it.text)}
+                <span class="loomos-badge loomos-badge-severity-${it.importance}" style="font-size: 7px; vertical-align: middle; margin-left: 4px;">${it.importance}</span>
+              </li>
+            `).join("")}
+          </ul>
+        `;
+      } else if (cm.outputMode === "chips") {
+        body = `
+          <div class="loomos-chip-row" style="margin-top: 4px;">
+            ${compiled.items.map(it => `
+              <span class="loomos-chip" style="${it.color ? `border-color:${escapeHtml(it.color)}` : ""}">
+                <strong>${escapeHtml(it.title)}</strong>: ${escapeHtml(it.text)}
+                <span class="loomos-badge loomos-badge-severity-${it.importance}" style="font-size: 7px; margin-left: 2px;">${it.importance}</span>
+              </span>
+            `).join("")}
+          </div>
+        `;
+      } else if (cm.outputMode === "gauge") {
+        body = `
+          <div class="loomos-meter-grid">
+            ${compiled.items.map(it => {
+              const match = it.text.match(/(\d+)%/);
+              const pctValue = match ? Number(match[1]) : 50;
+              const colorStyle = it.color ? `background-color: ${escapeHtml(it.color)}` : "";
+              return `
+                <div class="loomos-meter">
+                  <div class="loomos-row-title">
+                    <strong>${escapeHtml(it.title)}</strong>
+                    <span>${escapeHtml(it.text)}</span>
+                  </div>
+                  <div class="loomos-meter-track"><i style="width:${pctValue}%; ${colorStyle}"></i></div>
+                  <small>Importance: <strong>${it.importance}</strong></small>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        `;
+      } else {
+        body = `
+          <div class="loomos-card-grid">
+            ${compiled.items.map(it => `
+              <div class="loomos-card" style="${it.color ? `border-left: 3px solid ${escapeHtml(it.color)}` : ""}">
+                <div class="loomos-card-heading">
+                  <strong>${escapeHtml(it.title)}</strong>
+                  <span class="loomos-badge loomos-badge-severity-${it.importance}">${it.importance}</span>
+                </div>
+                <p>${escapeHtml(it.text)}</p>
+              </div>
+            `).join("")}
+          </div>
+        `;
+      }
+    }
+
+    results.push(
+      section(
+        "cmod_" + cm.id,
+        cm.label,
+        compiled.summary || `${itemCount} items`,
+        body,
+        false
+      )
+    );
+  }
+
+  return results;
+}
+
 export function renderDashboard(
   state: LoomOSState,
   settings: LoomOSSettings,
@@ -351,9 +501,13 @@ export function renderDashboard(
     visible(settings, "storyThreads") ? renderStory(state) : "",
     visible(settings, "continuity") ? renderContinuity(state) : "",
     renderTools(state, settings),
+    ...renderCustomModules(state, settings),
     visible(settings, "auditLog") ? renderAudit(state) : "",
   ].filter(Boolean);
+
+  const overview = renderOverviewCard(state, settings);
+
   return sections.length > 0
-    ? `<div class="loomos-dashboard">${sections.join("")}</div>`
+    ? `<div class="loomos-dashboard">${overview}${sections.join("")}</div>`
     : `<div class="loomos-empty"><h3>All display modules are hidden</h3><p>Enable Display for one or more modules in the drawer settings. Stored state has not been deleted.</p></div>`;
 }

@@ -93,6 +93,17 @@ export function buildStateSeedForCompiler(
           items: modules.inventory.track ? state.scene.items.slice(0, 6) : undefined,
         }
       : undefined,
+    custom: (state.customModuleData || [])
+      .filter((m) => settings.customModules?.find(cm => cm.id === m.moduleId && cm.enabled))
+      .map((m) => ({
+        id: m.moduleId,
+        summary: compactText(m.summary),
+        items: m.items.slice(0, 4).map((it) => ({
+          title: it.title,
+          text: compactText(it.text),
+          importance: it.importance
+        }))
+      }))
   };
   return trimJsonToBudget(seed, settings.compilerSeedTokenBudget);
 }

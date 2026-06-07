@@ -7,6 +7,10 @@ import type {
   LoomOSSkinSchema,
   LoomOSStateSchema,
   StateIdentitySchema,
+  CustomModuleSchema,
+  CustomModulePresetSchema,
+  CustomModuleItemSchema,
+  CustomModuleDataSchema,
 } from "./schemas";
 export type {
   ModuleControl,
@@ -21,6 +25,10 @@ export type StateIdentity = z.infer<typeof StateIdentitySchema>;
 export type LoomOSCompiledState = z.infer<typeof LoomOSCompiledStateSchema>;
 export type LoomOSState = z.infer<typeof LoomOSStateSchema>;
 export type LegacyLoomOSState = z.infer<typeof LegacyLoomOSStateSchema>;
+export type CustomModule = z.infer<typeof CustomModuleSchema>;
+export type CustomModulePreset = z.infer<typeof CustomModulePresetSchema>;
+export type CustomModuleItem = z.infer<typeof CustomModuleItemSchema>;
+export type CustomModuleData = z.infer<typeof CustomModuleDataSchema>;
 
 export interface PermissionSnapshot {
   generation: boolean;

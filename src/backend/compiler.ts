@@ -28,6 +28,7 @@ export interface CompileRequest {
   seedState: LoomOSState | null;
   seedText: string;
   enabledModules: ModuleKey[];
+  customModules?: any[];
   connectionId: string;
   signal: AbortSignal;
   generate: GenerateCompilerOutput;
@@ -107,7 +108,7 @@ export async function compileStateWithRepair(
 ): Promise<CompileResult> {
   request.onPhase?.("building_prompt", 1, "Building the enabled-module compiler prompt.");
   const firstMessages: LlmMessageDTO[] = [
-    { role: "system", content: buildStateCompilerPrompt(request.enabledModules) },
+    { role: "system", content: buildStateCompilerPrompt(request.enabledModules, request.customModules) },
     { role: "user", content: compilerUserMessage(request) },
   ];
 
@@ -125,7 +126,7 @@ export async function compileStateWithRepair(
     const repairMessages: LlmMessageDTO[] = [
       {
         role: "system",
-        content: `${STATE_REPAIR_PROMPT}\n\n${buildStateCompilerPrompt(request.enabledModules)}`,
+        content: `${STATE_REPAIR_PROMPT}\n\n${buildStateCompilerPrompt(request.enabledModules, request.customModules)}`,
       },
       {
         role: "user",

@@ -128,11 +128,48 @@ For disabled optional modules: meters=[], scene=null, worldState=null, the
 corresponding tools member=null, and auditLog=[]. Empty optional arrays inside an
 enabled object are valid. Do not emit example rows when there is no evidence.`;
 
-export function buildStateCompilerPrompt(enabledModules: ModuleKey[]): string {
+export function buildStateCompilerPrompt(enabledModules: ModuleKey[], customModules?: any[]): string {
   const enabled = MODULE_CATALOG
     .filter((module) => enabledModules.includes(module.key))
     .map((module) => `- ${module.key}: ${module.description}`)
     .join("\n");
+
+  const enabledCustom = (customModules || [])
+    .filter((m) => m.enabled)
+    .map((m) => `- customModuleData[moduleId=${m.id}] (${m.label}): ${m.compilerInstruction} (maxItems: ${m.maxItems || 6})`)
+    .join("\n");
+
+  const trackingText = enabled + (enabledCustom ? "\n\nEnabled custom tracking modules:\n" + enabledCustom : "");
+
+  let customContract = "";
+  let customShape = "";
+  if (customModules && customModules.some((m) => m.enabled)) {
+    customContract = `
+- customModuleData: Array of compiled custom modules. For each enabled custom module, append an entry with the exact moduleId, label, a turn summary, and an array of items (up to its maxItems limit) containing title, text, importance (low/medium/high/critical), and optional color.`;
+    
+    customShape = `,
+  "customModuleData": [
+    {
+      "moduleId": "custom_module_id",
+      "label": "Custom Module Label",
+      "summary": "Turn summary",
+      "items": [
+        {
+          "title": "Item title",
+          "text": "Item text description",
+          "importance": "medium",
+          "color": "#ff0000"
+        }
+      ]
+    }
+  ]`;
+  }
+
+  const coreContractWithCustom = CORE_CONTRACT + customContract;
+  
+  // Insert customShape before the closing brace in STATE_SHAPE_GUIDE
+  const closingBraceIdx = STATE_SHAPE_GUIDE.lastIndexOf("}");
+  const shapeGuideWithCustom = STATE_SHAPE_GUIDE.substring(0, closingBraceIdx) + customShape + "\n}";
 
   return `You are LoomOS, a strict story-state compiler.
 
@@ -141,11 +178,11 @@ Do not continue the story. Do not roleplay. Do not address the user.
 Return exactly one JSON object with no Markdown fences or commentary.
 
 Enabled tracking modules:
-${enabled}
+${trackingText}
 
-${CORE_CONTRACT}
+${coreContractWithCustom}
 
-${STATE_SHAPE_GUIDE}
+${shapeGuideWithCustom}
 
 Rules:
 - Ground every claim in the transcript or previous seed.

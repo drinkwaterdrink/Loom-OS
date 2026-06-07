@@ -23,13 +23,7 @@ export const AutoGenerationModeSchema = z.enum([
   "manual",
 ]);
 
-export const ModulePresetSchema = z.enum([
-  "lite",
-  "balanced",
-  "full",
-  "experimental",
-  "custom",
-]);
+export const ModulePresetSchema = z.string();
 
 export const ModuleKeySchema = z.enum(MODULE_KEYS);
 export const ModuleControlSchema = z.object({
@@ -44,6 +38,28 @@ const ModuleSettingsSchema = z.object(
   ) as Record<typeof MODULE_KEYS[number], typeof ModuleControlSchema>,
 ).strict();
 
+export const CustomModulePresetSchema = z.object({
+  id: z.string().min(1).max(160),
+  name: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(500).default(""),
+  createdAt: z.string().datetime().default(() => new Date().toISOString()),
+  updatedAt: z.string().datetime().default(() => new Date().toISOString()),
+  moduleSettings: ModuleSettingsSchema,
+}).strict();
+
+export const CustomModuleSchema = z.object({
+  id: z.string().min(1).max(160),
+  label: z.string().trim().min(1).max(160),
+  group: z.string().trim().min(1).max(160).default("Custom"),
+  description: z.string().trim().max(500).default(""),
+  enabled: z.boolean().default(true),
+  display: z.boolean().default(true),
+  inject: z.boolean().default(true),
+  compilerInstruction: z.string().trim().max(1600),
+  outputMode: z.enum(["cards", "bullets", "chips", "gauge"]).default("cards"),
+  maxItems: z.number().int().min(1).max(24).default(6),
+}).strict();
+
 const RawSettingsSchema = z.object({
   schemaVersion: z.literal(2).default(2),
   skin: LoomOSSkinSchema.default("auto"),
@@ -56,6 +72,8 @@ const RawSettingsSchema = z.object({
   connectionId: z.string().trim().max(200).default(""),
   modulePreset: ModulePresetSchema.default("balanced"),
   moduleSettings: ModuleSettingsSchema.default(BALANCED_MODULE_SETTINGS),
+  customModulePresets: z.array(CustomModulePresetSchema).default([]),
+  customModules: z.array(CustomModuleSchema).default([]),
 }).strict();
 
 function settingsInput(value: unknown): unknown {
@@ -98,6 +116,8 @@ function settingsInput(value: unknown): unknown {
     connectionId: source.connectionId,
     modulePreset: source.modulePreset,
     moduleSettings,
+    customModulePresets: source.customModulePresets,
+    customModules: source.customModules,
   };
 }
 
@@ -375,6 +395,20 @@ export const AuditEntrySchema = z.object({
   notes: MediumText,
 }).strict();
 
+export const CustomModuleItemSchema = z.object({
+  title: ShortText,
+  text: MediumText,
+  importance: z.enum(["low", "medium", "high", "critical"]),
+  color: ColorText.optional(),
+}).strict();
+
+export const CustomModuleDataSchema = z.object({
+  moduleId: z.string().min(1).max(160),
+  label: ShortText,
+  summary: MediumText.default(""),
+  items: z.array(CustomModuleItemSchema).max(24).default([]),
+}).strict();
+
 export const LoomOSCompiledStateSchema = z.object({
   activeModules: z.array(ModuleKeySchema).max(MODULE_KEYS.length),
   kernel: KernelSchema,
@@ -393,6 +427,7 @@ export const LoomOSCompiledStateSchema = z.object({
     imagePrompt: null,
   }),
   auditLog: z.array(AuditEntrySchema).max(12).default([]),
+  customModuleData: z.array(CustomModuleDataSchema).default([]),
 }).strict();
 
 export const LoomOSStateSchema = LoomOSCompiledStateSchema.extend({

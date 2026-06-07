@@ -23,6 +23,7 @@ import {
 } from "./shared/schemas";
 import { buildStateSeedForCompiler } from "./shared/seed";
 import {
+  encodeStorageSegment,
   messageStatePrefix,
   SETTINGS_PATH,
   stateStoragePath,
@@ -194,6 +195,32 @@ async function invalidateMessageStates(
 ): Promise<void> {
   const paths = await spindle.userStorage.list(messageStatePrefix(chatId, messageId), userId);
   await Promise.all(paths.map((path) => spindle.userStorage.delete(path, userId)));
+}
+
+async function listChatStates(
+  chatId: string,
+  userId: string,
+): Promise<Array<{ messageId: string; swipeId: number }>> {
+  const prefix = `chats/${encodeStorageSegment(chatId)}/messages`;
+  try {
+    const files = await spindle.userStorage.list(prefix, userId);
+    const results: Array<{ messageId: string; swipeId: number }> = [];
+    for (const file of files) {
+      const parts = file.split("/");
+      if (parts.length >= 6 && parts[4] === "swipes" && parts[5]?.endsWith(".json")) {
+        const messageId = decodeURIComponent(parts[3]!);
+        const swipeIdStr = parts[5].replace(".json", "");
+        const swipeId = parseInt(swipeIdStr, 10);
+        if (messageId && !isNaN(swipeId)) {
+          results.push({ messageId, swipeId });
+        }
+      }
+    }
+    return results;
+  } catch (error) {
+    spindle.log.warn(`LoomOS could not list chat states: ${errorMessage(error)}`);
+    return [];
+  }
 }
 
 async function sendExactState(
@@ -396,6 +423,7 @@ async function generateState(
       seedState: seed.state,
       seedText: seed.text,
       enabledModules,
+      customModules: settings.customModules,
       connectionId: connection.id,
       signal: controller.signal,
       onPhase: progress,
@@ -553,6 +581,11 @@ async function handleFrontendRequest(payload: unknown, userId: string): Promise<
       case "refresh_permissions":
         send({ type: "permissions", requestId, permissions: permissionSnapshot() }, userId);
         return;
+      case "get_chat_states": {
+        const states = await listChatStates(request.chatId, userId);
+        send({ type: "chat_states", requestId, chatId: request.chatId, states }, userId);
+        return;
+      }
     }
   } catch (error) {
     send({ type: "error", requestId, message: errorMessage(error) }, userId);

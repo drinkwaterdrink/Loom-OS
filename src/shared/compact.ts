@@ -99,6 +99,22 @@ export async function buildCompactInjection(
       .map((risk) => `risk.${risk.severity}: ${xmlEscape(risk.issue)}`));
   }
 
+  // Inject enabled custom modules
+  const enabledCustomMods = settings.customModules || [];
+  for (const cm of enabledCustomMods) {
+    if (cm.enabled && cm.inject) {
+      const compiled = state.customModuleData?.find((m) => m.moduleId === cm.id);
+      if (compiled && compiled.items.length > 0) {
+        fragments.push(
+          `cmod.${xmlEscape(cm.label, 80)}: ${xmlEscape(compiled.summary)}`,
+          ...compiled.items.slice(0, 3).map((it) =>
+            `item.${xmlEscape(cm.label, 60)}: ${xmlEscape(it.title)} - ${xmlEscape(it.text)}`
+          )
+        );
+      }
+    }
+  }
+
   const selected: string[] = [];
   for (const fragment of fragments.filter((item) => !item.endsWith(": "))) {
     const candidate = `${open}\n${[...selected, fragment].join("\n")}\n${close}`;
