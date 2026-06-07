@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LoomOS Frontend Preview</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --lumiverse-text: #f1f4f8;
+        --lumiverse-text-muted: #a6afbf;
+        --lumiverse-text-dim: #7f899b;
+        --lumiverse-fill: #171c25;
+        --lumiverse-fill-subtle: #111620;
+        --lumiverse-border: #303849;
+        --lumiverse-border-hover: #536077;
+        --lumiverse-accent: #6c72ff;
+        --lumiverse-accent-fg: #fff;
+        --lumiverse-radius: 10px;
+      }
+      * { box-sizing: border-box; }
+      body {
+        background: #090d14;
+        color: var(--lumiverse-text);
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        margin: 0;
+        min-height: 100vh;
+      }
+      .mock-app {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(320px, 440px);
+        min-height: 100vh;
+      }
+      .mock-chat { display: grid; align-content: end; gap: 12px; min-width: 0; padding: 24px; }
+      .mock-message {
+        background: #151b26;
+        border: 1px solid var(--lumiverse-border);
+        border-radius: 16px;
+        justify-self: start;
+        max-width: 720px;
+        padding: 14px 16px;
+      }
+      .mock-message p { margin: 0; }
+      .mock-message-widget { margin-top: 8px; }
+      .mock-drawer {
+        background: #0d121b;
+        border-left: 1px solid var(--lumiverse-border);
+        max-height: 100vh;
+        overflow: auto;
+      }
+      .mock-input { align-items: center; display: flex; gap: 8px; }
+      .mock-input input {
+        background: #111620;
+        border: 1px solid var(--lumiverse-border);
+        border-radius: 10px;
+        color: white;
+        flex: 1;
+        min-height: 42px;
+        padding: 8px 12px;
+      }
+      .mock-action {
+        background: var(--lumiverse-accent);
+        border: 0;
+        border-radius: 10px;
+        color: white;
+        min-height: 42px;
+        padding: 0 12px;
+      }
+      @media (max-width: 760px) {
+        .mock-app { grid-template-columns: 1fr; }
+        .mock-chat { display: none; }
+        .mock-drawer { border-left: 0; max-height: none; min-height: 100vh; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="mock-app">
+      <section class="mock-chat">
+        <div class="mock-message" data-message-id="message-preview">
+          <p>The observatory doors shudder as the guards reach the landing below.</p>
+          <div id="message-widget" class="mock-message-widget"></div>
+        </div>
+        <div class="mock-input">
+          <input aria-label="Message" placeholder="Write a reply...">
+          <button id="input-actions" class="mock-action" type="button">Open LoomOS</button>
+        </div>
+      </section>
+      <aside id="drawer" class="mock-drawer"></aside>
+    </main>
+    <script type="module" src="./mock-host.mjs"></script>
+  </body>
+</html>

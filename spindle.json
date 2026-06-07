@@ -1,0 +1,17 @@
+{
+  "version": "0.1.0",
+  "name": "LoomOS Command Deck",
+  "identifier": "loomos_command_deck",
+  "author": "tjo626262",
+  "github": "https://github.com/drinkwaterdrink/Loom-OS",
+  "homepage": "https://github.com/drinkwaterdrink/Loom-OS",
+  "description": "A visual story operating system with swipe-specific state, compact prompt injection, and continuity dashboards.",
+  "permissions": [
+    "generation",
+    "interceptor",
+    "chat_mutation"
+  ],
+  "entry_backend": "dist/backend.js",
+  "entry_frontend": "dist/frontend.js",
+  "interceptorTimeoutMs": 10000
+}
