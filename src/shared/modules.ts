@@ -258,6 +258,27 @@ export interface StockModuleOverride {
 
 export type StockModuleOverrides = Partial<Record<ModuleKey, StockModuleOverride>>;
 
+export const MODULE_SCHEMA_STRUCTURES: Record<ModuleKey, string> = {
+  sceneKernel: "kernel.scene, kernel.location, kernel.timeframe, kernel.date, kernel.time, kernel.elapsed, kernel.weather, kernel.pov, kernel.tone, kernel.topic, kernel.theme, kernel.objective, kernel.summary, kernel.currentFocus, kernel.nextFocus, kernel.currentRisk, kernel.stopMode, kernel.stopWhy, kernel.constraints[]",
+  deltas: "delta.headline, delta.changedModules[], delta.changes[{text, age, module, importance}], delta.carriedForward[], delta.newlyEstablished[]",
+  meters: "meters[{id(tension|danger|socialHeat|coherence|hiddenInfo|omen), label, value 0-100, pct, band, color, trend(down|steady|up|unknown), note}]",
+  castCore: "castMatrix[{id, name, kind(pov|main|npc|crowd|background), qty, role, location, status, awareness(none|ambient|watching|alerted|hostile), threat{value 0-10, pct, band, color, note}, spotlight{value 0-100, pct, band, color, trend, note}, appearance{}, clothing{}, currentState{}, goals[], stableFacts[], pockets[], relationships[], leverage[], changed, changeNote, continuity{}}]",
+  castVisuals: "castMatrix[].currentState{pose, proximity, leftHand, rightHand, emotion, intent, physicalTell, injury}, castMatrix[].spotlight, castMatrix[].visualAnchor",
+  clothing: "castMatrix[].clothing{summary, silhouette, palette, fabric, fit, condition, notable, layerCount, layers[{slot(outer|upper|lower|feet|accessory|other), text, state, color}]}",
+  relationships: "castMatrix[].relSummary, castMatrix[].relationships[{target, axis, value -100..100, pct, label, color, trend, evidence}]",
+  inventory: "castMatrix[].pockets[{name, type(consumable|concealed|tool|key|evidence|misc), qty, condition, known, color, changed, changeNote}]",
+  worldSpace: "scene{privacy, observerCount, observerPressure{}, crowdNoise, crowdFlow, light{primary, secondary, quality, color}, spatial[], access{exit, lineOfSight, noiseMask, items[], people[]}, carryover{body[], room[], social[]}, items[{name, owner, location, condition, lastTouch, importance}]}",
+  storyThreads: "storyState{goals[{who, goal, status(ACTIVE|BLOCKED|PROGRESSED|RESOLVED), note}], conflicts[{a, b, label, severity 1-3}], threadLoom[{title, status, urgency 0-5, priority, progress 0-10, pct, color, label, summary, nextPressure, participants[]}], stakes[{who, win, lose}], countdowns[{title, left, unit, pct, color}], spotlightQueue[{name, turnsSince, pct, color, need, reason}], autonomyQueue[{who, action, unlessInterruptedBy}]}",
+  continuity: "continuityFirewall{establishedFacts[], antiRetconAnchors[], pendingConsequences[{cause, pending, trigger, urgency 0-10, pct, status(PENDING|ACTIVE|FIRED|RESOLVED|DORMANT), evidence, changed, changeNote}], offscreenState[], bannedNext[{text, reason, scope(turn|scene|persistent), color, source(user|system|compiler)}], impossibleNext[], risks[{severity, issue, evidence, recommendation}], terms[{party, term, risk, status, binding, evidence, changed}]}",
+  secretsRumors: "worldState.rumors[{rumor, source, credibility 0-10, pct, color}], worldState.secrets[{secret, visibleHint, knownBy[]}], worldState.loadedSigns[{thing, plantedBy, payoffWhen, state(LOADED|HEATING|FIRED|DORMANT), evidence, payoffHint, changed}]",
+  actionResolver: "tools.actionResolver{userAction, worldResponse, risk, blockers[]}",
+  dialogueState: "tools.dialogueState{openThread, socialMask, levers[], taboos[]}",
+  directorStyle: "tools.directorStyle{primary, mask, push, voiceCues[]}",
+  closenessState: "tools.closenessState{emotional, physical, consentSignals[], boundaries[]}",
+  imagePrompt: "tools.imagePrompt{aspect, shot, medium, subject, positive, negative, full, hint}",
+  auditLog: "auditLog[{system, marker, result, repaired, notes}]",
+};
+
 export function trackedModuleKeys(
   settings: { moduleSettings: Record<ModuleKey, ModuleControl> },
 ): ModuleKey[] {

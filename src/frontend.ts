@@ -6,8 +6,10 @@ import {
   CORE_TRACKING_MODULES,
   MODULE_CATALOG,
   MODULE_KEYS,
+  MODULE_SCHEMA_STRUCTURES,
   moduleSettingsForPreset,
   BALANCED_MODULE_SETTINGS,
+  type StockModuleOverride,
 } from "./shared/modules";
 import type {
   BackendResponse,
@@ -667,6 +669,29 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     `;
   }
 
+  function stockModuleLabel(key: string): string {
+    const override = settings.stockModuleOverrides?.[key];
+    if (override?.label) return override.label;
+    return MODULE_CATALOG.find((m) => m.key === key)?.label ?? key;
+  }
+
+  function stockModuleGroup(key: string): string {
+    const override = settings.stockModuleOverrides?.[key];
+    if (override?.group) return override.group;
+    return MODULE_CATALOG.find((m) => m.key === key)?.group ?? "";
+  }
+
+  function stockModuleDescription(key: string): string {
+    const override = settings.stockModuleOverrides?.[key];
+    if (override?.description) return override.description;
+    return MODULE_CATALOG.find((m) => m.key === key)?.description ?? "";
+  }
+
+  function hasOverride(key: string): boolean {
+    const ov = settings.stockModuleOverrides?.[key];
+    return ov !== undefined && Object.keys(ov).length > 0;
+  }
+
   function renderModuleMatrix(): string {
     const query = tab.root.querySelector<HTMLInputElement>("[data-module-search]")?.value.trim().toLowerCase() ?? "";
     
@@ -674,28 +699,38 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       const control = settings.moduleSettings[m.key];
       const isCore = CORE_TRACKING_MODULES.has(m.key);
       const isExperimental = ["dialogueState", "directorStyle", "closenessState", "imagePrompt"].includes(m.key);
+      const overridden = hasOverride(m.key);
       
       let pills = "";
       if (isCore) pills += `<span class="loomos-pill pill-core">Core</span>`;
       if (isExperimental) pills += `<span class="loomos-pill pill-experimental">Experimental</span>`;
       if (control.inject) pills += `<span class="loomos-pill pill-injected">Injected</span>`;
       if (!control.display) pills += `<span class="loomos-pill pill-hidden">Hidden</span>`;
+      if (overridden) pills += `<span class="loomos-pill pill-overridden">Overridden</span>`;
       
-      const searchText = `${m.label} ${m.group} ${m.description}`.toLowerCase();
+      const effectiveLabel = stockModuleLabel(m.key);
+      const effectiveGroup = stockModuleGroup(m.key);
+      const effectiveDesc = stockModuleDescription(m.key);
+      const searchText = `${effectiveLabel} ${effectiveGroup} ${effectiveDesc} ${m.key}`.toLowerCase();
       const visible = !query || searchText.includes(query);
+
+      const stockEntry = settings.stockModuleOverrides?.[m.key];
+      const hidden = stockEntry?.hiddenFromSettings === true;
+      if (hidden) return { key: m.key, label: effectiveLabel, group: effectiveGroup, description: effectiveDesc, control, isCore, pills, visible: false, isCustom: false, hidden: true };
 
       return {
         key: m.key,
-        label: m.label,
-        group: m.group,
-        description: m.description,
+        label: effectiveLabel,
+        group: effectiveGroup,
+        description: effectiveDesc,
         control,
         isCore,
         pills,
         visible,
-        isCustom: false
+        isCustom: false,
+        hidden: false,
       };
-    });
+    }).filter((m) => !m.hidden);
 
     const customModules = (settings.customModules || []).map((m) => {
       const pills = `<span class="loomos-pill pill-custom">Custom</span>` + 
@@ -783,14 +818,20 @@ export function setup(ctx: SpindleFrontendContext): () => void {
                 `;
               }
 
+              const overridden = hasOverride(m.key);
               return `
-                <div class="loomos-module-card" data-module-row="${escapeHtml(m.key)}" data-search="${escapeHtml((m.label + " " + m.group + " " + m.description).toLowerCase())}">
+                <div class="loomos-module-card" data-module-row="${escapeHtml(m.key)}" data-search="${escapeHtml((m.key + " " + m.label + " " + m.group + " " + m.description).toLowerCase())}">
                   <div class="loomos-module-info">
                     <div class="loomos-module-title-row">
                       <strong>${escapeHtml(m.label)}</strong>
                       <div class="loomos-pills">${m.pills}</div>
                     </div>
                     <small>${escapeHtml(m.description)}</small>
+                    <div class="loomos-stock-actions" style="margin-top: 6px; display: flex; gap: 6px;">
+                      <button type="button" class="loomos-link-btn" data-stock-action="inspect" data-stock-key="${escapeHtml(m.key)}">Inspect</button>
+                      <button type="button" class="loomos-link-btn" data-stock-action="edit" data-stock-key="${escapeHtml(m.key)}">Edit</button>
+                      ${overridden ? `<button type="button" class="loomos-link-btn loomos-link-btn-danger" data-stock-action="reset" data-stock-key="${escapeHtml(m.key)}">Reset</button>` : ""}
+                    </div>
                   </div>
                   <div class="loomos-module-toggles">
                     <label class="loomos-toggle-target" title="${m.isCore ? "Core tracking is always enabled" : "Include in compiler output"}">
@@ -827,6 +868,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           <button type="button" class="loomos-button loomos-btn-sm" data-bulk-action="disable-display">Hide Matching</button>
           <button type="button" class="loomos-button loomos-btn-sm" data-bulk-action="inject-recommended">Inject Recommended</button>
           <button type="button" class="loomos-button loomos-btn-sm" data-bulk-action="reset-presets">Reset Preset</button>
+          ${Object.keys(settings.stockModuleOverrides || {}).length > 0 ? `<button type="button" class="loomos-button loomos-btn-sm" data-bulk-action="reset-all-overrides">Reset All Overrides</button>` : ""}
         </div>
         <div class="loomos-module-groups">
           ${groupsHtml || `<div class="loomos-empty-search" style="padding: 15px; text-align: center; color: var(--loomos-muted);">No matching modules found.</div>`}
@@ -1492,6 +1534,164 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     }
   }
 
+  function handleStockModuleAction(action: string, moduleKey: string): void {
+    if (action === "inspect") {
+      const entry = MODULE_CATALOG.find((m) => m.key === moduleKey);
+      if (!entry) return;
+      const ov = settings.stockModuleOverrides?.[moduleKey];
+      const schemaStructure = MODULE_SCHEMA_STRUCTURES[moduleKey as keyof typeof MODULE_SCHEMA_STRUCTURES] || "No structure summary available.";
+      const html = `
+        <div class="loomos-root loomos-prompt-dialog" data-skin="${settings.skin}">
+          <details class="loomos-cast-extra" open>
+            <summary>Module Info</summary>
+            <div class="loomos-cast-extra-body" style="display:grid;gap:4px;font-size:11px;">
+              <p><strong>Key:</strong> <code>${escapeHtml(entry.key)}</code></p>
+              <p><strong>Stock Label:</strong> ${escapeHtml(entry.label)}</p>
+              <p><strong>Effective Label:</strong> ${escapeHtml(ov?.label || entry.label)}</p>
+              <p><strong>Group:</strong> ${escapeHtml(ov?.group || entry.group)}</p>
+              <p><strong>Core:</strong> ${entry.core ? "Yes (locked)" : "No"}</p>
+              <p><strong>Default Track:</strong> ${BALANCED_MODULE_SETTINGS[entry.key].track} / <strong>Default Display:</strong> ${BALANCED_MODULE_SETTINGS[entry.key].display} / <strong>Default Inject:</strong> ${BALANCED_MODULE_SETTINGS[entry.key].inject}</p>
+              <p><strong>Current Track:</strong> ${settings.moduleSettings[entry.key].track} / <strong>Current Display:</strong> ${settings.moduleSettings[entry.key].display} / <strong>Current Inject:</strong> ${settings.moduleSettings[entry.key].inject}</p>
+              <p><strong>Intensity:</strong> ${ov?.intensityLabel || entry.intensity}</p>
+              ${ov ? `<p><strong style="color:#d58a42;">Overridden fields:</strong> ${Object.keys(ov).join(", ")}</p>` : ""}
+            </div>
+          </details>
+          <details class="loomos-cast-extra">
+            <summary>Stock Description</summary>
+            <div class="loomos-cast-extra-body" style="font-size:11px;"><p>${escapeHtml(entry.description)}</p></div>
+          </details>
+          ${ov?.description ? `<details class="loomos-cast-extra"><summary>Override Description</summary><div class="loomos-cast-extra-body" style="font-size:11px;"><p>${escapeHtml(ov.description)}</p></div></details>` : ""}
+          <details class="loomos-cast-extra">
+            <summary>Schema / Structure</summary>
+            <div class="loomos-cast-extra-body" style="font-size:11px;">
+              <pre style="background:var(--loomos-bg);padding:8px;border-radius:6px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;max-width:100%;font-size:10px;line-height:1.45;">${escapeHtml(schemaStructure)}</pre>
+              <button type="button" class="loomos-button loomos-btn-sm" data-action="copy-schema" data-copy="${escapeHtml(schemaStructure)}" style="margin-top:6px;">Copy Structure</button>
+            </div>
+          </details>
+          <details class="loomos-cast-extra">
+            <summary>Compiler Instruction</summary>
+            <div class="loomos-cast-extra-body" style="font-size:11px;"><p>${escapeHtml(entry.compilerInstruction)}</p>
+            ${ov?.compilerGuidanceAddendum ? `<p><strong>Override addendum:</strong> ${escapeHtml(ov.compilerGuidanceAddendum)}</p>` : ""}</div>
+          </details>
+          <details class="loomos-cast-extra">
+            <summary>Injection Behavior</summary>
+            <div class="loomos-cast-extra-body" style="font-size:11px;"><p>${escapeHtml(entry.injectionBehavior)}</p>
+            ${ov?.injectionPriority ? `<p><strong>Override injection priority:</strong> ${ov.injectionPriority}</p>` : ""}</div>
+          </details>
+          <details class="loomos-cast-extra">
+            <summary>Render Behavior</summary>
+            <div class="loomos-cast-extra-body" style="font-size:11px;"><p>${escapeHtml(entry.renderBehavior)}</p>
+            ${ov?.renderHint ? `<p><strong>Override render hint:</strong> ${escapeHtml(ov.renderHint)}</p>` : ""}</div>
+          </details>
+          <div class="loomos-dialog-buttons">
+            <button type="button" class="loomos-button loomos-button-primary" data-action="close-inspect">Close</button>
+          </div>
+        </div>
+      `;
+      const im = ctx.ui.showModal({ title: `Inspect: ${ov?.label || entry.label}`, width: Math.min(700, window.innerWidth - 16), maxHeight: Math.min(700, window.innerHeight - 32) });
+      im.root.className = "loomos-root";
+      im.root.innerHTML = html;
+      im.root.querySelector("[data-action='close-inspect']")?.addEventListener("click", () => im.dismiss());
+      im.root.querySelector("[data-action='copy-schema']")?.addEventListener("click", async (e) => {
+        const btn = e.currentTarget as HTMLElement;
+        const text = btn?.dataset.copy || "";
+        try {
+          await navigator.clipboard.writeText(text);
+          btn.textContent = "Copied!";
+          setTimeout(() => { btn.textContent = "Copy Structure"; }, 2000);
+        } catch {
+          btn.textContent = "Copy failed";
+        }
+      });
+      const dismiss = im.onDismiss(() => { dismiss(); });
+      return;
+    }
+
+    if (action === "edit") {
+      const entry = MODULE_CATALOG.find((m) => m.key === moduleKey);
+      if (!entry) return;
+      const ov = settings.stockModuleOverrides?.[moduleKey];
+
+      const em = ctx.ui.showModal({ title: `Edit Override: ${ov?.label || entry.label}`, width: Math.min(600, window.innerWidth - 16), maxHeight: Math.min(650, window.innerHeight - 32) });
+      em.root.className = "loomos-root";
+      em.root.innerHTML = `
+        <div class="loomos-prompt-dialog" data-skin="${settings.skin}">
+          <label class="loomos-field"><span>Label override</span><input class="loomos-input" type="text" id="sm-label" value="${escapeHtml(ov?.label || "")}" placeholder="${escapeHtml(entry.label)}"></label>
+          <label class="loomos-field"><span>Group override</span><input class="loomos-input" type="text" id="sm-group" value="${escapeHtml(ov?.group || "")}" placeholder="${escapeHtml(entry.group)}"></label>
+          <label class="loomos-field"><span>Description override</span><input class="loomos-input" type="text" id="sm-desc" value="${escapeHtml(ov?.description || "")}" placeholder="${escapeHtml(entry.description)}"></label>
+          <label class="loomos-field"><span>Icon/Emoji</span><input class="loomos-input" type="text" id="sm-icon" value="${escapeHtml(ov?.icon || "")}" placeholder="e.g. 🎭" maxlength="20"></label>
+          <label class="loomos-field"><span>Display order</span><input class="loomos-input" type="number" id="sm-order" value="${ov?.displayOrder ?? ""}" placeholder="Auto"></label>
+          <label class="loomos-field"><span>Intensity label</span><input class="loomos-input" type="text" id="sm-intensity" value="${escapeHtml(ov?.intensityLabel || "")}" placeholder="${escapeHtml(entry.intensity)}"></label>
+          <label class="loomos-field"><span>Compiler guidance addendum</span><textarea class="loomos-input" id="sm-addendum" style="height:60px;" placeholder="Extra compiler instruction for this module">${escapeHtml(ov?.compilerGuidanceAddendum || "")}</textarea></label>
+          <label class="loomos-field"><span>Injection priority (higher = injected first)</span><input class="loomos-input" type="number" id="sm-priority" value="${ov?.injectionPriority ?? ""}" placeholder="Auto"></label>
+          <label class="loomos-field"><span>Render hint</span><input class="loomos-input" type="text" id="sm-render-hint" value="${escapeHtml(ov?.renderHint || "")}" placeholder="Custom render behavior hint"></label>
+          <label class="loomos-check" style="margin-top:4px;"><input type="checkbox" id="sm-hidden"${checked(ov?.hiddenFromSettings === true)}><span>Hidden from settings</span></label>
+          <label class="loomos-check"><input type="checkbox" id="sm-def-display"${checked(ov?.defaultDisplay === true)}><span>Default display enabled</span></label>
+          <label class="loomos-check"><input type="checkbox" id="sm-def-inject"${checked(ov?.defaultInject === true)}><span>Default inject enabled</span></label>
+          <div class="loomos-dialog-buttons">
+            <button type="button" class="loomos-button loomos-button-primary" id="sm-save">Save Override</button>
+            <button type="button" class="loomos-button" id="sm-cancel">Cancel</button>
+          </div>
+        </div>
+      `;
+
+      em.root.querySelector("#sm-save")?.addEventListener("click", () => {
+        const override: StockModuleOverride = {};
+        const label = em.root.querySelector<HTMLInputElement>("#sm-label")?.value.trim();
+        if (label) override.label = label;
+        const group = em.root.querySelector<HTMLInputElement>("#sm-group")?.value.trim();
+        if (group) override.group = group;
+        const desc = em.root.querySelector<HTMLInputElement>("#sm-desc")?.value.trim();
+        if (desc) override.description = desc;
+        const icon = em.root.querySelector<HTMLInputElement>("#sm-icon")?.value.trim();
+        if (icon) override.icon = icon;
+        const order = em.root.querySelector<HTMLInputElement>("#sm-order")?.value;
+        if (order) { const n = parseInt(order, 10); if (!isNaN(n)) override.displayOrder = n; }
+        const intensity = em.root.querySelector<HTMLInputElement>("#sm-intensity")?.value.trim();
+        if (intensity) override.intensityLabel = intensity;
+        const addendum = em.root.querySelector<HTMLTextAreaElement>("#sm-addendum")?.value.trim();
+        if (addendum) override.compilerGuidanceAddendum = addendum;
+        const priority = em.root.querySelector<HTMLInputElement>("#sm-priority")?.value;
+        if (priority) { const n = parseInt(priority, 10); if (!isNaN(n)) override.injectionPriority = n; }
+        const renderHint = em.root.querySelector<HTMLInputElement>("#sm-render-hint")?.value.trim();
+        if (renderHint) override.renderHint = renderHint;
+        override.hiddenFromSettings = em.root.querySelector<HTMLInputElement>("#sm-hidden")?.checked ?? false;
+        override.defaultDisplay = em.root.querySelector<HTMLInputElement>("#sm-def-display")?.checked ?? false;
+        override.defaultInject = em.root.querySelector<HTMLInputElement>("#sm-def-inject")?.checked ?? false;
+
+        settings = LoomOSSettingsSchema.parse({
+          ...settings,
+          stockModuleOverrides: {
+            ...settings.stockModuleOverrides,
+            [moduleKey]: Object.keys(override).length > 0 ? override : undefined,
+          },
+        });
+        send({ type: "save_settings", requestId: requestId("stock-override"), settings });
+        status = `Override saved for "${ov?.label || entry.label}"`;
+        em.dismiss();
+        renderAll();
+      });
+
+      em.root.querySelector("#sm-cancel")?.addEventListener("click", () => em.dismiss());
+      const dismiss = em.onDismiss(() => { dismiss(); });
+      return;
+    }
+
+    if (action === "reset") {
+      const entry = MODULE_CATALOG.find((m) => m.key === moduleKey);
+      if (!entry) return;
+      const newOverrides = { ...settings.stockModuleOverrides };
+      delete newOverrides[moduleKey];
+      settings = LoomOSSettingsSchema.parse({
+        ...settings,
+        stockModuleOverrides: newOverrides,
+      });
+      send({ type: "save_settings", requestId: requestId("stock-reset"), settings });
+      status = `Override reset for "${entry.label}"`;
+      renderAll();
+    }
+  }
+
   async function handleCustomModuleAction(action: string, moduleId?: string): Promise<void> {
     const customMods = settings.customModules || [];
     
@@ -1674,6 +1874,18 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       }
       return;
     }
+
+    if (action === "reset-all-overrides") {
+      settings = LoomOSSettingsSchema.parse({
+        ...settings,
+        stockModuleOverrides: {},
+      });
+      send({ type: "save_settings", requestId: requestId("reset-overrides"), settings });
+      status = "All stock module overrides reset";
+      saveCurrentSettingsDebounced();
+      renderAll();
+      return;
+    }
     
     saveCurrentSettingsDebounced();
     renderAll();
@@ -1806,6 +2018,14 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     if (presetBtn) {
       const actionCamel = presetBtn.getAttribute("data-preset-action");
       if (actionCamel) void handlePresetAction(actionCamel);
+      return;
+    }
+
+    const stockBtn = target.closest<HTMLElement>("[data-stock-action]");
+    if (stockBtn) {
+      const action = stockBtn.getAttribute("data-stock-action");
+      const key = stockBtn.getAttribute("data-stock-key");
+      if (action && key) handleStockModuleAction(action, key);
       return;
     }
 

@@ -5136,13 +5136,316 @@ Character depth rules:
 - Never output explicit anatomical details. Focus on grounded, useful continuity.
 - When age is unspecified, assume adult. Never output minors.
 - Spotlight queue: track turnsSince each named character last had narrative focus. Use need: active/soon/okay/quiet/background.
+- Character-level castMatrix[].goals are always compact strings. Structured goals with who/goal/status/note fields belong only in storyState.goals.
 `;
 }
 var STATE_REPAIR_PROMPT = `Repair a malformed LoomOS State V2 compiler result.
 Return exactly one corrected JSON object and no Markdown or explanation.
-Keep only supported fields, satisfy all required core objects, preserve grounded
-facts, obey array limits, and use null or empty arrays for disabled modules.
-Do not add new story events or unsupported facts.`;
+Keep only supported fields, satisfy all required core objects, obey array
+limits, and use null or empty arrays for disabled modules.
+Do not add new story events or unsupported facts.
+
+SHAPE CORRECTIONS (fix these common mistakes):
+- castMatrix[].goals MUST be string[], not objects. If you wrote an object like {"goal":"Find X"}, extract "Find X" as a string in the array.
+- castMatrix[].pockets MUST be object[] with {name, type, qty, condition, known}. If you wrote a plain string, wrap it in {name: string, type:"misc", qty:1, condition:"", known:true}.
+- castMatrix[].stableFacts MUST be string[], not objects. Extract text from objects.
+- castMatrix[].leverage MUST be string[], not objects. Extract text from objects.
+- continuityFirewall.impossibleNext MUST be string[], not objects. Extract text from objects.
+- continuityFirewall.establishedFacts MUST be string[], not objects.
+- continuityFirewall.antiRetconAnchors MUST be string[], not objects.
+- continuityFirewall.offscreenState MUST be string[], not objects.
+- continuityFirewall.pendingConsequences MUST be object[] with {cause, pending, urgency, status}.
+- continuityFirewall.bannedNext MUST be object[] with {text, reason, scope, source}.
+- continuityFirewall.terms MUST be object[] with {party, term, status, binding}.
+- kernel.constraints MUST be string[], not objects.
+- scene.spatial MUST be string[], not objects.
+- scene.access.items MUST be string[], not objects.
+- scene.access.people MUST be string[], not objects.
+- storyState.threadLoom[].participants MUST be string[], not objects.
+
+EXAMPLES:
+- BAD: "goals": [{"goal": "Find the baths"}]
+  GOOD: "goals": ["Find the baths"]
+- BAD: "pockets": ["Lock pick"]
+  GOOD: "pockets": [{"name": "Lock pick", "type": "tool", "qty": 1, "condition": "Good", "known": true}]
+- BAD: "impossibleNext": [{"text": "Using the east stair"}]
+  GOOD: "impossibleNext": ["Using the east stair"]
+- BAD: "pendingConsequences": ["The guards are approaching"]
+  GOOD: "pendingConsequences": [{"cause": "Guards patrol", "pending": "The guards are approaching", "urgency": 5, "status": "PENDING"}]
+- BAD: "relationships": ["Iven: Trust=30"]
+  GOOD: "relationships": [{"target": "Iven", "axis": "Trust", "value": 30}]
+`;
+
+// src/shared/normalizeCompiledState.ts
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function extractString(value) {
+  if (typeof value === "string") return value;
+  if (isRecord(value)) {
+    for (const key of ["text", "rule", "issue", "claim", "reason", "description", "name", "title", "goal", "summary", "thing", "item"]) {
+      const v = value[key];
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    for (const v of Object.values(value)) {
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    return "";
+  }
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return "";
+}
+function coerceStringArray(arr) {
+  if (!Array.isArray(arr)) {
+    const s = extractString(arr);
+    return s ? [s] : [];
+  }
+  const result = [];
+  for (const item of arr) {
+    if (item === null || item === void 0) continue;
+    if (typeof item === "string") {
+      if (item.trim()) result.push(item.trim());
+    } else if (isRecord(item)) {
+      const extracted = extractString(item);
+      if (extracted) result.push(extracted);
+    } else if (typeof item === "number" || typeof item === "boolean") {
+      result.push(String(item));
+    }
+  }
+  return result;
+}
+function coercePocketItem(item) {
+  if (isRecord(item)) {
+    const name = extractString(item) || "Unknown item";
+    const type = typeof item.type === "string" && ["consumable", "concealed", "tool", "key", "evidence", "misc"].includes(item.type) ? item.type : "misc";
+    let qty = 1;
+    if (typeof item.qty === "number" && Number.isInteger(item.qty) && item.qty >= 0) {
+      qty = item.qty;
+    } else if (typeof item.qty === "string") {
+      const parsed = parseInt(item.qty, 10);
+      if (!isNaN(parsed) && parsed >= 0) qty = parsed;
+    }
+    const result = {
+      name,
+      type,
+      qty,
+      condition: typeof item.condition === "string" ? item.condition : "",
+      known: typeof item.known === "boolean" ? item.known : true
+    };
+    if (item.color !== void 0 && typeof item.color === "string") result.color = item.color;
+    if (item.changed !== void 0) result.changed = item.changed;
+    if (item.changeNote !== void 0) result.changeNote = item.changeNote;
+    return result;
+  }
+  if (typeof item === "string" && item.trim()) {
+    return { name: item.trim(), type: "misc", qty: 1, condition: "", known: true };
+  }
+  return null;
+}
+function coerceRelationship(item) {
+  if (isRecord(item)) {
+    const target = extractString(item) || "";
+    if (!target) return null;
+    return {
+      target,
+      axis: typeof item.axis === "string" && item.axis.trim() ? item.axis.trim() : "general",
+      value: typeof item.value === "number" && item.value >= -100 && item.value <= 100 ? item.value : 0,
+      ...item.pct !== void 0 ? { pct: item.pct } : {},
+      ...item.label !== void 0 ? { label: item.label } : {},
+      ...item.color !== void 0 ? { color: item.color } : {},
+      ...item.trend !== void 0 ? { trend: item.trend } : {},
+      ...item.evidence !== void 0 ? { evidence: item.evidence } : {}
+    };
+  }
+  if (typeof item === "string" && item.trim()) {
+    return { target: item.trim(), axis: "general", value: 0 };
+  }
+  return null;
+}
+function coerceSetupEntry(item) {
+  if (isRecord(item)) {
+    const thing = extractString(item) || "";
+    if (!thing) return null;
+    return {
+      thing,
+      ...item.plantedBy !== void 0 ? { plantedBy: item.plantedBy } : {},
+      ...item.payoffWhen !== void 0 ? { payoffWhen: item.payoffWhen } : {},
+      state: typeof item.state === "string" && ["LOADED", "HEATING", "FIRED", "DORMANT"].includes(item.state) ? item.state : "LOADED",
+      ...item.evidence !== void 0 ? { evidence: item.evidence } : {},
+      ...item.payoffHint !== void 0 ? { payoffHint: item.payoffHint } : {},
+      ...item.changed !== void 0 ? { changed: item.changed } : {},
+      ...item.changeNote !== void 0 ? { changeNote: item.changeNote } : {}
+    };
+  }
+  if (typeof item === "string" && item.trim()) {
+    return { thing: item.trim(), state: "LOADED" };
+  }
+  return null;
+}
+function coerceConsequenceEntry(item) {
+  if (isRecord(item)) {
+    const cause = typeof item.cause === "string" ? item.cause.slice(0, 500) : "";
+    const pending = typeof item.pending === "string" ? item.pending : extractString(item);
+    if (!cause && !pending) return null;
+    return {
+      cause: cause || pending.slice(0, 500),
+      pending: pending || cause,
+      ...item.trigger !== void 0 ? { trigger: item.trigger } : {},
+      urgency: typeof item.urgency === "number" ? item.urgency : 5,
+      ...item.pct !== void 0 ? { pct: item.pct } : {},
+      status: typeof item.status === "string" && ["PENDING", "ACTIVE", "FIRED", "RESOLVED", "DORMANT"].includes(item.status) ? item.status : "PENDING",
+      ...item.evidence !== void 0 ? { evidence: item.evidence } : {},
+      ...item.changed !== void 0 ? { changed: item.changed } : {},
+      ...item.changeNote !== void 0 ? { changeNote: item.changeNote } : {}
+    };
+  }
+  if (typeof item === "string" && item.trim()) {
+    return { cause: item.trim().slice(0, 500), pending: item.trim().slice(0, 1600), urgency: 5, status: "PENDING" };
+  }
+  return null;
+}
+function coerceAvoidNext(item) {
+  if (isRecord(item)) {
+    const text = extractString(item) || "";
+    if (!text) return null;
+    return {
+      text,
+      ...item.reason !== void 0 ? { reason: item.reason } : {},
+      scope: typeof item.scope === "string" && ["turn", "scene", "persistent"].includes(item.scope) ? item.scope : "turn",
+      ...item.color !== void 0 ? { color: item.color } : {},
+      source: typeof item.source === "string" && ["user", "system", "compiler"].includes(item.source) ? item.source : "compiler"
+    };
+  }
+  if (typeof item === "string" && item.trim()) {
+    return { text: item.trim(), scope: "turn", source: "compiler" };
+  }
+  return null;
+}
+function coerceTermEntry(item) {
+  if (isRecord(item)) {
+    const party = extractString(item) || "";
+    const term = typeof item.term === "string" ? item.term : "";
+    if (!party && !term) return null;
+    const result = {
+      party: party || "Unknown",
+      term: term || extractString(item) || "",
+      status: typeof item.status === "string" && ["PENDING", "ACCEPTED", "REJECTED", "BROKEN", "EXPIRED", "UNKNOWN"].includes(item.status) ? item.status : "UNKNOWN"
+    };
+    if (item.risk !== void 0) result.risk = item.risk;
+    if (item.binding !== void 0) result.binding = item.binding;
+    if (item.evidence !== void 0) result.evidence = item.evidence;
+    if (item.changed !== void 0) result.changed = item.changed;
+    if (item.changeNote !== void 0) result.changeNote = item.changeNote;
+    return result;
+  }
+  if (typeof item === "string" && item.trim()) {
+    return { party: item.trim(), term: item.trim(), status: "UNKNOWN", binding: false };
+  }
+  return null;
+}
+function coerceAuditEntry(item) {
+  if (!isRecord(item)) return null;
+  const system = typeof item.system === "string" && item.system.trim() ? item.system.trim() : "";
+  const marker = typeof item.marker === "string" && item.marker.trim() ? item.marker.trim() : "";
+  const result = typeof item.result === "string" && item.result.trim() ? item.result.trim() : extractString(item);
+  if (!system && !marker && !result) return null;
+  return {
+    system: system || "compiler",
+    marker: marker || "auto",
+    result: result || "auto-normalized",
+    repaired: typeof item.repaired === "boolean" ? item.repaired : false,
+    notes: typeof item.notes === "string" ? item.notes : extractString(item) || ""
+  };
+}
+function coerceStringFields(target, fields) {
+  for (const field of fields) {
+    const val = target[field];
+    if (val !== void 0) {
+      target[field] = coerceStringArray(val);
+    }
+  }
+}
+function normalizeCompilerOutput(raw) {
+  if (!isRecord(raw)) return raw;
+  const root = { ...raw };
+  if (isRecord(root.kernel)) {
+    coerceStringFields(root.kernel, ["constraints"]);
+  }
+  if (Array.isArray(root.castMatrix)) {
+    root.castMatrix = root.castMatrix.map((member) => {
+      if (!isRecord(member)) return member;
+      const m = { ...member };
+      coerceStringFields(m, ["goals", "stableFacts", "leverage"]);
+      if (Array.isArray(m.pockets)) {
+        m.pockets = m.pockets.map((item) => coercePocketItem(item)).filter(Boolean);
+      }
+      if (Array.isArray(m.relationships)) {
+        m.relationships = m.relationships.map((item) => coerceRelationship(item)).filter(Boolean);
+      }
+      return m;
+    });
+  }
+  if (isRecord(root.continuityFirewall)) {
+    const fw = root.continuityFirewall;
+    coerceStringFields(fw, ["establishedFacts", "antiRetconAnchors", "offscreenState", "impossibleNext"]);
+    if (Array.isArray(fw.pendingConsequences)) {
+      fw.pendingConsequences = fw.pendingConsequences.map((item) => coerceConsequenceEntry(item)).filter(Boolean);
+    }
+    if (Array.isArray(fw.bannedNext)) {
+      fw.bannedNext = fw.bannedNext.map((item) => coerceAvoidNext(item)).filter(Boolean);
+    }
+    if (Array.isArray(fw.terms)) {
+      fw.terms = fw.terms.map((item) => coerceTermEntry(item)).filter(Boolean);
+    }
+  }
+  if (isRecord(root.scene)) {
+    const scene = root.scene;
+    coerceStringFields(scene, ["spatial"]);
+    if (isRecord(scene.access)) {
+      coerceStringFields(scene.access, ["items", "people"]);
+    }
+    if (isRecord(scene.carryover)) {
+      coerceStringFields(scene.carryover, ["body", "room", "social"]);
+    }
+  }
+  if (isRecord(root.worldState)) {
+    const ws = root.worldState;
+    coerceStringFields(ws, ["recentEnvironmentalChanges", "activeHazards"]);
+    if (Array.isArray(ws.loadedSigns)) {
+      ws.loadedSigns = ws.loadedSigns.map((item) => coerceSetupEntry(item)).filter(Boolean);
+    }
+  }
+  if (isRecord(root.storyState)) {
+    const ss = root.storyState;
+    if (Array.isArray(ss.threadLoom)) {
+      ss.threadLoom = ss.threadLoom.map((thread) => {
+        if (!isRecord(thread)) return thread;
+        const t = { ...thread };
+        coerceStringFields(t, ["participants"]);
+        return t;
+      });
+    }
+  }
+  if (isRecord(root.tools)) {
+    const tools = root.tools;
+    if (isRecord(tools.actionResolver)) {
+      coerceStringFields(tools.actionResolver, ["blockers"]);
+    }
+    if (isRecord(tools.dialogueState)) {
+      coerceStringFields(tools.dialogueState, ["levers", "taboos"]);
+    }
+    if (isRecord(tools.directorStyle)) {
+      coerceStringFields(tools.directorStyle, ["voiceCues"]);
+    }
+    if (isRecord(tools.closenessState)) {
+      coerceStringFields(tools.closenessState, ["consentSignals", "boundaries"]);
+    }
+  }
+  if (Array.isArray(root.auditLog)) {
+    root.auditLog = root.auditLog.map((item) => coerceAuditEntry(item)).filter(Boolean);
+  }
+  return root;
+}
 
 // src/backend/compiler.ts
 function extractJsonObject(raw) {
@@ -5156,16 +5459,20 @@ function extractJsonObject(raw) {
 }
 function validationError(raw) {
   try {
-    const parsed = extractJsonObject(raw);
+    const parsed = normalizeCompilerOutput(extractJsonObject(raw));
     const result = LoomOSCompiledStateSchema.safeParse(parsed);
     if (result.success) return "Unknown validation failure.";
-    return result.error.issues.slice(0, 16).map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`).join("\n");
+    const details = result.error.issues.slice(0, 16).map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`).join("\n");
+    const hint = "\n[Hint] This is usually a compiler shape issue. Normalization attempted to coerce common LLM mistakes (objects as strings, strings as objects). Check castMatrix[].goals (must be string[]), pockets (must be object[]), and impossibleNext (must be string[]).";
+    return details + hint;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
 }
 function parseCompilerOutput(raw, request, repaired) {
-  const compiled = LoomOSCompiledStateSchema.parse(extractJsonObject(raw));
+  const rawParsed = extractJsonObject(raw);
+  const normalized = normalizeCompilerOutput(rawParsed);
+  const compiled = LoomOSCompiledStateSchema.parse(normalized);
   return LoomOSStateSchema.parse({
     ...compiled,
     activeModules: request.enabledModules,
@@ -5195,7 +5502,7 @@ function compilerUserMessage(request) {
 async function compileStateWithRepair(request) {
   request.onPhase?.("building_prompt", 1, "Building the enabled-module compiler prompt.");
   const firstMessages = [
-    { role: "system", content: buildStateCompilerPrompt(request.enabledModules, request.customModules) },
+    { role: "system", content: buildStateCompilerPrompt(request.enabledModules, request.customModules, request.stockModuleOverrides) },
     { role: "user", content: compilerUserMessage(request) }
   ];
   request.onPhase?.("requesting", 1, "Requesting structured state from the selected connection.");
@@ -5214,7 +5521,7 @@ async function compileStateWithRepair(request) {
         role: "system",
         content: `${STATE_REPAIR_PROMPT}
 
-${buildStateCompilerPrompt(request.enabledModules, request.customModules)}`
+${buildStateCompilerPrompt(request.enabledModules, request.customModules, request.stockModuleOverrides)}`
       },
       {
         role: "user",
@@ -5252,12 +5559,12 @@ ${buildStateCompilerPrompt(request.enabledModules, request.customModules)}`
 }
 
 // src/backend/generation.ts
-function isRecord(value) {
+function isRecord2(value) {
   return typeof value === "object" && value !== null;
 }
 function normalizeGenerationText(result) {
   if (typeof result === "string" && result.trim()) return result;
-  if (!isRecord(result)) {
+  if (!isRecord2(result)) {
     throw new Error("Lumiverse generation returned an unsupported response.");
   }
   for (const key of ["content", "text", "output", "response"]) {
@@ -5266,7 +5573,7 @@ function normalizeGenerationText(result) {
   }
   const message = result.message;
   if (typeof message === "string" && message.trim()) return message;
-  if (isRecord(message) && typeof message.content === "string" && message.content.trim()) {
+  if (isRecord2(message) && typeof message.content === "string" && message.content.trim()) {
     return message.content;
   }
   throw new Error("Lumiverse generation completed without textual content.");
@@ -5719,7 +6026,7 @@ var jobByIdentity = /* @__PURE__ */ new Map();
 var interceptorRegistered = false;
 var interceptorEnabled = spindle.permissions.has("interceptor");
 var disposed = false;
-function isRecord2(value) {
+function isRecord3(value) {
   return typeof value === "object" && value !== null;
 }
 function errorMessage(error) {
@@ -5765,7 +6072,7 @@ async function getSettings(userId) {
   });
   const parsed = LoomOSSettingsSchema.safeParse(raw);
   if (parsed.success) {
-    if (!isRecord2(raw) || raw.schemaVersion !== 2) {
+    if (!isRecord3(raw) || raw.schemaVersion !== 2) {
       await spindle.userStorage.setJson(SETTINGS_PATH, parsed.data, {
         indent: 2,
         userId
@@ -5815,7 +6122,7 @@ async function loadState(identity, userId) {
     spindle.log.warn("Ignored a LoomOS state file with mismatched identity.");
     return null;
   }
-  if (isRecord2(raw) && raw.schemaVersion === 1) {
+  if (isRecord3(raw) && raw.schemaVersion === 1) {
     await spindle.userStorage.setJson(path, state, { indent: 2, userId });
   }
   return state;
@@ -6116,6 +6423,9 @@ async function generateState(requestId, requested, userId) {
       existingState
     );
     const enabledModules = trackedModuleKeys(settings);
+    const stockModuleOverrides = settings.stockModuleOverrides ? Object.fromEntries(
+      Object.entries(settings.stockModuleOverrides).filter(([_, v]) => v?.compilerGuidanceAddendum).map(([k, v]) => [k, { compilerGuidanceAddendum: v.compilerGuidanceAddendum }])
+    ) : void 0;
     const compiled = await compileStateWithRepair({
       identity,
       transcript: transcriptResult.transcript,
@@ -6125,6 +6435,7 @@ async function generateState(requestId, requested, userId) {
       seedText: seed.text,
       enabledModules,
       customModules: settings.customModules,
+      stockModuleOverrides,
       connectionId: connection.id,
       signal: controller.signal,
       onPhase: progress,
@@ -6191,7 +6502,7 @@ async function generateState(requestId, requested, userId) {
   }
 }
 function parseFrontendRequest(payload) {
-  if (!isRecord2(payload) || typeof payload.type !== "string") {
+  if (!isRecord3(payload) || typeof payload.type !== "string") {
     throw new Error("Invalid LoomOS frontend request.");
   }
   return payload;
@@ -6290,7 +6601,7 @@ async function handleFrontendRequest(payload, userId) {
   }
 }
 function eventMessage(payload) {
-  if (!isRecord2(payload) || !isRecord2(payload.message)) return null;
+  if (!isRecord3(payload) || !isRecord3(payload.message)) return null;
   const message = payload.message;
   if (typeof message.id !== "string" || typeof message.chat_id !== "string" || typeof message.swipe_id !== "number" || !Array.isArray(message.swipes)) return null;
   return message;
@@ -6339,7 +6650,7 @@ async function handleSwipeEdited(payload, eventUserId) {
   }
 }
 async function handleMessageDeleted(payload, eventUserId) {
-  if (!isRecord2(payload) || typeof payload.chatId !== "string" || typeof payload.messageId !== "string") return;
+  if (!isRecord3(payload) || typeof payload.chatId !== "string" || typeof payload.messageId !== "string") return;
   for (const userId of eventUsers(payload.chatId, eventUserId)) {
     await invalidateMessageStates(payload.chatId, payload.messageId, userId);
   }
@@ -6372,7 +6683,7 @@ function tryRegisterInterceptor() {
   interceptorRegistered = true;
   interceptorEnabled = true;
   spindle.registerInterceptor(async (messages, context) => {
-    if (!interceptorEnabled || disposed || !isRecord2(context)) return messages;
+    if (!interceptorEnabled || disposed || !isRecord3(context)) return messages;
     if (context.generationType === "quiet" || typeof context.chatId !== "string") return messages;
     if (!spindle.permissions.has("chat_mutation")) return messages;
     const chatId = context.chatId;
@@ -6460,7 +6771,7 @@ disposers.push(spindle.permissions.onChanged(({ permission, granted }) => {
   }
 }));
 disposers.push(spindle.on("SPINDLE_EXTENSION_UNLOADED", (payload) => {
-  if (isRecord2(payload) && payload.extensionId === EXTENSION_ID) disposeBackend();
+  if (isRecord3(payload) && payload.extensionId === EXTENSION_ID) disposeBackend();
 }));
 tryRegisterInterceptor();
 spindle.log.info("LoomOS Command Deck backend loaded.");

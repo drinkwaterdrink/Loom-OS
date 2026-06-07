@@ -318,6 +318,26 @@ function normalizeModuleSettings(input) {
   }
   return next;
 }
+var MODULE_SCHEMA_STRUCTURES = {
+  sceneKernel: "kernel.scene, kernel.location, kernel.timeframe, kernel.date, kernel.time, kernel.elapsed, kernel.weather, kernel.pov, kernel.tone, kernel.topic, kernel.theme, kernel.objective, kernel.summary, kernel.currentFocus, kernel.nextFocus, kernel.currentRisk, kernel.stopMode, kernel.stopWhy, kernel.constraints[]",
+  deltas: "delta.headline, delta.changedModules[], delta.changes[{text, age, module, importance}], delta.carriedForward[], delta.newlyEstablished[]",
+  meters: "meters[{id(tension|danger|socialHeat|coherence|hiddenInfo|omen), label, value 0-100, pct, band, color, trend(down|steady|up|unknown), note}]",
+  castCore: "castMatrix[{id, name, kind(pov|main|npc|crowd|background), qty, role, location, status, awareness(none|ambient|watching|alerted|hostile), threat{value 0-10, pct, band, color, note}, spotlight{value 0-100, pct, band, color, trend, note}, appearance{}, clothing{}, currentState{}, goals[], stableFacts[], pockets[], relationships[], leverage[], changed, changeNote, continuity{}}]",
+  castVisuals: "castMatrix[].currentState{pose, proximity, leftHand, rightHand, emotion, intent, physicalTell, injury}, castMatrix[].spotlight, castMatrix[].visualAnchor",
+  clothing: "castMatrix[].clothing{summary, silhouette, palette, fabric, fit, condition, notable, layerCount, layers[{slot(outer|upper|lower|feet|accessory|other), text, state, color}]}",
+  relationships: "castMatrix[].relSummary, castMatrix[].relationships[{target, axis, value -100..100, pct, label, color, trend, evidence}]",
+  inventory: "castMatrix[].pockets[{name, type(consumable|concealed|tool|key|evidence|misc), qty, condition, known, color, changed, changeNote}]",
+  worldSpace: "scene{privacy, observerCount, observerPressure{}, crowdNoise, crowdFlow, light{primary, secondary, quality, color}, spatial[], access{exit, lineOfSight, noiseMask, items[], people[]}, carryover{body[], room[], social[]}, items[{name, owner, location, condition, lastTouch, importance}]}",
+  storyThreads: "storyState{goals[{who, goal, status(ACTIVE|BLOCKED|PROGRESSED|RESOLVED), note}], conflicts[{a, b, label, severity 1-3}], threadLoom[{title, status, urgency 0-5, priority, progress 0-10, pct, color, label, summary, nextPressure, participants[]}], stakes[{who, win, lose}], countdowns[{title, left, unit, pct, color}], spotlightQueue[{name, turnsSince, pct, color, need, reason}], autonomyQueue[{who, action, unlessInterruptedBy}]}",
+  continuity: "continuityFirewall{establishedFacts[], antiRetconAnchors[], pendingConsequences[{cause, pending, trigger, urgency 0-10, pct, status(PENDING|ACTIVE|FIRED|RESOLVED|DORMANT), evidence, changed, changeNote}], offscreenState[], bannedNext[{text, reason, scope(turn|scene|persistent), color, source(user|system|compiler)}], impossibleNext[], risks[{severity, issue, evidence, recommendation}], terms[{party, term, risk, status, binding, evidence, changed}]}",
+  secretsRumors: "worldState.rumors[{rumor, source, credibility 0-10, pct, color}], worldState.secrets[{secret, visibleHint, knownBy[]}], worldState.loadedSigns[{thing, plantedBy, payoffWhen, state(LOADED|HEATING|FIRED|DORMANT), evidence, payoffHint, changed}]",
+  actionResolver: "tools.actionResolver{userAction, worldResponse, risk, blockers[]}",
+  dialogueState: "tools.dialogueState{openThread, socialMask, levers[], taboos[]}",
+  directorStyle: "tools.directorStyle{primary, mask, push, voiceCues[]}",
+  closenessState: "tools.closenessState{emotional, physical, consentSignals[], boundaries[]}",
+  imagePrompt: "tools.imagePrompt{aspect, shot, medium, subject, positive, negative, full, hint}",
+  auditLog: "auditLog[{system, marker, result, repaired, notes}]"
+};
 
 // node_modules/zod/v3/external.js
 var external_exports = {};
@@ -5954,6 +5974,7 @@ var LOOMOS_STYLES = `
   .pill-injected { border-color: #25f2d0; color: #25f2d0; }
   .pill-hidden { border-color: var(--loomos-muted); color: var(--loomos-muted); }
   .pill-custom { border-color: #7c6cff; color: #7c6cff; }
+  .pill-overridden { border-color: #d58a42; color: #d58a42; }
 
   /* 44px settings matrix buttons */
   .loomos-module-toggles {
@@ -7183,31 +7204,59 @@ function setup(ctx) {
       </div>
     `;
   }
+  function stockModuleLabel(key) {
+    const override = settings.stockModuleOverrides?.[key];
+    if (override?.label) return override.label;
+    return MODULE_CATALOG.find((m) => m.key === key)?.label ?? key;
+  }
+  function stockModuleGroup(key) {
+    const override = settings.stockModuleOverrides?.[key];
+    if (override?.group) return override.group;
+    return MODULE_CATALOG.find((m) => m.key === key)?.group ?? "";
+  }
+  function stockModuleDescription(key) {
+    const override = settings.stockModuleOverrides?.[key];
+    if (override?.description) return override.description;
+    return MODULE_CATALOG.find((m) => m.key === key)?.description ?? "";
+  }
+  function hasOverride(key) {
+    const ov = settings.stockModuleOverrides?.[key];
+    return ov !== void 0 && Object.keys(ov).length > 0;
+  }
   function renderModuleMatrix() {
     const query = tab.root.querySelector("[data-module-search]")?.value.trim().toLowerCase() ?? "";
     const modules = MODULE_CATALOG.map((m) => {
       const control2 = settings.moduleSettings[m.key];
       const isCore = CORE_TRACKING_MODULES.has(m.key);
       const isExperimental = ["dialogueState", "directorStyle", "closenessState", "imagePrompt"].includes(m.key);
+      const overridden = hasOverride(m.key);
       let pills = "";
       if (isCore) pills += `<span class="loomos-pill pill-core">Core</span>`;
       if (isExperimental) pills += `<span class="loomos-pill pill-experimental">Experimental</span>`;
       if (control2.inject) pills += `<span class="loomos-pill pill-injected">Injected</span>`;
       if (!control2.display) pills += `<span class="loomos-pill pill-hidden">Hidden</span>`;
-      const searchText = `${m.label} ${m.group} ${m.description}`.toLowerCase();
+      if (overridden) pills += `<span class="loomos-pill pill-overridden">Overridden</span>`;
+      const effectiveLabel = stockModuleLabel(m.key);
+      const effectiveGroup = stockModuleGroup(m.key);
+      const effectiveDesc = stockModuleDescription(m.key);
+      const searchText = `${effectiveLabel} ${effectiveGroup} ${effectiveDesc} ${m.key}`.toLowerCase();
       const visible2 = !query || searchText.includes(query);
+      const stockEntry = settings.stockModuleOverrides?.[m.key];
+      const hidden = stockEntry?.hiddenFromSettings === true;
+      if (hidden) return { key: m.key, label: effectiveLabel, group: effectiveGroup, description: effectiveDesc, control: control2, isCore, pills, visible: false, isCustom: false, hidden: true };
       return {
         key: m.key,
-        label: m.label,
-        group: m.group,
-        description: m.description,
+        label: effectiveLabel,
+        group: effectiveGroup,
+        description: effectiveDesc,
         control: control2,
         isCore,
         pills,
         visible: visible2,
-        isCustom: false
+        isCustom: false,
+        hidden: false
       };
-    });
+    }).filter((m) => !m.hidden);
     const customModules = (settings.customModules || []).map((m) => {
       const pills = `<span class="loomos-pill pill-custom">Custom</span>` + (m.inject ? ` <span class="loomos-pill pill-injected">Injected</span>` : "") + (!m.display ? ` <span class="loomos-pill pill-hidden">Hidden</span>` : "");
       const searchText = `${m.label} ${m.group} ${m.description} ${m.compilerInstruction}`.toLowerCase();
@@ -7285,14 +7334,20 @@ function setup(ctx) {
                   </div>
                 `;
         }
+        const overridden = hasOverride(m.key);
         return `
-                <div class="loomos-module-card" data-module-row="${escapeHtml(m.key)}" data-search="${escapeHtml((m.label + " " + m.group + " " + m.description).toLowerCase())}">
+                <div class="loomos-module-card" data-module-row="${escapeHtml(m.key)}" data-search="${escapeHtml((m.key + " " + m.label + " " + m.group + " " + m.description).toLowerCase())}">
                   <div class="loomos-module-info">
                     <div class="loomos-module-title-row">
                       <strong>${escapeHtml(m.label)}</strong>
                       <div class="loomos-pills">${m.pills}</div>
                     </div>
                     <small>${escapeHtml(m.description)}</small>
+                    <div class="loomos-stock-actions" style="margin-top: 6px; display: flex; gap: 6px;">
+                      <button type="button" class="loomos-link-btn" data-stock-action="inspect" data-stock-key="${escapeHtml(m.key)}">Inspect</button>
+                      <button type="button" class="loomos-link-btn" data-stock-action="edit" data-stock-key="${escapeHtml(m.key)}">Edit</button>
+                      ${overridden ? `<button type="button" class="loomos-link-btn loomos-link-btn-danger" data-stock-action="reset" data-stock-key="${escapeHtml(m.key)}">Reset</button>` : ""}
+                    </div>
                   </div>
                   <div class="loomos-module-toggles">
                     <label class="loomos-toggle-target" title="${m.isCore ? "Core tracking is always enabled" : "Include in compiler output"}">
@@ -7328,6 +7383,7 @@ function setup(ctx) {
           <button type="button" class="loomos-button loomos-btn-sm" data-bulk-action="disable-display">Hide Matching</button>
           <button type="button" class="loomos-button loomos-btn-sm" data-bulk-action="inject-recommended">Inject Recommended</button>
           <button type="button" class="loomos-button loomos-btn-sm" data-bulk-action="reset-presets">Reset Preset</button>
+          ${Object.keys(settings.stockModuleOverrides || {}).length > 0 ? `<button type="button" class="loomos-button loomos-btn-sm" data-bulk-action="reset-all-overrides">Reset All Overrides</button>` : ""}
         </div>
         <div class="loomos-module-groups">
           ${groupsHtml || `<div class="loomos-empty-search" style="padding: 15px; text-align: center; color: var(--loomos-muted);">No matching modules found.</div>`}
@@ -7924,6 +7980,169 @@ function setup(ctx) {
       pm.root.querySelector("#import-cancel")?.addEventListener("click", () => pm.dismiss());
     }
   }
+  function handleStockModuleAction(action, moduleKey) {
+    if (action === "inspect") {
+      const entry = MODULE_CATALOG.find((m) => m.key === moduleKey);
+      if (!entry) return;
+      const ov = settings.stockModuleOverrides?.[moduleKey];
+      const schemaStructure = MODULE_SCHEMA_STRUCTURES[moduleKey] || "No structure summary available.";
+      const html = `
+        <div class="loomos-root loomos-prompt-dialog" data-skin="${settings.skin}">
+          <details class="loomos-cast-extra" open>
+            <summary>Module Info</summary>
+            <div class="loomos-cast-extra-body" style="display:grid;gap:4px;font-size:11px;">
+              <p><strong>Key:</strong> <code>${escapeHtml(entry.key)}</code></p>
+              <p><strong>Stock Label:</strong> ${escapeHtml(entry.label)}</p>
+              <p><strong>Effective Label:</strong> ${escapeHtml(ov?.label || entry.label)}</p>
+              <p><strong>Group:</strong> ${escapeHtml(ov?.group || entry.group)}</p>
+              <p><strong>Core:</strong> ${entry.core ? "Yes (locked)" : "No"}</p>
+              <p><strong>Default Track:</strong> ${BALANCED_MODULE_SETTINGS[entry.key].track} / <strong>Default Display:</strong> ${BALANCED_MODULE_SETTINGS[entry.key].display} / <strong>Default Inject:</strong> ${BALANCED_MODULE_SETTINGS[entry.key].inject}</p>
+              <p><strong>Current Track:</strong> ${settings.moduleSettings[entry.key].track} / <strong>Current Display:</strong> ${settings.moduleSettings[entry.key].display} / <strong>Current Inject:</strong> ${settings.moduleSettings[entry.key].inject}</p>
+              <p><strong>Intensity:</strong> ${ov?.intensityLabel || entry.intensity}</p>
+              ${ov ? `<p><strong style="color:#d58a42;">Overridden fields:</strong> ${Object.keys(ov).join(", ")}</p>` : ""}
+            </div>
+          </details>
+          <details class="loomos-cast-extra">
+            <summary>Stock Description</summary>
+            <div class="loomos-cast-extra-body" style="font-size:11px;"><p>${escapeHtml(entry.description)}</p></div>
+          </details>
+          ${ov?.description ? `<details class="loomos-cast-extra"><summary>Override Description</summary><div class="loomos-cast-extra-body" style="font-size:11px;"><p>${escapeHtml(ov.description)}</p></div></details>` : ""}
+          <details class="loomos-cast-extra">
+            <summary>Schema / Structure</summary>
+            <div class="loomos-cast-extra-body" style="font-size:11px;">
+              <pre style="background:var(--loomos-bg);padding:8px;border-radius:6px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;max-width:100%;font-size:10px;line-height:1.45;">${escapeHtml(schemaStructure)}</pre>
+              <button type="button" class="loomos-button loomos-btn-sm" data-action="copy-schema" data-copy="${escapeHtml(schemaStructure)}" style="margin-top:6px;">Copy Structure</button>
+            </div>
+          </details>
+          <details class="loomos-cast-extra">
+            <summary>Compiler Instruction</summary>
+            <div class="loomos-cast-extra-body" style="font-size:11px;"><p>${escapeHtml(entry.compilerInstruction)}</p>
+            ${ov?.compilerGuidanceAddendum ? `<p><strong>Override addendum:</strong> ${escapeHtml(ov.compilerGuidanceAddendum)}</p>` : ""}</div>
+          </details>
+          <details class="loomos-cast-extra">
+            <summary>Injection Behavior</summary>
+            <div class="loomos-cast-extra-body" style="font-size:11px;"><p>${escapeHtml(entry.injectionBehavior)}</p>
+            ${ov?.injectionPriority ? `<p><strong>Override injection priority:</strong> ${ov.injectionPriority}</p>` : ""}</div>
+          </details>
+          <details class="loomos-cast-extra">
+            <summary>Render Behavior</summary>
+            <div class="loomos-cast-extra-body" style="font-size:11px;"><p>${escapeHtml(entry.renderBehavior)}</p>
+            ${ov?.renderHint ? `<p><strong>Override render hint:</strong> ${escapeHtml(ov.renderHint)}</p>` : ""}</div>
+          </details>
+          <div class="loomos-dialog-buttons">
+            <button type="button" class="loomos-button loomos-button-primary" data-action="close-inspect">Close</button>
+          </div>
+        </div>
+      `;
+      const im = ctx.ui.showModal({ title: `Inspect: ${ov?.label || entry.label}`, width: Math.min(700, window.innerWidth - 16), maxHeight: Math.min(700, window.innerHeight - 32) });
+      im.root.className = "loomos-root";
+      im.root.innerHTML = html;
+      im.root.querySelector("[data-action='close-inspect']")?.addEventListener("click", () => im.dismiss());
+      im.root.querySelector("[data-action='copy-schema']")?.addEventListener("click", async (e) => {
+        const btn = e.currentTarget;
+        const text = btn?.dataset.copy || "";
+        try {
+          await navigator.clipboard.writeText(text);
+          btn.textContent = "Copied!";
+          setTimeout(() => {
+            btn.textContent = "Copy Structure";
+          }, 2e3);
+        } catch {
+          btn.textContent = "Copy failed";
+        }
+      });
+      const dismiss = im.onDismiss(() => {
+        dismiss();
+      });
+      return;
+    }
+    if (action === "edit") {
+      const entry = MODULE_CATALOG.find((m) => m.key === moduleKey);
+      if (!entry) return;
+      const ov = settings.stockModuleOverrides?.[moduleKey];
+      const em = ctx.ui.showModal({ title: `Edit Override: ${ov?.label || entry.label}`, width: Math.min(600, window.innerWidth - 16), maxHeight: Math.min(650, window.innerHeight - 32) });
+      em.root.className = "loomos-root";
+      em.root.innerHTML = `
+        <div class="loomos-prompt-dialog" data-skin="${settings.skin}">
+          <label class="loomos-field"><span>Label override</span><input class="loomos-input" type="text" id="sm-label" value="${escapeHtml(ov?.label || "")}" placeholder="${escapeHtml(entry.label)}"></label>
+          <label class="loomos-field"><span>Group override</span><input class="loomos-input" type="text" id="sm-group" value="${escapeHtml(ov?.group || "")}" placeholder="${escapeHtml(entry.group)}"></label>
+          <label class="loomos-field"><span>Description override</span><input class="loomos-input" type="text" id="sm-desc" value="${escapeHtml(ov?.description || "")}" placeholder="${escapeHtml(entry.description)}"></label>
+          <label class="loomos-field"><span>Icon/Emoji</span><input class="loomos-input" type="text" id="sm-icon" value="${escapeHtml(ov?.icon || "")}" placeholder="e.g. \u{1F3AD}" maxlength="20"></label>
+          <label class="loomos-field"><span>Display order</span><input class="loomos-input" type="number" id="sm-order" value="${ov?.displayOrder ?? ""}" placeholder="Auto"></label>
+          <label class="loomos-field"><span>Intensity label</span><input class="loomos-input" type="text" id="sm-intensity" value="${escapeHtml(ov?.intensityLabel || "")}" placeholder="${escapeHtml(entry.intensity)}"></label>
+          <label class="loomos-field"><span>Compiler guidance addendum</span><textarea class="loomos-input" id="sm-addendum" style="height:60px;" placeholder="Extra compiler instruction for this module">${escapeHtml(ov?.compilerGuidanceAddendum || "")}</textarea></label>
+          <label class="loomos-field"><span>Injection priority (higher = injected first)</span><input class="loomos-input" type="number" id="sm-priority" value="${ov?.injectionPriority ?? ""}" placeholder="Auto"></label>
+          <label class="loomos-field"><span>Render hint</span><input class="loomos-input" type="text" id="sm-render-hint" value="${escapeHtml(ov?.renderHint || "")}" placeholder="Custom render behavior hint"></label>
+          <label class="loomos-check" style="margin-top:4px;"><input type="checkbox" id="sm-hidden"${checked(ov?.hiddenFromSettings === true)}><span>Hidden from settings</span></label>
+          <label class="loomos-check"><input type="checkbox" id="sm-def-display"${checked(ov?.defaultDisplay === true)}><span>Default display enabled</span></label>
+          <label class="loomos-check"><input type="checkbox" id="sm-def-inject"${checked(ov?.defaultInject === true)}><span>Default inject enabled</span></label>
+          <div class="loomos-dialog-buttons">
+            <button type="button" class="loomos-button loomos-button-primary" id="sm-save">Save Override</button>
+            <button type="button" class="loomos-button" id="sm-cancel">Cancel</button>
+          </div>
+        </div>
+      `;
+      em.root.querySelector("#sm-save")?.addEventListener("click", () => {
+        const override = {};
+        const label = em.root.querySelector("#sm-label")?.value.trim();
+        if (label) override.label = label;
+        const group = em.root.querySelector("#sm-group")?.value.trim();
+        if (group) override.group = group;
+        const desc = em.root.querySelector("#sm-desc")?.value.trim();
+        if (desc) override.description = desc;
+        const icon = em.root.querySelector("#sm-icon")?.value.trim();
+        if (icon) override.icon = icon;
+        const order = em.root.querySelector("#sm-order")?.value;
+        if (order) {
+          const n = parseInt(order, 10);
+          if (!isNaN(n)) override.displayOrder = n;
+        }
+        const intensity = em.root.querySelector("#sm-intensity")?.value.trim();
+        if (intensity) override.intensityLabel = intensity;
+        const addendum = em.root.querySelector("#sm-addendum")?.value.trim();
+        if (addendum) override.compilerGuidanceAddendum = addendum;
+        const priority = em.root.querySelector("#sm-priority")?.value;
+        if (priority) {
+          const n = parseInt(priority, 10);
+          if (!isNaN(n)) override.injectionPriority = n;
+        }
+        const renderHint = em.root.querySelector("#sm-render-hint")?.value.trim();
+        if (renderHint) override.renderHint = renderHint;
+        override.hiddenFromSettings = em.root.querySelector("#sm-hidden")?.checked ?? false;
+        override.defaultDisplay = em.root.querySelector("#sm-def-display")?.checked ?? false;
+        override.defaultInject = em.root.querySelector("#sm-def-inject")?.checked ?? false;
+        settings = LoomOSSettingsSchema.parse({
+          ...settings,
+          stockModuleOverrides: {
+            ...settings.stockModuleOverrides,
+            [moduleKey]: Object.keys(override).length > 0 ? override : void 0
+          }
+        });
+        send({ type: "save_settings", requestId: requestId("stock-override"), settings });
+        status = `Override saved for "${ov?.label || entry.label}"`;
+        em.dismiss();
+        renderAll();
+      });
+      em.root.querySelector("#sm-cancel")?.addEventListener("click", () => em.dismiss());
+      const dismiss = em.onDismiss(() => {
+        dismiss();
+      });
+      return;
+    }
+    if (action === "reset") {
+      const entry = MODULE_CATALOG.find((m) => m.key === moduleKey);
+      if (!entry) return;
+      const newOverrides = { ...settings.stockModuleOverrides };
+      delete newOverrides[moduleKey];
+      settings = LoomOSSettingsSchema.parse({
+        ...settings,
+        stockModuleOverrides: newOverrides
+      });
+      send({ type: "save_settings", requestId: requestId("stock-reset"), settings });
+      status = `Override reset for "${entry.label}"`;
+      renderAll();
+    }
+  }
   async function handleCustomModuleAction(action, moduleId) {
     const customMods = settings.customModules || [];
     if (action === "add" || action === "edit" && moduleId) {
@@ -8088,6 +8307,17 @@ function setup(ctx) {
       }
       return;
     }
+    if (action === "reset-all-overrides") {
+      settings = LoomOSSettingsSchema.parse({
+        ...settings,
+        stockModuleOverrides: {}
+      });
+      send({ type: "save_settings", requestId: requestId("reset-overrides"), settings });
+      status = "All stock module overrides reset";
+      saveCurrentSettingsDebounced();
+      renderAll();
+      return;
+    }
     saveCurrentSettingsDebounced();
     renderAll();
   }
@@ -8208,6 +8438,13 @@ function setup(ctx) {
     if (presetBtn) {
       const actionCamel = presetBtn.getAttribute("data-preset-action");
       if (actionCamel) void handlePresetAction(actionCamel);
+      return;
+    }
+    const stockBtn = target.closest("[data-stock-action]");
+    if (stockBtn) {
+      const action = stockBtn.getAttribute("data-stock-action");
+      const key = stockBtn.getAttribute("data-stock-key");
+      if (action && key) handleStockModuleAction(action, key);
       return;
     }
     const customBtn = target.closest("[data-custom-action]");

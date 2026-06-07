@@ -345,6 +345,7 @@ export const LOOMOS_STYLES = `
   .pill-injected { border-color: #25f2d0; color: #25f2d0; }
   .pill-hidden { border-color: var(--loomos-muted); color: var(--loomos-muted); }
   .pill-custom { border-color: #7c6cff; color: #7c6cff; }
+  .pill-overridden { border-color: #d58a42; color: #d58a42; }
 
   /* 44px settings matrix buttons */
   .loomos-module-toggles {

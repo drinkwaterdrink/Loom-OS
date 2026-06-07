@@ -7,6 +7,7 @@ import {
   buildStateCompilerPrompt,
   STATE_REPAIR_PROMPT,
 } from "../shared/prompts";
+import { normalizeCompilerOutput } from "../shared/normalizeCompiledState";
 import type {
   GenerationPhase,
   LoomOSState,
@@ -29,6 +30,7 @@ export interface CompileRequest {
   seedText: string;
   enabledModules: ModuleKey[];
   customModules?: any[];
+  stockModuleOverrides?: Record<string, { compilerGuidanceAddendum?: string }>;
   connectionId: string;
   signal: AbortSignal;
   generate: GenerateCompilerOutput;
@@ -54,13 +56,15 @@ export function extractJsonObject(raw: string): unknown {
 
 function validationError(raw: string): string {
   try {
-    const parsed = extractJsonObject(raw);
+    const parsed = normalizeCompilerOutput(extractJsonObject(raw));
     const result = LoomOSCompiledStateSchema.safeParse(parsed);
     if (result.success) return "Unknown validation failure.";
-    return result.error.issues
+    const details = result.error.issues
       .slice(0, 16)
       .map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`)
       .join("\n");
+    const hint = "\n[Hint] This is usually a compiler shape issue. Normalization attempted to coerce common LLM mistakes (objects as strings, strings as objects). Check castMatrix[].goals (must be string[]), pockets (must be object[]), and impossibleNext (must be string[]).";
+    return details + hint;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -74,7 +78,9 @@ export function parseCompilerOutput(
   >,
   repaired: boolean,
 ): LoomOSState {
-  const compiled = LoomOSCompiledStateSchema.parse(extractJsonObject(raw));
+  const rawParsed = extractJsonObject(raw);
+  const normalized = normalizeCompilerOutput(rawParsed);
+  const compiled = LoomOSCompiledStateSchema.parse(normalized);
   return LoomOSStateSchema.parse({
     ...compiled,
     activeModules: request.enabledModules,
@@ -108,7 +114,7 @@ export async function compileStateWithRepair(
 ): Promise<CompileResult> {
   request.onPhase?.("building_prompt", 1, "Building the enabled-module compiler prompt.");
   const firstMessages: LlmMessageDTO[] = [
-    { role: "system", content: buildStateCompilerPrompt(request.enabledModules, request.customModules) },
+    { role: "system", content: buildStateCompilerPrompt(request.enabledModules, request.customModules, request.stockModuleOverrides) },
     { role: "user", content: compilerUserMessage(request) },
   ];
 
@@ -126,7 +132,7 @@ export async function compileStateWithRepair(
     const repairMessages: LlmMessageDTO[] = [
       {
         role: "system",
-        content: `${STATE_REPAIR_PROMPT}\n\n${buildStateCompilerPrompt(request.enabledModules, request.customModules)}`,
+        content: `${STATE_REPAIR_PROMPT}\n\n${buildStateCompilerPrompt(request.enabledModules, request.customModules, request.stockModuleOverrides)}`,
       },
       {
         role: "user",

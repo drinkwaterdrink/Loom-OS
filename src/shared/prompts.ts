@@ -219,11 +219,43 @@ Character depth rules:
 - Never output explicit anatomical details. Focus on grounded, useful continuity.
 - When age is unspecified, assume adult. Never output minors.
 - Spotlight queue: track turnsSince each named character last had narrative focus. Use need: active/soon/okay/quiet/background.
+- Character-level castMatrix[].goals are always compact strings. Structured goals with who/goal/status/note fields belong only in storyState.goals.
 `;
 }
 
 export const STATE_REPAIR_PROMPT = `Repair a malformed LoomOS State V2 compiler result.
 Return exactly one corrected JSON object and no Markdown or explanation.
-Keep only supported fields, satisfy all required core objects, preserve grounded
-facts, obey array limits, and use null or empty arrays for disabled modules.
-Do not add new story events or unsupported facts.`;
+Keep only supported fields, satisfy all required core objects, obey array
+limits, and use null or empty arrays for disabled modules.
+Do not add new story events or unsupported facts.
+
+SHAPE CORRECTIONS (fix these common mistakes):
+- castMatrix[].goals MUST be string[], not objects. If you wrote an object like {"goal":"Find X"}, extract "Find X" as a string in the array.
+- castMatrix[].pockets MUST be object[] with {name, type, qty, condition, known}. If you wrote a plain string, wrap it in {name: string, type:"misc", qty:1, condition:"", known:true}.
+- castMatrix[].stableFacts MUST be string[], not objects. Extract text from objects.
+- castMatrix[].leverage MUST be string[], not objects. Extract text from objects.
+- continuityFirewall.impossibleNext MUST be string[], not objects. Extract text from objects.
+- continuityFirewall.establishedFacts MUST be string[], not objects.
+- continuityFirewall.antiRetconAnchors MUST be string[], not objects.
+- continuityFirewall.offscreenState MUST be string[], not objects.
+- continuityFirewall.pendingConsequences MUST be object[] with {cause, pending, urgency, status}.
+- continuityFirewall.bannedNext MUST be object[] with {text, reason, scope, source}.
+- continuityFirewall.terms MUST be object[] with {party, term, status, binding}.
+- kernel.constraints MUST be string[], not objects.
+- scene.spatial MUST be string[], not objects.
+- scene.access.items MUST be string[], not objects.
+- scene.access.people MUST be string[], not objects.
+- storyState.threadLoom[].participants MUST be string[], not objects.
+
+EXAMPLES:
+- BAD: "goals": [{"goal": "Find the baths"}]
+  GOOD: "goals": ["Find the baths"]
+- BAD: "pockets": ["Lock pick"]
+  GOOD: "pockets": [{"name": "Lock pick", "type": "tool", "qty": 1, "condition": "Good", "known": true}]
+- BAD: "impossibleNext": [{"text": "Using the east stair"}]
+  GOOD: "impossibleNext": ["Using the east stair"]
+- BAD: "pendingConsequences": ["The guards are approaching"]
+  GOOD: "pendingConsequences": [{"cause": "Guards patrol", "pending": "The guards are approaching", "urgency": 5, "status": "PENDING"}]
+- BAD: "relationships": ["Iven: Trust=30"]
+  GOOD: "relationships": [{"target": "Iven", "axis": "Trust", "value": 30}]
+`;

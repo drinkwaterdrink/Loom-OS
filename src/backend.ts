@@ -543,6 +543,14 @@ async function generateState(
       existingState,
     );
     const enabledModules = trackedModuleKeys(settings);
+    const stockModuleOverrides = settings.stockModuleOverrides
+      ? Object.fromEntries(
+          Object.entries(settings.stockModuleOverrides)
+            .filter(([_, v]) => v?.compilerGuidanceAddendum)
+            .map(([k, v]) => [k, { compilerGuidanceAddendum: v!.compilerGuidanceAddendum! }])
+        )
+      : undefined;
+
     const compiled = await compileStateWithRepair({
       identity,
       transcript: transcriptResult.transcript,
@@ -552,6 +560,7 @@ async function generateState(
       seedText: seed.text,
       enabledModules,
       customModules: settings.customModules,
+      stockModuleOverrides,
       connectionId: connection.id,
       signal: controller.signal,
       onPhase: progress,
