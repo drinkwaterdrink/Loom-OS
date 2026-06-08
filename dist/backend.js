@@ -4480,6 +4480,25 @@ var CustomModuleSchema = external_exports.object({
   templateEngine: external_exports.enum(["mustache-lite", "token-replace"]).default("mustache-lite"),
   allowHtmlTemplate: external_exports.boolean().default(false)
 }).strict();
+var StockModuleOverrideSchema = external_exports.object({
+  label: external_exports.string().max(160).optional(),
+  description: external_exports.string().max(500).optional(),
+  group: external_exports.string().max(160).optional(),
+  icon: external_exports.string().max(20).optional(),
+  displayOrder: external_exports.number().int().optional(),
+  intensityLabel: external_exports.string().max(40).optional(),
+  defaultDisplay: external_exports.boolean().optional(),
+  defaultInject: external_exports.boolean().optional(),
+  compilerGuidanceAddendum: external_exports.string().max(1e3).optional(),
+  compilerInstructionOverride: external_exports.string().max(6e3).optional(),
+  schemaSummaryOverride: external_exports.string().max(6e3).optional(),
+  injectionPriority: external_exports.number().int().optional(),
+  renderHint: external_exports.string().max(200).optional(),
+  hiddenFromSettings: external_exports.boolean().optional(),
+  presentationEnabled: external_exports.boolean().optional(),
+  htmlTemplate: external_exports.string().max(12e3).optional(),
+  cssTemplate: external_exports.string().max(12e3).optional()
+}).strict();
 var StateIdentitySchema = external_exports.object({
   chatId: external_exports.string().min(1).max(300),
   messageId: external_exports.string().min(1).max(300),
@@ -4513,27 +4532,12 @@ var RawSettingsSchema = external_exports.object({
   historyRetentionLimit: external_exports.number().int().min(1).max(1e3).default(100),
   generationTimeoutSeconds: external_exports.number().int().min(30).max(300).default(180),
   connectionId: external_exports.string().trim().max(200).default(""),
+  viewerTemplateEnabled: external_exports.boolean().default(false),
+  viewerHtmlTemplate: external_exports.string().max(16e3).default(""),
+  viewerCssTemplate: external_exports.string().max(16e3).default(""),
   modulePreset: ModulePresetSchema.default("balanced"),
   moduleSettings: ModuleSettingsSchema.default(BALANCED_MODULE_SETTINGS),
-  stockModuleOverrides: external_exports.record(
-    external_exports.string(),
-    external_exports.object({
-      label: external_exports.string().max(160).optional(),
-      description: external_exports.string().max(500).optional(),
-      group: external_exports.string().max(160).optional(),
-      icon: external_exports.string().max(20).optional(),
-      displayOrder: external_exports.number().int().optional(),
-      intensityLabel: external_exports.string().max(40).optional(),
-      defaultDisplay: external_exports.boolean().optional(),
-      defaultInject: external_exports.boolean().optional(),
-      compilerGuidanceAddendum: external_exports.string().max(1e3).optional(),
-      compilerInstructionOverride: external_exports.string().max(6e3).optional(),
-      schemaSummaryOverride: external_exports.string().max(6e3).optional(),
-      injectionPriority: external_exports.number().int().optional(),
-      renderHint: external_exports.string().max(200).optional(),
-      hiddenFromSettings: external_exports.boolean().optional()
-    }).strict()
-  ).default({}),
+  stockModuleOverrides: external_exports.record(external_exports.string(), StockModuleOverrideSchema).default({}),
   customModulePresets: external_exports.array(CustomModulePresetSchema).default([]),
   customModules: external_exports.array(CustomModuleSchema).default([])
 }).strict();
@@ -4569,6 +4573,9 @@ function settingsInput(value) {
     historyRetentionLimit: source.historyRetentionLimit,
     generationTimeoutSeconds: source.generationTimeoutSeconds,
     connectionId: source.connectionId,
+    viewerTemplateEnabled: source.viewerTemplateEnabled,
+    viewerHtmlTemplate: source.viewerHtmlTemplate,
+    viewerCssTemplate: source.viewerCssTemplate,
     modulePreset: source.modulePreset,
     moduleSettings,
     stockModuleOverrides: source.stockModuleOverrides,
@@ -7654,6 +7661,17 @@ async function handleFrontendRequest(payload, userId) {
         await sendExactState(userId, identity, requestId);
         return;
       }
+      case "load_history_state": {
+        const identity = StateIdentitySchema.parse(request.identity);
+        rememberUserChat(userId, identity.chatId);
+        send({
+          type: "state",
+          requestId,
+          identity,
+          state: await loadState(identity, userId)
+        }, userId);
+        return;
+      }
       case "save_state": {
         const resolvedIdentity = await resolveIdentity(request.state.identity);
         if (resolvedIdentity.chatId !== request.state.identity.chatId || resolvedIdentity.messageId !== request.state.identity.messageId || resolvedIdentity.swipeId !== request.state.identity.swipeId) {
@@ -7667,6 +7685,18 @@ async function handleFrontendRequest(payload, userId) {
         const identity = await resolveIdentity(request.identity);
         await deleteState(identity, userId);
         send({ type: "state", requestId, identity, state: null }, userId);
+        return;
+      }
+      case "delete_history_state": {
+        const identity = StateIdentitySchema.parse(request.identity);
+        await deleteState(identity, userId);
+        send({
+          type: "history_state_deleted",
+          requestId,
+          chatId: identity.chatId,
+          identity,
+          items: await buildStateHistory(identity.chatId, userId)
+        }, userId);
         return;
       }
       case "generate_state":

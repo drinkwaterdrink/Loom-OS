@@ -199,18 +199,59 @@ const defaultSettings = {
   skin: "cyberpunk",
   autoGeneration: "manual",
   injectionEnabled: true,
+  showInjectionPreview: false,
   injectionTokenBudget: 320,
   compilerSeedTokenBudget: 900,
   recentMessageLimit: 24,
   historyRetentionLimit: 100,
   generationTimeoutSeconds: 180,
   connectionId: "",
+  viewerTemplateEnabled: false,
+  viewerHtmlTemplate: "",
+  viewerCssTemplate: "",
   modulePreset: "balanced",
   moduleSettings,
   customModulePresets: [],
   customModules: [],
-  stockModuleOverrides: [],
+  stockModuleOverrides: {},
 };
+
+const archivedState = JSON.parse(JSON.stringify(seededState));
+archivedState.identity = { chatId: "chat-preview", messageId: "message-prior", swipeId: 0 };
+archivedState.generatedAt = "2026-06-07T11:42:00.000Z";
+archivedState.source.seedIdentity = null;
+archivedState.kernel.scene = "The flooded records room";
+archivedState.kernel.location = "Lower observatory archive";
+archivedState.kernel.timeframe = "Half an hour before dawn";
+archivedState.kernel.currentFocus = "Find a dry route back to the north tower.";
+archivedState.delta.headline = "Floodwater cut off the eastern archive corridor.";
+
+let previewStates = [seededState, archivedState];
+
+function toHistoryItem(state) {
+  return {
+    identity: state.identity,
+    generatedAt: state.generatedAt,
+    schemaVersion: state.schemaVersion,
+    kernelScene: state.kernel.scene,
+    kernelFocus: state.kernel.currentFocus,
+    kernelLocation: state.kernel.location,
+    kernelTime: state.kernel.timeframe,
+    deltaHeadline: state.delta.headline,
+    castCount: state.castMatrix.length,
+    threadCount: state.storyState.threadLoom.length,
+    riskCount: state.continuityFirewall.risks.length,
+    repaired: state.source.repaired,
+    seedIdentity: state.source.seedIdentity,
+    activeModuleCount: state.activeModules.length,
+  };
+}
+
+function sameIdentity(left, right) {
+  return left.chatId === right.chatId
+    && left.messageId === right.messageId
+    && left.swipeId === right.swipeId;
+}
 
 const eventHandlers = new Map();
 let backendHandler = () => {};
@@ -309,9 +350,9 @@ const ctx = {
   },
   getActiveChat: () => ({ chatId: "chat-preview", characterId: "character-preview" }),
   sendToBackend(payload) {
-    if (payload.type === "ready" || payload.type === "get_state") {
+    if (payload.type === "ready") {
       queueMicrotask(() => backendHandler({
-        type: payload.type === "ready" ? "bootstrap" : "state",
+        type: "bootstrap",
         settings: defaultSettings,
         permissions: { generation: true, interceptor: true, chatMutation: true },
         connections: [{
@@ -321,6 +362,32 @@ const ctx = {
         identity: seededState.identity,
         state: seededState,
       }));
+    } else if (payload.type === "get_state" || payload.type === "load_history_state") {
+      const requested = payload.identity ?? seededState.identity;
+      const found = previewStates.find((candidate) => sameIdentity(candidate.identity, requested)) ?? null;
+      queueMicrotask(() => backendHandler({
+        type: "state",
+        requestId: payload.requestId,
+        identity: requested,
+        state: found,
+      }));
+    } else if (payload.type === "delete_state" || payload.type === "delete_history_state") {
+      const requested = payload.identity ?? seededState.identity;
+      previewStates = previewStates.filter((candidate) => !sameIdentity(candidate.identity, requested));
+      queueMicrotask(() => backendHandler(payload.type === "delete_history_state"
+        ? {
+            type: "history_state_deleted",
+            requestId: payload.requestId,
+            chatId: requested.chatId,
+            identity: requested,
+            items: previewStates.map(toHistoryItem),
+          }
+        : {
+            type: "state",
+            requestId: payload.requestId,
+            identity: requested,
+            state: null,
+          }));
     } else if (payload.type === "save_settings") {
       Object.assign(defaultSettings, payload.settings);
       queueMicrotask(() => backendHandler({ type: "settings", requestId: payload.requestId, settings: defaultSettings }));
@@ -329,29 +396,17 @@ const ctx = {
         type: "chat_states",
         requestId: payload.requestId,
         chatId: payload.chatId,
-        states: [{ messageId: seededState.identity.messageId, swipeId: seededState.identity.swipeId }],
+        states: previewStates.map((state) => ({
+          messageId: state.identity.messageId,
+          swipeId: state.identity.swipeId,
+        })),
       }));
     } else if (payload.type === "list_state_history") {
       queueMicrotask(() => backendHandler({
         type: "state_history",
         requestId: payload.requestId,
         chatId: payload.chatId,
-        items: [{
-          identity: seededState.identity,
-          generatedAt: seededState.generatedAt,
-          schemaVersion: seededState.schemaVersion,
-          kernelScene: seededState.kernel.scene,
-          kernelFocus: seededState.kernel.currentFocus,
-          kernelLocation: seededState.kernel.location,
-          kernelTime: seededState.kernel.timeframe,
-          deltaHeadline: seededState.delta.headline,
-          castCount: seededState.castMatrix.length,
-          threadCount: seededState.storyState.threadLoom.length,
-          riskCount: seededState.continuityFirewall.risks.length,
-          repaired: seededState.source.repaired,
-          seedIdentity: seededState.source.seedIdentity,
-          activeModuleCount: seededState.activeModules.length,
-        }],
+        items: previewStates.map(toHistoryItem),
       }));
     }
   },

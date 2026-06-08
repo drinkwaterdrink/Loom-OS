@@ -22,8 +22,10 @@ export type FrontendRequest =
   | { type: "save_settings"; requestId: string; settings: LoomOSSettings }
   | { type: "get_connections"; requestId: string }
   | { type: "get_state"; requestId: string; identity: IdentityRequest }
+  | { type: "load_history_state"; requestId: string; identity: StateIdentity }
   | { type: "save_state"; requestId: string; state: LoomOSState }
   | { type: "delete_state"; requestId: string; identity: IdentityRequest }
+  | { type: "delete_history_state"; requestId: string; identity: StateIdentity }
   | { type: "generate_state"; requestId: string; identity: IdentityRequest }
   | { type: "cancel_generation"; requestId: string }
   | { type: "refresh_permissions"; requestId: string }
@@ -68,6 +70,13 @@ export type BackendResponse =
       type: "state_history";
       requestId?: string;
       chatId: string;
+      items: StateHistoryItem[];
+    }
+  | {
+      type: "history_state_deleted";
+      requestId?: string;
+      chatId: string;
+      identity: StateIdentity;
       items: StateHistoryItem[];
     }
   | {

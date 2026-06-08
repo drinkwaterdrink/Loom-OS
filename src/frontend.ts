@@ -52,6 +52,18 @@ import {
   STARTER_CUSTOM_HTML,
 } from "./shared/customTemplates";
 import {
+  exportCustomModuleBundle,
+  exportStockModuleBundle,
+  parseModuleBundle,
+} from "./shared/moduleBundles";
+import {
+  renderViewerPresentation,
+  STARTER_STOCK_MODULE_CSS,
+  STARTER_STOCK_MODULE_HTML,
+  STARTER_VIEWER_CSS,
+  STARTER_VIEWER_HTML,
+} from "./shared/presentation";
+import {
   escapeHtml,
   renderDashboard,
   renderHistoryTab,
@@ -127,6 +139,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   let modal: SpindleModalHandle | null = null;
   let modalListenerCleanup: (() => void) | null = null;
   let activeTab = "overview";
+  let viewerTab = "overview";
 
   const tab = ctx.ui.registerDrawerTab({
     id: "command-deck",
@@ -218,6 +231,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
     const searchQuery = tab.root.querySelector<HTMLInputElement>("[data-module-search]")?.value ?? "";
     const savedTab = activeTab;
+    const savedViewerTab = viewerTab;
     
     const scrollPositions = new Map<HTMLElement, number>();
     let curr: HTMLElement | null = tab.root;
@@ -246,6 +260,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         focusedSelector = `[data-custom-module="${active.getAttribute("data-custom-module")}"][data-axis="${active.getAttribute("data-axis")}"]`;
       } else if (active.hasAttribute("data-module-search")) {
         focusedSelector = "[data-module-search]";
+      } else if (active.hasAttribute("data-history-filter")) {
+        focusedSelector = "[data-history-filter]";
       } else if (active.hasAttribute("data-action")) {
         focusedSelector = `[data-action="${active.getAttribute("data-action")}"]`;
       } else if (active.hasAttribute("data-preset-action")) {
@@ -268,6 +284,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       openDetails,
       searchQuery,
       savedTab,
+      savedViewerTab,
       focusedSelector,
       selectionStart,
       selectionEnd
@@ -279,6 +296,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     preserveDisclosure = true,
   ) {
     activeTab = uiSnapshot.savedTab;
+    viewerTab = uiSnapshot.savedViewerTab;
 
     if (preserveDisclosure) {
       tab.root.querySelectorAll<HTMLDetailsElement>("details[data-details], details[data-section], details[data-group]").forEach((d) => {
@@ -715,59 +733,83 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function renderSchemaPromptStudio(): string {
     const modules = getEffectiveModuleCatalog(settings);
+    const customModules = settings.customModules ?? [];
     return `
-      <details class="loomos-schema-studio" data-details="schema-prompt-studio">
+      <details class="loomos-schema-studio loomos-creation-studio" data-details="schema-prompt-studio">
         <summary>
-          <span>Schema & Prompt Studio</span>
-          <small>${modules.length} stock module templates</small>
+          <span>Schema & Presentation Studio</span>
+          <small>${modules.length + customModules.length} modules</small>
         </summary>
         <div class="loomos-schema-studio-body">
-          <p class="loomos-hint">These are the exact generation-facing contracts used by the compiler. Schema and compiler replacements affect prompting; the strict State V2 runtime validator remains locked for storage safety.</p>
-          <div class="loomos-bulk-actions">
-            <button type="button" class="loomos-button loomos-btn-sm" data-action="copy-schema-catalog">Copy All Module Contracts</button>
+          <div class="loomos-studio-hero">
+            <div>
+              <span class="loomos-kicker">Creation workspace</span>
+              <h3>Build the tracker you want to read</h3>
+              <p>Generation contracts control what the AI tracks. Presentation templates control how the chat viewer and module output are arranged and styled. Runtime State V2 validation remains locked for storage safety.</p>
+            </div>
+            <span class="loomos-status">${settings.viewerTemplateEnabled ? "Custom viewer active" : "Native viewer active"}</span>
           </div>
-          <div class="loomos-schema-module-list">
+          <div class="loomos-studio-actions">
+            <button type="button" class="loomos-button loomos-button-primary" data-studio-action="edit-viewer">Edit Viewer HTML/CSS</button>
+            <button type="button" class="loomos-button" data-studio-action="import-module">Import Module</button>
+            <button type="button" class="loomos-button" data-action="copy-schema-catalog">Copy All Contracts</button>
+          </div>
+          <section class="loomos-studio-library">
+            <div class="loomos-studio-library-heading">
+              <div><span class="loomos-kicker">Module library</span><h3>Stock modules</h3></div>
+              <span>${modules.length}</span>
+            </div>
             ${modules.map((module) => {
-              const stock = MODULE_CATALOG.find((candidate) => candidate.key === module.key)!;
               const overridden = module.overridden;
-              const promptBlock = buildStockModulePromptBlock(module.key, settings.stockModuleOverrides);
+              const presentation = settings.stockModuleOverrides?.[module.key]?.presentationEnabled;
               return `
-                <details class="loomos-schema-module">
-                  <summary>
-                    <span>${escapeHtml(module.label)} <code>${escapeHtml(module.key)}</code></span>
-                    <span class="loomos-badge">${overridden ? "Customized" : "Stock"}</span>
-                  </summary>
-                  <div class="loomos-schema-module-body">
-                    <div>
-                      <span class="loomos-subhead">Effective generation schema</span>
-                      <pre class="loomos-contract-code">${escapeHtml(module.schemaSummary)}</pre>
+                <article class="loomos-studio-module-row">
+                  <div class="loomos-studio-module-copy">
+                    <div class="loomos-studio-module-title">
+                      <strong>${escapeHtml(module.label)}</strong>
+                      <code>${escapeHtml(module.key)}</code>
+                      ${overridden ? `<span class="loomos-badge">Customized</span>` : ""}
+                      ${presentation ? `<span class="loomos-badge loomos-badge-ok">Template</span>` : ""}
                     </div>
-                    ${module.schemaSummary !== stock.schemaSummary ? `
-                      <details class="loomos-cast-extra">
-                        <summary>Stock schema template</summary>
-                        <div class="loomos-cast-extra-body"><pre class="loomos-contract-code">${escapeHtml(stock.schemaSummary)}</pre></div>
-                      </details>
-                    ` : ""}
-                    <div>
-                      <span class="loomos-subhead">Effective compiler instruction</span>
-                      <pre class="loomos-contract-code">${escapeHtml(module.compilerInstruction)}</pre>
-                    </div>
-                    <details class="loomos-cast-extra">
-                      <summary>Exact module prompt block</summary>
-                      <div class="loomos-cast-extra-body"><pre class="loomos-contract-code">${escapeHtml(promptBlock)}</pre></div>
-                    </details>
-                    <div class="loomos-schema-actions">
-                      <button type="button" class="loomos-button loomos-btn-sm" data-stock-action="inspect" data-stock-key="${escapeHtml(module.key)}">Inspect Full Contract</button>
-                      <button type="button" class="loomos-button loomos-btn-sm" data-stock-action="edit" data-stock-key="${escapeHtml(module.key)}">Edit / Replace</button>
-                      <button type="button" class="loomos-button loomos-btn-sm" data-action="copy-module-prompt" data-schema-module="${escapeHtml(module.key)}">Copy Prompt Block</button>
-                      <button type="button" class="loomos-button loomos-btn-sm" data-action="copy-full-module-prompt" data-schema-module="${escapeHtml(module.key)}">Copy Full Generated Prompt</button>
-                      ${overridden ? `<button type="button" class="loomos-button loomos-button-danger loomos-btn-sm" data-stock-action="reset" data-stock-key="${escapeHtml(module.key)}">Reset</button>` : ""}
-                    </div>
+                    <p>${escapeHtml(module.description)}</p>
                   </div>
-                </details>
+                  <div class="loomos-studio-module-actions">
+                    <button type="button" class="loomos-button loomos-btn-sm" data-stock-action="inspect" data-stock-key="${escapeHtml(module.key)}">Inspect</button>
+                    <button type="button" class="loomos-button loomos-btn-sm" data-stock-action="edit" data-stock-key="${escapeHtml(module.key)}">Edit</button>
+                    <button type="button" class="loomos-button loomos-btn-sm" data-studio-action="export-stock" data-stock-key="${escapeHtml(module.key)}">Export</button>
+                    ${overridden ? `<button type="button" class="loomos-button loomos-button-danger loomos-btn-sm" data-stock-action="reset" data-stock-key="${escapeHtml(module.key)}">Reset</button>` : ""}
+                  </div>
+                </article>
               `;
             }).join("")}
-          </div>
+          </section>
+          <section class="loomos-studio-library">
+            <div class="loomos-studio-library-heading">
+              <div><span class="loomos-kicker">Portable modules</span><h3>Custom modules</h3></div>
+              <span>${customModules.length}</span>
+            </div>
+            ${customModules.length === 0
+              ? `<div class="loomos-empty loomos-studio-empty"><p>No custom modules yet. Import one or duplicate a stock module from the module matrix.</p></div>`
+              : customModules.map((module) => `
+                <article class="loomos-studio-module-row">
+                  <div class="loomos-studio-module-copy">
+                    <div class="loomos-studio-module-title">
+                      <strong>${escapeHtml(module.label)}</strong>
+                      <code>${escapeHtml(module.id)}</code>
+                      <span class="loomos-badge">Custom</span>
+                      ${module.allowHtmlTemplate ? `<span class="loomos-badge loomos-badge-ok">HTML/CSS</span>` : ""}
+                    </div>
+                    <p>${escapeHtml(module.description || module.compilerInstruction)}</p>
+                  </div>
+                  <div class="loomos-studio-module-actions">
+                    <button type="button" class="loomos-button loomos-btn-sm" data-custom-action="edit" data-custom-id="${escapeHtml(module.id)}">Edit</button>
+                    <button type="button" class="loomos-button loomos-btn-sm" data-custom-action="duplicate" data-custom-id="${escapeHtml(module.id)}">Duplicate</button>
+                    <button type="button" class="loomos-button loomos-btn-sm" data-studio-action="export-custom" data-custom-id="${escapeHtml(module.id)}">Export</button>
+                    <button type="button" class="loomos-button loomos-button-danger loomos-btn-sm" data-custom-action="delete" data-custom-id="${escapeHtml(module.id)}">Delete</button>
+                  </div>
+                </article>
+              `).join("")}
+          </section>
         </div>
       </details>
     `;
@@ -1035,7 +1077,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function diagnosticText(): string {
     const lines = [
-      `version: 0.1.9`,
+      `version: 0.1.10`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -1060,7 +1102,11 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     </div>`;
   }
 
-  function tabsNavHtml(selectedTab = activeTab, includeSettings = true): string {
+  function tabsNavHtml(
+    selectedTab = activeTab,
+    includeSettings = true,
+    scope: "drawer" | "viewer" = "drawer",
+  ): string {
     const tabs = [
       { id: "overview", label: "Pulse", meta: state ? state.activeModules.length : 0 },
       { id: "cast", label: "Cast", meta: state?.castMatrix.length ?? 0 },
@@ -1070,8 +1116,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       { id: "history", label: "History", meta: historyItems.length },
       ...(includeSettings ? [{ id: "settings", label: "Setup", meta: MODULE_KEYS.filter((key) => settings.moduleSettings[key].track).length }] : []),
     ];
-    return `<nav class="loomos-tabs-nav" aria-label="Tracker views" role="tablist">${tabs.map((tabItem) =>
-      `<button class="loomos-tab-btn${selectedTab === tabItem.id ? " active" : ""}" data-tab="${tabItem.id}" role="tab" aria-selected="${selectedTab === tabItem.id}">
+    return `<nav class="loomos-tabs-nav${scope === "viewer" ? " loomos-viewer-tabs" : ""}" aria-label="Tracker views" role="tablist">${tabs.map((tabItem) =>
+      `<button class="loomos-tab-btn${selectedTab === tabItem.id ? " active" : ""}" data-tab="${tabItem.id}" data-tab-scope="${scope}" role="tab" aria-selected="${selectedTab === tabItem.id}">
         <span>${tabItem.label}</span><small>${tabItem.meta}</small>
       </button>`
     ).join("")}</nav>`;
@@ -1139,17 +1185,49 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       </main>`;
   }
 
+  function viewerCommandHtml(): string {
+    const canGenerate = permissions.generation && permissions.chatMutation;
+    const busy = activeGenerationRequestId !== null;
+    const stateLabel = busy ? "Compiling" : state ? "Synced" : "No state";
+    const sceneTitle = state?.kernel.scene || "Exact-swipe tracker";
+    const sceneMeta = state
+      ? [state.kernel.location, state.kernel.timeframe].filter(Boolean).join(" · ")
+      : status;
+    return `
+      <section class="loomos-viewer-command">
+        <div class="loomos-viewer-context">
+          <span class="loomos-kicker">LoomOS tracker</span>
+          <div class="loomos-viewer-title-row">
+            <h1>${escapeHtml(sceneTitle)}</h1>
+            <span class="loomos-state-pill${busy ? " is-busy" : state ? " is-ready" : ""}" title="${escapeHtml(elapsedLabel())}">
+              <i></i>${stateLabel}
+            </span>
+          </div>
+          <p>${escapeHtml(sceneMeta || exactLabel())}</p>
+          <small>${escapeHtml(exactLabel())}</small>
+        </div>
+        <div class="loomos-viewer-actions">
+          ${busy
+            ? `<button class="loomos-button loomos-button-danger loomos-button-pulse loomos-viewer-primary" data-action="cancel">Stop compile</button>`
+            : `<button class="loomos-button loomos-button-primary loomos-viewer-primary" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh tracker" : "Generate tracker"}</button>`
+          }
+          <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation || busy)}>Reload</button>
+          ${state && !busy ? `<button class="loomos-button loomos-button-danger" data-action="delete">Delete</button>` : ""}
+        </div>
+      </section>`;
+  }
+
   function renderViewer(): void {
     if (!modal) return;
-    const viewerTab = activeTab === "settings" ? "overview" : activeTab;
     modal.root.className = "loomos-root";
     modal.root.dataset.skin = settings.skin;
     modal.root.dataset.view = "modal";
-    modal.setTitle("LoomOS");
-    modal.root.innerHTML = `
-      ${stickyHeaderHtml(Boolean(state) || historyItems.length > 0, "modal", viewerTab)}
+    modal.setTitle("LoomOS Tracker");
+    const command = viewerCommandHtml();
+    const navigation = tabsNavHtml(viewerTab, false, "viewer");
+    const content = `
       ${compileStatusCardHtml()}
-      <main class="loomos-tab-pane" role="tabpanel">
+      <main class="loomos-tab-pane loomos-viewer-pane" role="tabpanel">
         ${viewerTab === "history"
           ? renderHistoryTab(historyItems, historyFilter, activeIdentity)
           : viewerTab === "injection"
@@ -1159,6 +1237,20 @@ export function setup(ctx: SpindleFrontendContext): () => void {
             : emptyStateHtml()
         }
       </main>`;
+    const shell = settings.viewerTemplateEnabled
+      ? renderViewerPresentation(
+          settings.viewerHtmlTemplate || STARTER_VIEWER_HTML,
+          settings.viewerCssTemplate || STARTER_VIEWER_CSS,
+          { command, navigation, content },
+        )
+      : {
+          html: `<div class="loomos-viewer-frame">${command}${navigation}${content}</div>`,
+          css: "",
+          wrapperClass: "",
+        };
+    modal.root.innerHTML = `
+      ${shell.css ? `<style>${shell.css}</style>` : ""}
+      <div class="loomos-viewer-shell ${shell.wrapperClass}">${shell.html}</div>`;
   }
 
   function renderAll(preserveDisclosure = true): void {
@@ -1170,27 +1262,31 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   }
 
   function openViewer(): void {
-    if (activeTab === "settings") activeTab = "overview";
+    viewerTab = activeTab === "settings" ? "overview" : activeTab;
     if (modal) {
       renderViewer();
       return;
     }
     modal = ctx.ui.showModal({
-      title: "LoomOS",
+      title: "LoomOS Tracker",
       width: Math.min(1100, typeof window !== "undefined" ? window.innerWidth - 8 : 420),
       maxHeight: typeof window !== "undefined" ? Math.min(900, window.innerHeight - 12) : 680,
     });
     const root = modal.root;
     const onClick = (event: Event) => handleActionClick(event);
+    const onInput = (event: Event) => handleRootInput(event);
     root.addEventListener("click", onClick);
+    root.addEventListener("input", onInput);
     const removeDismiss = modal.onDismiss(() => {
       root.removeEventListener("click", onClick);
+      root.removeEventListener("input", onInput);
       removeDismiss();
       modal = null;
       modalListenerCleanup = null;
     });
     modalListenerCleanup = () => {
       root.removeEventListener("click", onClick);
+      root.removeEventListener("input", onInput);
       removeDismiss();
       modal?.dismiss();
       modal = null;
@@ -1321,7 +1417,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   }
 
   function reloadState(): void {
-    const identity = currentRequest();
+    const identity = state?.identity ?? currentRequest();
     if (!identity?.messageId) {
       activeIdentity = null;
       state = null;
@@ -1335,7 +1431,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   }
 
   async function deleteCurrentState(): Promise<void> {
-    const identity = currentRequest();
+    const identity = state?.identity ?? currentRequest();
     if (!identity?.messageId) return;
     const { confirmed } = await ctx.ui.showConfirm({
       title: "Delete LoomOS State",
@@ -1345,6 +1441,59 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     });
     if (!confirmed) return;
     send({ type: "delete_state", requestId: requestId("delete"), identity });
+  }
+
+  function historyIdentityFromButton(button: HTMLElement): StateIdentity | null {
+    const chatId = button.dataset.chatId;
+    const messageId = button.dataset.messageId;
+    const swipeId = Number(button.dataset.swipeId);
+    if (!chatId || !messageId || !Number.isInteger(swipeId) || swipeId < 0) return null;
+    return { chatId, messageId, swipeId };
+  }
+
+  function loadHistoryState(button: HTMLElement): void {
+    const identity = historyIdentityFromButton(button);
+    if (!identity) {
+      status = "Could not read that history entry.";
+      renderAll();
+      return;
+    }
+    status = `Loading ${identity.messageId.slice(0, 8)} swipe ${identity.swipeId}`;
+    viewerTab = "overview";
+    send({
+      type: "load_history_state",
+      requestId: requestId("history-load"),
+      identity,
+    });
+    renderAll(false);
+  }
+
+  async function deleteHistoryState(button: HTMLElement): Promise<void> {
+    const identity = historyIdentityFromButton(button);
+    if (!identity) {
+      status = "Could not read that history entry.";
+      renderAll();
+      return;
+    }
+    const entry = historyItems.find((item) =>
+      item.identity.chatId === identity.chatId
+      && item.identity.messageId === identity.messageId
+      && item.identity.swipeId === identity.swipeId
+    );
+    const { confirmed } = await ctx.ui.showConfirm({
+      title: "Delete tracker history",
+      message: `Delete "${entry?.kernelScene || identity.messageId}" for swipe ${identity.swipeId}? This removes the stored tracker only.`,
+      variant: "danger",
+      confirmLabel: "Delete tracker",
+    });
+    if (!confirmed) return;
+    status = "Deleting history tracker";
+    send({
+      type: "delete_history_state",
+      requestId: requestId("history-delete"),
+      identity,
+    });
+    renderAll();
   }
 
   function showWhatChangedModal(): void {
@@ -1687,6 +1836,239 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     }
   }
 
+  function downloadJsonFile(filename: string, value: unknown): void {
+    const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function safeFilename(value: string): string {
+    return value.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "module";
+  }
+
+  function openModuleExport(title: string, filename: string, bundle: unknown): void {
+    const json = JSON.stringify(bundle, null, 2);
+    const em = ctx.ui.showModal({
+      title,
+      width: Math.min(680, window.innerWidth - 12),
+      maxHeight: Math.min(700, window.innerHeight - 20),
+    });
+    em.root.className = "loomos-root";
+    em.root.innerHTML = `
+      <div class="loomos-prompt-dialog loomos-portable-dialog" data-skin="${settings.skin}">
+        <p class="loomos-hint">This bundle includes the module contract, controls, and presentation template. It can be imported into another LoomOS installation.</p>
+        <textarea class="loomos-input loomos-portable-json" id="module-export-json" readonly>${escapeHtml(json)}</textarea>
+        <div class="loomos-dialog-buttons">
+          <button type="button" class="loomos-button loomos-button-primary" id="module-export-copy">Copy JSON</button>
+          <button type="button" class="loomos-button" id="module-export-download">Download</button>
+          <button type="button" class="loomos-button" id="module-export-close">Close</button>
+        </div>
+      </div>`;
+    em.root.querySelector("#module-export-copy")?.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(json);
+      status = "Module bundle copied";
+    });
+    em.root.querySelector("#module-export-download")?.addEventListener("click", () => {
+      downloadJsonFile(filename, bundle);
+    });
+    em.root.querySelector("#module-export-close")?.addEventListener("click", () => em.dismiss());
+    const dismiss = em.onDismiss(() => { dismiss(); });
+  }
+
+  function openModuleImport(): void {
+    const im = ctx.ui.showModal({
+      title: "Import LoomOS Module",
+      width: Math.min(680, window.innerWidth - 12),
+      maxHeight: Math.min(720, window.innerHeight - 20),
+    });
+    im.root.className = "loomos-root";
+    im.root.innerHTML = `
+      <div class="loomos-prompt-dialog loomos-portable-dialog" data-skin="${settings.skin}">
+        <p class="loomos-hint">Choose a LoomOS module JSON file or paste a bundle. Stock bundles replace that module's controls, contract overrides, and presentation. Custom bundles are added as portable custom modules.</p>
+        <label class="loomos-file-drop">
+          <span>Choose module JSON</span>
+          <input type="file" id="module-import-file" accept=".json,application/json">
+        </label>
+        <label class="loomos-field"><span>Module JSON</span>
+          <textarea class="loomos-input loomos-portable-json" id="module-import-json" placeholder='{"format":"loomos-module","version":1,...}'></textarea>
+        </label>
+        <div class="loomos-dialog-buttons">
+          <button type="button" class="loomos-button loomos-button-primary" id="module-import-confirm">Import Module</button>
+          <button type="button" class="loomos-button" id="module-import-cancel">Cancel</button>
+        </div>
+        <p class="loomos-dialog-error" id="module-import-error" role="alert"></p>
+      </div>`;
+    const textarea = im.root.querySelector<HTMLTextAreaElement>("#module-import-json");
+    im.root.querySelector<HTMLInputElement>("#module-import-file")?.addEventListener("change", async (event) => {
+      const file = (event.currentTarget as HTMLInputElement).files?.[0];
+      if (file && textarea) textarea.value = await file.text();
+    });
+    im.root.querySelector("#module-import-confirm")?.addEventListener("click", () => {
+      const errorRoot = im.root.querySelector<HTMLElement>("#module-import-error");
+      try {
+        const parsedJson = JSON.parse(textarea?.value.trim() || "");
+        const bundle = parseModuleBundle(parsedJson);
+        if (bundle.kind === "stock") {
+          settings = LoomOSSettingsSchema.parse({
+            ...settings,
+            moduleSettings: {
+              ...settings.moduleSettings,
+              [bundle.key]: {
+                ...bundle.control,
+                track: CORE_TRACKING_MODULES.has(bundle.key) ? true : bundle.control.track,
+              },
+            },
+            stockModuleOverrides: {
+              ...settings.stockModuleOverrides,
+              [bundle.key]: bundle.override,
+            },
+          });
+          status = `Imported stock module "${bundle.key}"`;
+        } else {
+          const exists = settings.customModules.some((module) => module.id === bundle.module.id);
+          const imported = CustomModuleSchema.parse({
+            ...bundle.module,
+            id: exists
+              ? "cmod_" + crypto.randomUUID().replace(/-/g, "").substring(0, 12)
+              : bundle.module.id,
+            label: exists ? `${bundle.module.label} (Imported)` : bundle.module.label,
+          });
+          settings = LoomOSSettingsSchema.parse({
+            ...settings,
+            customModules: [...settings.customModules, imported],
+          });
+          status = `Imported custom module "${imported.label}"`;
+        }
+        send({ type: "save_settings", requestId: requestId("module-import"), settings });
+        im.dismiss();
+        renderAll();
+      } catch (error) {
+        if (errorRoot) errorRoot.textContent = error instanceof Error ? error.message : String(error);
+      }
+    });
+    im.root.querySelector("#module-import-cancel")?.addEventListener("click", () => im.dismiss());
+    const dismiss = im.onDismiss(() => { dismiss(); });
+  }
+
+  function openViewerPresentationEditor(): void {
+    let enabled = settings.viewerTemplateEnabled;
+    let htmlTemplate = settings.viewerHtmlTemplate || STARTER_VIEWER_HTML;
+    let cssTemplate = settings.viewerCssTemplate || STARTER_VIEWER_CSS;
+    const vm = ctx.ui.showModal({
+      title: "Viewer Presentation",
+      width: Math.min(920, window.innerWidth - 8),
+      maxHeight: Math.min(860, window.innerHeight - 12),
+    });
+    vm.root.className = "loomos-root";
+
+    const syncDraft = (): void => {
+      enabled = vm.root.querySelector<HTMLInputElement>("#viewer-template-enabled")?.checked ?? enabled;
+      htmlTemplate = vm.root.querySelector<HTMLTextAreaElement>("#viewer-template-html")?.value ?? htmlTemplate;
+      cssTemplate = vm.root.querySelector<HTMLTextAreaElement>("#viewer-template-css")?.value ?? cssTemplate;
+    };
+
+    const refreshPreview = (): void => {
+      syncDraft();
+      const preview = renderViewerPresentation(
+        htmlTemplate,
+        cssTemplate,
+        {
+          command: `<section class="loomos-viewer-command"><div class="loomos-viewer-context"><span class="loomos-kicker">Preview</span><div class="loomos-viewer-title-row"><h1>${escapeHtml(state?.kernel.scene || "Tracker scene")}</h1><span class="loomos-state-pill is-ready"><i></i>Synced</span></div><p>${escapeHtml(state?.kernel.location || "Current location")}</p></div></section>`,
+          navigation: tabsNavHtml(viewerTab, false, "viewer"),
+          content: state
+            ? renderDashboard(state, settings, viewerTab === "history" ? "overview" : viewerTab)
+            : `<div class="loomos-empty"><h3>Tracker content</h3><p>Generate a tracker to preview live module data.</p></div>`,
+        },
+      );
+      const previewRoot = vm.root.querySelector<HTMLElement>("#viewer-template-preview");
+      if (previewRoot) {
+        previewRoot.innerHTML = `<style>${preview.css}</style><div class="loomos-viewer-shell ${preview.wrapperClass}">${preview.html}</div>`;
+      }
+    };
+
+    vm.root.innerHTML = `
+      <div class="loomos-prompt-dialog loomos-viewer-editor" data-skin="${settings.skin}">
+        <div class="loomos-editor-intro">
+          <div><span class="loomos-kicker">Safe slot template</span><h3>Tracker viewer HTML & CSS</h3></div>
+          <label class="loomos-check"><input type="checkbox" id="viewer-template-enabled"${checked(enabled)}><span>Use custom viewer template</span></label>
+        </div>
+        <p class="loomos-hint">Arrange <code>{{command}}</code>, <code>{{navigation}}</code>, and <code>{{content}}</code> anywhere in the HTML shell. CSS is scoped to the viewer. Scripts, external assets, event handlers, fixed positioning, and unsafe URLs are removed.</p>
+        <div class="loomos-code-grid">
+          <label class="loomos-field"><span>Viewer HTML</span><textarea class="loomos-input loomos-code-editor" id="viewer-template-html" maxlength="16000">${escapeHtml(htmlTemplate)}</textarea></label>
+          <label class="loomos-field"><span>Viewer CSS</span><textarea class="loomos-input loomos-code-editor" id="viewer-template-css" maxlength="16000">${escapeHtml(cssTemplate)}</textarea></label>
+        </div>
+        <div class="loomos-dialog-buttons">
+          <button type="button" class="loomos-button" id="viewer-template-reset">Reset Starter</button>
+          <button type="button" class="loomos-button" id="viewer-template-refresh">Refresh Preview</button>
+          <button type="button" class="loomos-button loomos-button-primary" id="viewer-template-save">Save Viewer</button>
+          <button type="button" class="loomos-button" id="viewer-template-cancel">Cancel</button>
+        </div>
+        <div class="loomos-template-preview loomos-viewer-template-preview" id="viewer-template-preview"></div>
+      </div>`;
+    vm.root.querySelector("#viewer-template-reset")?.addEventListener("click", () => {
+      htmlTemplate = STARTER_VIEWER_HTML;
+      cssTemplate = STARTER_VIEWER_CSS;
+      const html = vm.root.querySelector<HTMLTextAreaElement>("#viewer-template-html");
+      const css = vm.root.querySelector<HTMLTextAreaElement>("#viewer-template-css");
+      if (html) html.value = htmlTemplate;
+      if (css) css.value = cssTemplate;
+      refreshPreview();
+    });
+    vm.root.querySelector("#viewer-template-refresh")?.addEventListener("click", refreshPreview);
+    vm.root.querySelector("#viewer-template-save")?.addEventListener("click", () => {
+      syncDraft();
+      settings = LoomOSSettingsSchema.parse({
+        ...settings,
+        viewerTemplateEnabled: enabled,
+        viewerHtmlTemplate: htmlTemplate,
+        viewerCssTemplate: cssTemplate,
+      });
+      send({ type: "save_settings", requestId: requestId("viewer-template"), settings });
+      status = enabled ? "Custom viewer presentation saved" : "Native viewer presentation restored";
+      vm.dismiss();
+      renderAll();
+    });
+    vm.root.querySelector("#viewer-template-cancel")?.addEventListener("click", () => vm.dismiss());
+    const dismiss = vm.onDismiss(() => { dismiss(); });
+    refreshPreview();
+  }
+
+  function handleStudioAction(action: string, button: HTMLElement): void {
+    if (action === "edit-viewer") {
+      openViewerPresentationEditor();
+      return;
+    }
+    if (action === "import-module") {
+      openModuleImport();
+      return;
+    }
+    if (action === "export-stock") {
+      const key = button.dataset.stockKey as ModuleKey | undefined;
+      if (!key || !MODULE_KEYS.includes(key)) return;
+      const module = getEffectiveModuleCatalog(settings).find((candidate) => candidate.key === key);
+      openModuleExport(
+        `Export ${module?.label || key}`,
+        `loomos-${safeFilename(module?.label || key)}.json`,
+        exportStockModuleBundle(key, settings),
+      );
+      return;
+    }
+    if (action === "export-custom") {
+      const id = button.dataset.customId;
+      const module = settings.customModules.find((candidate) => candidate.id === id);
+      if (!module) return;
+      openModuleExport(
+        `Export ${module.label}`,
+        `loomos-${safeFilename(module.label)}.json`,
+        exportCustomModuleBundle(module),
+      );
+    }
+  }
+
   function handleStockModuleAction(action: string, moduleKey: string): void {
     if (action === "inspect") {
       const entry = MODULE_CATALOG.find((m) => m.key === moduleKey);
@@ -1827,6 +2209,16 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           <label class="loomos-field"><span>Additional compiler guidance</span><textarea class="loomos-input" id="sm-addendum" style="height:80px;" placeholder="Appended after the effective compiler instruction">${escapeHtml(ov?.compilerGuidanceAddendum || "")}</textarea></label>
           <label class="loomos-field"><span>Injection priority (higher = injected first)</span><input class="loomos-input" type="number" id="sm-priority" value="${ov?.injectionPriority ?? ""}" placeholder="Auto"></label>
           <label class="loomos-field"><span>Render hint</span><input class="loomos-input" type="text" id="sm-render-hint" value="${escapeHtml(ov?.renderHint || "")}" placeholder="Custom render behavior hint"></label>
+          <details class="loomos-editor-section"${ov?.presentationEnabled ? " open" : ""}>
+            <summary>Module HTML/CSS Presentation <span class="loomos-badge">Sanitized</span></summary>
+            <div class="loomos-editor-section-body">
+              <label class="loomos-check"><input type="checkbox" id="sm-presentation-enabled"${checked(ov?.presentationEnabled === true)}><span>Use a custom presentation wrapper for this module</span></label>
+              <p class="loomos-hint">Use <code>{{title}}</code>, <code>{{summary}}</code>, <code>{{content}}</code>, <code>{{key}}</code>, and <code>{{open}}</code>. The module's escaped tracker content is inserted into <code>{{content}}</code>.</p>
+              <label class="loomos-field"><span>Module HTML</span><textarea class="loomos-input loomos-code-editor" id="sm-html-template" maxlength="12000">${escapeHtml(ov?.htmlTemplate || STARTER_STOCK_MODULE_HTML)}</textarea></label>
+              <label class="loomos-field"><span>Module CSS</span><textarea class="loomos-input loomos-code-editor" id="sm-css-template" maxlength="12000">${escapeHtml(ov?.cssTemplate || STARTER_STOCK_MODULE_CSS)}</textarea></label>
+              <button type="button" class="loomos-button loomos-btn-sm" id="sm-template-reset">Reset Starter Template</button>
+            </div>
+          </details>
           <label class="loomos-check" style="margin-top:4px;"><input type="checkbox" id="sm-hidden"${checked(ov?.hiddenFromSettings === true)}><span>Hidden from settings</span></label>
           <label class="loomos-check"><input type="checkbox" id="sm-def-display"${checked(ov?.defaultDisplay === true)}><span>Default display enabled</span></label>
           <label class="loomos-check"><input type="checkbox" id="sm-def-inject"${checked(ov?.defaultInject === true)}><span>Default inject enabled</span></label>
@@ -1861,6 +2253,11 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         if (priority) { const n = parseInt(priority, 10); if (!isNaN(n)) override.injectionPriority = n; }
         const renderHint = em.root.querySelector<HTMLInputElement>("#sm-render-hint")?.value.trim();
         if (renderHint) override.renderHint = renderHint;
+        override.presentationEnabled = em.root.querySelector<HTMLInputElement>("#sm-presentation-enabled")?.checked ?? false;
+        const htmlTemplate = em.root.querySelector<HTMLTextAreaElement>("#sm-html-template")?.value;
+        const cssTemplate = em.root.querySelector<HTMLTextAreaElement>("#sm-css-template")?.value;
+        if (htmlTemplate) override.htmlTemplate = htmlTemplate;
+        if (cssTemplate) override.cssTemplate = cssTemplate;
         override.hiddenFromSettings = em.root.querySelector<HTMLInputElement>("#sm-hidden")?.checked ?? false;
         override.defaultDisplay = em.root.querySelector<HTMLInputElement>("#sm-def-display")?.checked ?? false;
         override.defaultInject = em.root.querySelector<HTMLInputElement>("#sm-def-inject")?.checked ?? false;
@@ -1878,6 +2275,12 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         renderAll();
       });
 
+      em.root.querySelector("#sm-template-reset")?.addEventListener("click", () => {
+        const html = em.root.querySelector<HTMLTextAreaElement>("#sm-html-template");
+        const css = em.root.querySelector<HTMLTextAreaElement>("#sm-css-template");
+        if (html) html.value = STARTER_STOCK_MODULE_HTML;
+        if (css) css.value = STARTER_STOCK_MODULE_CSS;
+      });
       em.root.querySelector("#sm-cancel")?.addEventListener("click", () => em.dismiss());
       const dismiss = em.onDismiss(() => { dismiss(); });
       return;
@@ -2405,6 +2808,16 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         historyItems = response.items;
         refreshAllMessageWidgets();
         break;
+      case "history_state_deleted": {
+        historyItems = response.items;
+        const deletedActive = activeIdentity?.chatId === response.identity.chatId
+          && activeIdentity.messageId === response.identity.messageId
+          && activeIdentity.swipeId === response.identity.swipeId;
+        if (deletedActive) state = null;
+        status = "History tracker deleted";
+        refreshAllMessageWidgets();
+        break;
+      }
       case "injection_preview":
         injectionPreview = response.preview;
         break;
@@ -2427,7 +2840,13 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     const tabBtn = target.closest<HTMLElement>("[data-tab]");
     if (tabBtn) {
       const newTab = tabBtn.dataset.tab;
-      if (newTab && newTab !== activeTab) {
+      const scope = tabBtn.dataset.tabScope;
+      if (scope === "viewer") {
+        if (newTab && newTab !== viewerTab) {
+          viewerTab = newTab;
+          renderViewer();
+        }
+      } else if (newTab && newTab !== activeTab) {
         activeTab = newTab;
         renderAll(false);
       }
@@ -2444,6 +2863,18 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         send({ type: "cancel_generation", requestId: activeGenerationRequestId });
       }
       if (action === "delete") void deleteCurrentState();
+      if (action === "load-history-state") loadHistoryState(actionBtn);
+      if (action === "delete-history-state") void deleteHistoryState(actionBtn);
+      if (action === "clear-history-filter") {
+        historyFilter = "";
+        renderAll();
+      }
+      if (action === "copy-injection-preview" && injectionPreview) {
+        void navigator.clipboard.writeText(injectionPreview.text).then(() => {
+          status = "Injection preview copied";
+          renderAll();
+        });
+      }
       if (action === "permissions") void requestPermissions();
       if (action === "what-changed" && state) void showWhatChangedModal();
       if (action === "copy-debug-report" && pipeline?.debugReport) {
@@ -2486,6 +2917,13 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           renderAll();
         }
       }
+      return;
+    }
+
+    const studioBtn = target.closest<HTMLElement>("[data-studio-action]");
+    if (studioBtn) {
+      const action = studioBtn.dataset.studioAction;
+      if (action) handleStudioAction(action, studioBtn);
       return;
     }
 
@@ -2543,6 +2981,11 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function handleRootInput(event: Event): void {
     const target = event.target as HTMLInputElement | null;
+    if (target?.matches("[data-history-filter]")) {
+      historyFilter = target.value;
+      renderAll();
+      return;
+    }
     if (!target?.matches("[data-module-search]")) return;
     const query = target.value.trim().toLowerCase();
     

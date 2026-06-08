@@ -1,24 +1,24 @@
 # LoomOS Command Deck
 
-Current release: **0.1.9**
+Current release: **0.1.10**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.9
+## Key Features & Upgrades in 0.1.10
 
-- **Mobile workspace redesign**: The drawer and viewer now use the full available width with a compact sticky control dock, safe-area padding, and no redundant internal title block.
-- **Scan-first navigation**: A stable full-width navigation grid replaces the cramped horizontal strip. Pulse, Cast, World, Story, Memory, History, and Setup expose useful live counts.
-- **Dedicated Setup workspace**: Settings, presets, token controls, schema tools, diagnostics, and module configuration no longer push tracker content down on every view.
-- **Denser tracker views**: Scene Pulse, Cast, History, expandable sections, facts, and metrics were flattened and reorganized to reduce nested cards and wasted vertical space.
-- **Responsive polish**: Important actions use 40-44px touch targets, narrow screens receive dedicated layouts, desktop views gain denser grids, and motion respects reduced-motion preferences.
+- **Completely rebuilt chat tracker viewer**: The pop-up tracker opened from chat now has its own scene-first command header, independent viewer tabs, dense mobile layout, compact status chips, and full-width reading panes.
+- **History actions fixed**: History rows now use exact archived `chatId + messageId + swipeId` identities for Load and Delete, so old trackers can be inspected or removed even when they are not the currently active message.
+- **Schema & Presentation Studio**: Setup now includes a creation workspace for generation contracts, viewer HTML/CSS, stock module HTML/CSS, and portable module import/export.
+- **Per-module portability**: Stock and custom modules can be exported as `loomos-module` JSON bundles and imported later without hand-editing settings files.
+- **Safe theming controls**: The viewer and modules support sanitized, scoped HTML/CSS templates with known slots, so layout experiments stay local to LoomOS instead of leaking into Lumiverse.
 
 ---
 
 ## Table of Contents
 
-- [Mobile Workspace](#mobile-workspace)
+- [Chat Tracker Viewer](#chat-tracker-viewer)
 - [Workspace Views](#workspace-views)
 - [Control Dock](#control-dock)
 - [State History Timeline](#state-history-timeline)
@@ -26,7 +26,7 @@ LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat h
 - [What Changed Modal](#what-changed-modal)
 - [Latest-Message Tracker Widget](#latest-message-tracker-widget)
 - [Tracker Modules Catalog](#tracker-modules-catalog)
-- [Schema & Prompt Studio](#schema--prompt-studio)
+- [Schema & Presentation Studio](#schema--presentation-studio)
 - [Immutable Appearance Module](#immutable-appearance-module)
 - [Track / Display / Inject Controls](#track--display--inject-controls)
 - [Settings Reference](#settings-reference)
@@ -40,11 +40,13 @@ LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat h
 
 ---
 
-## Mobile Workspace
+## Chat Tracker Viewer
 
-LoomOS is designed as a compact operational workspace rather than a stack of dashboard cards. The sticky top dock contains exact-swipe context, current sync or compilation state, primary commands, and navigation. It uses the full drawer or modal width, respects mobile safe areas, and leaves scrolling to the Lumiverse host instead of creating competing nested scroll regions.
+The chat tracker viewer is the modal opened from the input action or message widget. It is separate from the LoomOS drawer and is optimized for reading the active tracker inside the chat screen. The viewer uses a sticky scene command header, exact-swipe identity text, current sync or compilation status, and primary actions without repeating the drawer's Setup controls.
 
-On narrow screens the navigation automatically becomes a four-column grid. The labels and count badges remain stable, so changing state cannot resize or shift the control surface. The drawer always exposes Setup, including when the active swipe has no tracker yet. The viewer omits Setup and stays focused on reading state.
+The viewer navigation is independent from the drawer. Switching the modal between Pulse, Cast, World, Story, Memory, and History does not move the drawer's tab. On narrow screens the navigation becomes a stable three-by-two grid with large touch targets and no horizontal scroll. The layout uses container queries, safe-area padding, content visibility, and compact module sections to keep the tracker readable on phone screens.
+
+The drawer still owns Setup. The pop-up viewer stays focused on tracker reading, history inspection, and direct tracker actions: generate/refresh, reload, delete, and review changes.
 
 ## Workspace Views
 
@@ -103,7 +105,7 @@ The drawer-only Setup workspace contains:
 - Auto-generation, connection, transcript depth, and timeout controls
 - Injection, seed, retention, preview, and appearance controls
 - Token and performance guidance
-- Schema & Prompt Studio
+- Schema & Presentation Studio
 - Stock and custom module configuration
 - Pipeline diagnostics and optional injection preview
 
@@ -125,7 +127,9 @@ A compact sticky command dock pins to the top of both the drawer and viewer. It 
 
 ## State History Timeline
 
-Accessed via the **History** tab. All states are listed newest-first with full metadata. The search bar supports real-time filtering across scene, focus, location, and message ID fields. Click **Load** to replace the current dashboard view with the selected historical state. The actively-loaded state is visually distinguished. The **Delete** button on each entry removes the snapshot from storage (no confirmation dialog — use with care).
+Accessed via the **History** tab. All states are listed newest-first with full metadata. The search bar supports real-time filtering across scene, focus, location, and message ID fields. Click **Load** to replace the viewer's current tracker with the selected historical state. The viewer returns to Pulse after loading so the archived snapshot is immediately visible. The actively-loaded state is visually distinguished.
+
+Each row's **Delete** action asks for confirmation, removes that exact archived state from storage, and refreshes the list. Load and Delete use dedicated history requests instead of live-message resolution, so they continue to work for previous messages and swipes.
 
 The history is fetched on every state sync and stored in memory for the session. LoomOS stores one current tracker per exact `chatId + messageId + swipeId` identity. The `historyRetentionLimit` setting keeps the newest trackers for the chat and permanently deletes older entries after a tracker save or when the configured limit is reduced.
 
@@ -199,26 +203,44 @@ Five continuity-critical modules are locked **Track: on** for system safety. The
 
 ---
 
-## Schema & Prompt Studio
+## Schema & Presentation Studio
 
-Open **Setup -> Schema & Prompt Studio** to inspect every stock module contract without reading source code. Each module entry exposes:
+Open **Setup -> Schema & Presentation Studio** to edit both sides of LoomOS: what the compiler generates and how the tracker presents it. Runtime State V2 validation remains locked, so imported or edited generation guidance still has to produce a valid tracker before it can be stored.
 
-- The effective generation schema sent to the compiler.
-- The effective compiler instruction.
-- The exact per-module prompt block.
-- The full compiler prompt containing the global rules, State V2 example, and selected module contract.
-- Copy controls for one module or the complete stock contract catalog.
-- Inspect, Edit / Replace, and Reset actions.
+### Viewer Presentation Editor
 
-The stock editor supports three prompt-level controls:
+**Edit Viewer HTML/CSS** opens a live editor for the chat tracker modal. The HTML template uses three trusted slots:
+
+| Slot | Contents |
+|---|---|
+| `{{command}}` | Exact-swipe scene header, status, and tracker commands |
+| `{{navigation}}` | Pulse, Cast, World, Story, Memory, and History tabs |
+| `{{content}}` | The active viewer workspace |
+
+The template must include `{{content}}`; otherwise LoomOS falls back to the starter layout. User HTML is sanitized and CSS is scoped to the viewer shell. Scripts, event handlers, forms, embedded frames, external URLs, and global selectors are removed. The editor can restore the starter HTML/CSS and disable the custom presentation without deleting the saved draft.
+
+### Stock Module Editor
+
+Every stock module has Inspect, Edit, Export, and Reset actions. Inspect shows the effective generation schema, compiler instruction, exact module prompt block, and complete generated compiler prompt. Edit supports:
 
 | Control | Behavior |
 |---|---|
 | **Generation schema replacement** | Replaces the module's schema guidance shown to the LLM |
 | **Compiler instruction replacement** | Replaces the stock module instruction |
 | **Additional compiler guidance** | Appends extra rules after the effective instruction |
+| **Presentation enabled** | Uses the module's custom HTML/CSS wrapper in the drawer and viewer |
+| **HTML template** | Arranges `{{key}}`, `{{title}}`, `{{summary}}`, `{{content}}`, and `{{open}}` |
+| **CSS template** | Styles only that stock module's scoped wrapper |
 
-These controls intentionally do not rewrite the runtime Zod schema. Generated output must still fit the stable State V2 fields before it can be saved. For a genuinely different data shape, duplicate a stock module as custom and use the custom Schema Builder.
+`{{content}}` contains LoomOS-rendered tracker data. Text tokens are escaped, user markup is sanitized, and CSS is scoped to the module wrapper. Reset removes both generation and presentation overrides for that stock module.
+
+### Module Import and Export
+
+Each stock or custom module can be exported as a versioned JSON file with `format: "loomos-module"`. Stock bundles contain the module key, Track/Display/Inject control, generation overrides, and presentation templates. Custom bundles contain the complete custom module definition, including typed schema fields and HTML/CSS templates.
+
+**Import Module** accepts a selected JSON file or pasted JSON. It recognizes current LoomOS module bundles, raw legacy custom module objects, and compatible stock objects. Importing a stock bundle updates that stock module. Importing a custom bundle creates a new custom module and assigns a conflict-safe ID when needed.
+
+These controls intentionally do not rewrite the runtime Zod schema. Generated stock output must still fit the stable State V2 fields before it can be saved. For a genuinely different data shape, duplicate a stock module as custom and use the custom Schema Builder.
 
 ---
 
@@ -269,9 +291,12 @@ All settings are stored per user in `settings.json` inside `spindle.userStorage`
 | `historyRetentionLimit` | `100` | 1–1,000 | Maximum number of exact-swipe tracker files retained for each chat. After a tracker is saved, LoomOS sorts the chat's trackers by generation time and permanently deletes the oldest entries above this limit. Lowering the setting trims the active chat immediately. This controls extension storage and history length, not model context. |
 | `generationTimeoutSeconds` | `180` | 30–300 | Maximum time allowed for a quiet compiler or repair generation before LoomOS aborts it. Increase this for slow providers or large prompts. Decrease it for faster failure recovery. It does not control normal Lumiverse roleplay generation time. |
 | `connectionId` | `""` | string, max 200 | Selects the Lumiverse connection/profile used for quiet tracker compilation. Empty means LoomOS chooses an available ready connection. The selected provider, model, and connection profile can affect JSON reliability, speed, cost, and tracker detail. |
+| `viewerTemplateEnabled` | `false` | boolean | Activates the custom HTML/CSS shell for the chat tracker viewer. It changes presentation only; generation, stored state, history, and injection remain unchanged. |
+| `viewerHtmlTemplate` | `""` | string, max 16,000 | Stores the sanitized viewer layout using `{{command}}`, `{{navigation}}`, and `{{content}}` slots. A missing content slot causes the starter layout to be used. |
+| `viewerCssTemplate` | `""` | string, max 16,000 | Stores CSS scoped to the custom viewer shell. External resources, unsafe constructs, and selectors that could style the host application are removed. |
 | `modulePreset` | `"balanced"` | built-in or custom preset ID | Selects a saved Track/Display/Inject configuration. Changing it updates module controls together; it does not delete previously stored state fields. Manual module changes switch the active configuration to custom. |
 | `moduleSettings` | balanced defaults | per-module Track/Display/Inject controls | Determines which stock data the compiler requests, which sections the dashboard shows, and which compiled fragments may enter future prompt injection. Track affects future compiled snapshots; Display affects UI only; Inject affects prompt context only. |
-| `stockModuleOverrides` | `{}` | per-module object | Stores stock module label, description, group, ordering, visibility, default preferences, prompt-facing schema replacement, compiler instruction replacement, and additional guidance. These overrides affect module presentation and compiler prompting, while the strict State V2 storage validator remains unchanged. |
+| `stockModuleOverrides` | `{}` | per-module object | Stores stock module label, description, group, ordering, visibility, default preferences, prompt-facing schema replacement, compiler instruction replacement, additional guidance, and optional scoped HTML/CSS presentation. The strict State V2 storage validator remains unchanged. |
 | `customModulePresets` | `[]` | array | Stores named snapshots of stock module Track/Display/Inject controls for quick switching. Presets do not contain compiled story state. |
 | `customModules` | `[]` | array | Defines user-created trackers, their compiler instructions, editable field schemas, output modes, templates, ordering, and Track/Display/Inject behavior. Enabled custom modules increase compiler prompt size and may increase generated state size. |
 
@@ -485,6 +510,7 @@ Tests use the Node.js built-in test runner with `tsx` for TypeScript support:
 | `tests/upgrades.test.ts` | Settings upgrade paths |
 | `tests/backend-runtime.test.mjs` | Full backend compile-and-store integration test |
 | `tests/render.test.ts` | Dashboard rendering functions, history tab, injection preview, what-changed modal |
+| `tests/module-bundles.test.ts` | Stock/custom module portability and sanitized viewer/module presentation templates |
 | `tests/ui-redesign.test.ts` | Mobile workspace navigation, safe-area layout, Scene Pulse, Cast, and History redesign contracts |
 
 ---

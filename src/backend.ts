@@ -719,6 +719,17 @@ async function handleFrontendRequest(payload: unknown, userId: string): Promise<
         await sendExactState(userId, identity, requestId);
         return;
       }
+      case "load_history_state": {
+        const identity = StateIdentitySchema.parse(request.identity);
+        rememberUserChat(userId, identity.chatId);
+        send({
+          type: "state",
+          requestId,
+          identity,
+          state: await loadState(identity, userId),
+        }, userId);
+        return;
+      }
       case "save_state": {
         const resolvedIdentity = await resolveIdentity(request.state.identity);
         if (
@@ -736,6 +747,18 @@ async function handleFrontendRequest(payload: unknown, userId: string): Promise<
         const identity = await resolveIdentity(request.identity);
         await deleteState(identity, userId);
         send({ type: "state", requestId, identity, state: null }, userId);
+        return;
+      }
+      case "delete_history_state": {
+        const identity = StateIdentitySchema.parse(request.identity);
+        await deleteState(identity, userId);
+        send({
+          type: "history_state_deleted",
+          requestId,
+          chatId: identity.chatId,
+          identity,
+          items: await buildStateHistory(identity.chatId, userId),
+        }, userId);
         return;
       }
       case "generate_state":

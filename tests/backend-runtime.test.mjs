@@ -225,6 +225,48 @@ test("built backend compiles, repairs, and stores exact swipe State V2", async (
   assert.equal(historyResponse.items.length, 1);
   assert.equal(historyResponse.items[0].identity.messageId, "message-2");
 
+  await frontendHandlers[0]({
+    type: "load_history_state",
+    requestId: "history-load",
+    identity: { chatId: "chat-1", messageId: "message-2", swipeId: 0 },
+  }, "user-1");
+  const historyLoadDeadline = Date.now() + 1000;
+  while (
+    !frontendMessages.some(({ payload }) => payload.requestId === "history-load")
+    && Date.now() < historyLoadDeadline
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.ok(
+    frontendMessages.some(({ payload }) =>
+      payload.type === "state"
+      && payload.requestId === "history-load"
+      && payload.state?.identity.messageId === "message-2"
+    ),
+    JSON.stringify(frontendMessages
+      .map(({ payload }) => payload)
+      .filter((payload) => payload.requestId === "history-load" || payload.type === "error")),
+  );
+
+  await frontendHandlers[0]({
+    type: "delete_history_state",
+    requestId: "history-delete",
+    identity: { chatId: "chat-1", messageId: "message-2", swipeId: 0 },
+  }, "user-1");
+  const historyDeleteDeadline = Date.now() + 1000;
+  while (
+    !frontendMessages.some(({ payload }) => payload.requestId === "history-delete")
+    && Date.now() < historyDeleteDeadline
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(userFiles.has("chats/chat-1/messages/message-2/swipes/0.json"), false);
+  assert.ok(frontendMessages.some(({ payload }) =>
+    payload.type === "history_state_deleted"
+    && payload.requestId === "history-delete"
+    && payload.items.length === 0
+  ));
+
   backend.disposeBackend();
   assert.equal(frontendHandlers.length, 0);
   delete globalThis.spindle;

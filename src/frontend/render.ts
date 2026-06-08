@@ -7,6 +7,7 @@ import type {
   InjectionPreview,
 } from "../shared/types";
 import { renderCustomTemplate } from "../shared/customTemplates";
+import { renderStockModulePresentation } from "../shared/presentation";
 
 export function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -117,7 +118,31 @@ function section(
   summary: string,
   body: string,
   open = false,
+  settings?: LoomOSSettings,
+  moduleKey?: ModuleKey,
 ): string {
+  const presentation = moduleKey
+    ? settings?.stockModuleOverrides?.[moduleKey]
+    : undefined;
+  if (
+    moduleKey
+    && presentation?.presentationEnabled
+  ) {
+    const rendered = renderStockModulePresentation(
+      moduleKey,
+      title,
+      summary,
+      body,
+      open,
+      presentation.htmlTemplate ?? "",
+      presentation.cssTemplate ?? "",
+    );
+    return `
+      <style>${rendered.css}</style>
+      <section class="loomos-stock-template ${rendered.wrapperClass}" data-module-presentation="${escapeHtml(moduleKey)}">
+        ${rendered.html}
+      </section>`;
+  }
   return `
     <details class="loomos-section" data-section="${escapeHtml(key)}"${open ? " open" : ""}>
       <summary>
@@ -128,7 +153,7 @@ function section(
     </details>`;
 }
 
-function renderKernel(state: LoomOSState): string {
+function renderKernel(state: LoomOSState, settings: LoomOSSettings): string {
   const kernel = state.kernel;
   return section("kernel", "Kernel", kernel.scene || "Current scene", `
     <div class="loomos-hero">
@@ -148,10 +173,10 @@ function renderKernel(state: LoomOSState): string {
     </dl>
     <div class="loomos-subhead">Constraints</div>
     ${chips(kernel.constraints)}
-  `);
+  `, false, settings, "sceneKernel");
 }
 
-function renderDelta(state: LoomOSState): string {
+function renderDelta(state: LoomOSState, settings: LoomOSSettings): string {
   const delta = state.delta;
   return section("delta", "Delta", delta.headline || "No major change", `
     <div class="loomos-callout">${clampProse(delta.headline, 140)}</div>
@@ -172,10 +197,10 @@ function renderDelta(state: LoomOSState): string {
       <div><div class="loomos-subhead">Newly established</div>${chips(delta.newlyEstablished)}</div>
       <div><div class="loomos-subhead">Carried forward</div>${chips(delta.carriedForward)}</div>
     </div>
-  `);
+  `, false, settings, "deltas");
 }
 
-function renderMeters(state: LoomOSState): string {
+function renderMeters(state: LoomOSState, settings: LoomOSSettings): string {
   return section("meters", "Meters", `${state.meters.length} diagnostics`, `
     <div class="loomos-meter-grid">
       ${state.meters.length === 0
@@ -200,7 +225,7 @@ function renderMeters(state: LoomOSState): string {
             `;
           }).join("")}
     </div>
-  `);
+  `, false, settings, "meters");
 }
 
 function renderCast(state: LoomOSState, settings: LoomOSSettings): string {
@@ -258,7 +283,7 @@ function renderCast(state: LoomOSState, settings: LoomOSSettings): string {
             `;
           }).join("")}
     </div>
-  `, true);
+  `, true, settings, "castCore");
 }
 
 function renderWorld(state: LoomOSState, settings: LoomOSSettings): string {
@@ -303,10 +328,10 @@ function renderWorld(state: LoomOSState, settings: LoomOSSettings): string {
             </div>`
           : ""}`
       : ""}
-  `);
+  `, true, settings, "worldSpace");
 }
 
-function renderStory(state: LoomOSState): string {
+function renderStory(state: LoomOSState, settings: LoomOSSettings): string {
   const story = state.storyState;
   const live = story.threadLoom.filter((thread) => thread.status !== "resolved");
   return section("story", "Thread Loom", `${live.length} live threads`, `
@@ -339,10 +364,10 @@ function renderStory(state: LoomOSState): string {
         `${item.who}: ${item.action}`
       ))}</div>
     </div>
-  `, true);
+  `, true, settings, "storyThreads");
 }
 
-function renderContinuity(state: LoomOSState): string {
+function renderContinuity(state: LoomOSState, settings: LoomOSSettings): string {
   const firewall = state.continuityFirewall;
   const riskCount = firewall.risks.length;
   
@@ -423,7 +448,7 @@ function renderContinuity(state: LoomOSState): string {
         ${chips(firewall.impossibleNext)}
       </div>
     </details>
-  `, true);
+  `, true, settings, "continuity");
 }
 
 function renderTools(state: LoomOSState, settings: LoomOSSettings): string {
@@ -475,7 +500,7 @@ function renderTools(state: LoomOSState, settings: LoomOSSettings): string {
     : section("tools", "Tools", `${blocks.length} active`, `<div class="loomos-card-grid">${blocks.join("")}</div>`);
 }
 
-function renderAudit(state: LoomOSState): string {
+function renderAudit(state: LoomOSState, settings: LoomOSSettings): string {
   return section("audit", "Audit", `${state.auditLog.length} entries`, `
     <div class="loomos-list">
       ${state.auditLog.map((entry) => `
@@ -489,7 +514,7 @@ function renderAudit(state: LoomOSState): string {
         </article>
       `).join("") || `<p class="loomos-muted">No audit entries.</p>`}
     </div>
-  `);
+  `, false, settings, "auditLog");
 }
 
 function renderOverviewCard(state: LoomOSState, settings: LoomOSSettings): string {
@@ -642,9 +667,9 @@ export function renderDashboard(
   if (activeTab === "overview") {
     const overview = renderOverviewCard(state, settings);
     const sections = [
-      visible(settings, "sceneKernel") ? renderKernel(state) : "",
-      visible(settings, "deltas") ? renderDelta(state) : "",
-      visible(settings, "meters") ? renderMeters(state) : "",
+      visible(settings, "sceneKernel") ? renderKernel(state, settings) : "",
+      visible(settings, "deltas") ? renderDelta(state, settings) : "",
+      visible(settings, "meters") ? renderMeters(state, settings) : "",
       renderTools(state, settings),
       ...renderCustomModules(state, settings),
     ].filter(Boolean);
@@ -677,7 +702,7 @@ export function renderDashboard(
   
   if (activeTab === "story") {
     const sections = [
-      visible(settings, "storyThreads") ? renderStory(state) : "",
+      visible(settings, "storyThreads") ? renderStory(state, settings) : "",
     ].filter(Boolean);
     return sections.length > 0
       ? `<div class="loomos-dashboard">${sections.join("")}</div>`
@@ -686,8 +711,8 @@ export function renderDashboard(
   
   if (activeTab === "continuity") {
     const sections = [
-      visible(settings, "continuity") ? renderContinuity(state) : "",
-      visible(settings, "auditLog") ? renderAudit(state) : "",
+      visible(settings, "continuity") ? renderContinuity(state, settings) : "",
+      visible(settings, "auditLog") ? renderAudit(state, settings) : "",
     ].filter(Boolean);
     return sections.length > 0
       ? `<div class="loomos-dashboard">${sections.join("")}</div>`
@@ -717,8 +742,8 @@ export function renderHistoryTab(
       </header>
       <div class="loomos-search-bar">
         <input class="loomos-input" type="search" placeholder="Search scene, focus, or location"
-          data-loomos-action="filter-history" value="${escapeHtml(filter)}" />
-        ${filter ? `<button class="loomos-button-clear" data-loomos-action="clear-history-filter">&times;</button>` : ""}
+          data-history-filter value="${escapeHtml(filter)}" aria-label="Filter tracker history" />
+        ${filter ? `<button class="loomos-button-clear" data-action="clear-history-filter" title="Clear history search" aria-label="Clear history search">&times;</button>` : ""}
         <span class="loomos-search-count">${filtered.length} / ${items.length}</span>
       </div>
       ${filtered.length === 0
@@ -747,11 +772,14 @@ export function renderHistoryTab(
                   <p class="loomos-history-entry-delta">${clampProse(item.deltaHeadline, 120)}</p>
                 </div>
                 <div class="loomos-history-entry-actions">
-                  <button class="loomos-button loomos-btn-sm" data-loomos-action="load-history-state" 
-                    data-message-id="${escapeHtml(item.identity.messageId)}" data-swipe-id="${item.identity.swipeId}">
+                  <button class="loomos-button loomos-btn-sm" data-action="load-history-state"
+                    data-chat-id="${escapeHtml(item.identity.chatId)}"
+                    data-message-id="${escapeHtml(item.identity.messageId)}" data-swipe-id="${item.identity.swipeId}"
+                    ${isActive ? "disabled" : ""}>
                     ${isActive ? "Current" : "Load"}
                   </button>
-                  <button class="loomos-button loomos-button-danger loomos-btn-sm" data-loomos-action="delete-history-state"
+                  <button class="loomos-button loomos-button-danger loomos-btn-sm" data-action="delete-history-state"
+                      data-chat-id="${escapeHtml(item.identity.chatId)}"
                       data-message-id="${escapeHtml(item.identity.messageId)}" data-swipe-id="${item.identity.swipeId}">
                       Delete
                     </button>
@@ -806,7 +834,7 @@ export function renderInjectionPreview(
         <summary>Preview text (${preview.text.length} chars)</summary>
         <div class="loomos-cast-extra-body">
           <pre class="loomos-injection-preview-text">${escapeHtml(preview.text)}</pre>
-          <button class="loomos-button loomos-btn-sm" data-loomos-action="copy-injection-preview">Copy</button>
+          <button class="loomos-button loomos-btn-sm" data-action="copy-injection-preview">Copy</button>
         </div>
       </details>
     </div>

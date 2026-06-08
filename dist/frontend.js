@@ -4521,6 +4521,25 @@ var CustomModuleSchema = external_exports.object({
   templateEngine: external_exports.enum(["mustache-lite", "token-replace"]).default("mustache-lite"),
   allowHtmlTemplate: external_exports.boolean().default(false)
 }).strict();
+var StockModuleOverrideSchema = external_exports.object({
+  label: external_exports.string().max(160).optional(),
+  description: external_exports.string().max(500).optional(),
+  group: external_exports.string().max(160).optional(),
+  icon: external_exports.string().max(20).optional(),
+  displayOrder: external_exports.number().int().optional(),
+  intensityLabel: external_exports.string().max(40).optional(),
+  defaultDisplay: external_exports.boolean().optional(),
+  defaultInject: external_exports.boolean().optional(),
+  compilerGuidanceAddendum: external_exports.string().max(1e3).optional(),
+  compilerInstructionOverride: external_exports.string().max(6e3).optional(),
+  schemaSummaryOverride: external_exports.string().max(6e3).optional(),
+  injectionPriority: external_exports.number().int().optional(),
+  renderHint: external_exports.string().max(200).optional(),
+  hiddenFromSettings: external_exports.boolean().optional(),
+  presentationEnabled: external_exports.boolean().optional(),
+  htmlTemplate: external_exports.string().max(12e3).optional(),
+  cssTemplate: external_exports.string().max(12e3).optional()
+}).strict();
 var StateIdentitySchema = external_exports.object({
   chatId: external_exports.string().min(1).max(300),
   messageId: external_exports.string().min(1).max(300),
@@ -4554,27 +4573,12 @@ var RawSettingsSchema = external_exports.object({
   historyRetentionLimit: external_exports.number().int().min(1).max(1e3).default(100),
   generationTimeoutSeconds: external_exports.number().int().min(30).max(300).default(180),
   connectionId: external_exports.string().trim().max(200).default(""),
+  viewerTemplateEnabled: external_exports.boolean().default(false),
+  viewerHtmlTemplate: external_exports.string().max(16e3).default(""),
+  viewerCssTemplate: external_exports.string().max(16e3).default(""),
   modulePreset: ModulePresetSchema.default("balanced"),
   moduleSettings: ModuleSettingsSchema.default(BALANCED_MODULE_SETTINGS),
-  stockModuleOverrides: external_exports.record(
-    external_exports.string(),
-    external_exports.object({
-      label: external_exports.string().max(160).optional(),
-      description: external_exports.string().max(500).optional(),
-      group: external_exports.string().max(160).optional(),
-      icon: external_exports.string().max(20).optional(),
-      displayOrder: external_exports.number().int().optional(),
-      intensityLabel: external_exports.string().max(40).optional(),
-      defaultDisplay: external_exports.boolean().optional(),
-      defaultInject: external_exports.boolean().optional(),
-      compilerGuidanceAddendum: external_exports.string().max(1e3).optional(),
-      compilerInstructionOverride: external_exports.string().max(6e3).optional(),
-      schemaSummaryOverride: external_exports.string().max(6e3).optional(),
-      injectionPriority: external_exports.number().int().optional(),
-      renderHint: external_exports.string().max(200).optional(),
-      hiddenFromSettings: external_exports.boolean().optional()
-    }).strict()
-  ).default({}),
+  stockModuleOverrides: external_exports.record(external_exports.string(), StockModuleOverrideSchema).default({}),
   customModulePresets: external_exports.array(CustomModulePresetSchema).default([]),
   customModules: external_exports.array(CustomModuleSchema).default([])
 }).strict();
@@ -4610,6 +4614,9 @@ function settingsInput(value) {
     historyRetentionLimit: source.historyRetentionLimit,
     generationTimeoutSeconds: source.generationTimeoutSeconds,
     connectionId: source.connectionId,
+    viewerTemplateEnabled: source.viewerTemplateEnabled,
+    viewerHtmlTemplate: source.viewerHtmlTemplate,
+    viewerCssTemplate: source.viewerCssTemplate,
     modulePreset: source.modulePreset,
     moduleSettings,
     stockModuleOverrides: source.stockModuleOverrides,
@@ -5431,10 +5438,10 @@ function safeCustomModuleId(moduleId) {
   return (safe || "module").slice(0, 80);
 }
 function sanitizeCustomHtml(template) {
-  return template.slice(0, 8e3).replace(BLOCKED_PAIRED_TAGS, "").replace(BLOCKED_SINGLE_TAGS, "").replace(EVENT_ATTRIBUTES, "").replace(STYLE_ATTRIBUTES, "").replace(URL_ATTRIBUTES, "").replace(/javascript\s*:/gi, "");
+  return template.slice(0, 16e3).replace(BLOCKED_PAIRED_TAGS, "").replace(BLOCKED_SINGLE_TAGS, "").replace(EVENT_ATTRIBUTES, "").replace(STYLE_ATTRIBUTES, "").replace(URL_ATTRIBUTES, "").replace(/javascript\s*:/gi, "");
 }
 function sanitizeCustomCss(css) {
-  return css.slice(0, 8e3).replace(/@import\b[^;]*;?/gi, "").replace(/url\s*\(\s*(['"]?)(?:https?:|data:|javascript:|\/\/)[\s\S]*?\1\s*\)/gi, "none").replace(/expression\s*\([^)]*\)/gi, "").replace(/behavior\s*:[^;}]*/gi, "").replace(/-moz-binding\s*:[^;}]*/gi, "").replace(/position\s*:\s*(?:fixed|sticky)\b/gi, "position: static").replace(/z-index\s*:[^;}]*/gi, "").replace(/<\/?style\b[^>]*>/gi, "");
+  return css.slice(0, 16e3).replace(/@import\b[^;]*;?/gi, "").replace(/url\s*\(\s*(['"]?)(?:https?:|data:|javascript:|\/\/)[\s\S]*?\1\s*\)/gi, "none").replace(/expression\s*\([^)]*\)/gi, "").replace(/behavior\s*:[^;}]*/gi, "").replace(/-moz-binding\s*:[^;}]*/gi, "").replace(/position\s*:\s*(?:fixed|sticky)\b/gi, "position: static").replace(/z-index\s*:[^;}]*/gi, "").replace(/<\/?style\b[^>]*>/gi, "");
 }
 function scopeSelectorList(selectorText, scope) {
   return selectorText.split(",").map((selector) => selector.trim()).filter(Boolean).map((selector) => {
@@ -5521,6 +5528,133 @@ function customModuleExpectedShape(module) {
       importance: "medium",
       changed: false
     }]
+  };
+}
+
+// src/shared/moduleBundles.ts
+var ModuleBundleBaseSchema = external_exports.object({
+  format: external_exports.literal("loomos-module"),
+  version: external_exports.literal(1),
+  exportedAt: external_exports.string().datetime()
+}).strict();
+var StockModuleBundleSchema = ModuleBundleBaseSchema.extend({
+  kind: external_exports.literal("stock"),
+  key: ModuleKeySchema,
+  control: ModuleControlSchema,
+  override: StockModuleOverrideSchema.default({})
+}).strict();
+var CustomModuleBundleSchema = ModuleBundleBaseSchema.extend({
+  kind: external_exports.literal("custom"),
+  module: CustomModuleSchema
+}).strict();
+var ModuleBundleSchema = external_exports.discriminatedUnion("kind", [
+  StockModuleBundleSchema,
+  CustomModuleBundleSchema
+]);
+function exportStockModuleBundle(key, settings) {
+  return StockModuleBundleSchema.parse({
+    format: "loomos-module",
+    version: 1,
+    exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    kind: "stock",
+    key,
+    control: settings.moduleSettings[key],
+    override: settings.stockModuleOverrides[key] ?? {}
+  });
+}
+function exportCustomModuleBundle(module) {
+  return CustomModuleBundleSchema.parse({
+    format: "loomos-module",
+    version: 1,
+    exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    kind: "custom",
+    module
+  });
+}
+function parseModuleBundle(value) {
+  const bundled = ModuleBundleSchema.safeParse(value);
+  if (bundled.success) return bundled.data;
+  const legacyCustom = CustomModuleSchema.safeParse(value);
+  if (legacyCustom.success) return exportCustomModuleBundle(legacyCustom.data);
+  if (typeof value === "object" && value !== null && "key" in value && typeof value.key === "string" && MODULE_KEYS.includes(value.key)) {
+    const source = value;
+    return StockModuleBundleSchema.parse({
+      format: "loomos-module",
+      version: 1,
+      exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      kind: "stock",
+      key: source.key,
+      control: source.control,
+      override: source.override ?? {}
+    });
+  }
+  throw new Error("This JSON is not a valid LoomOS stock or custom module bundle.");
+}
+
+// src/shared/presentation.ts
+var STARTER_VIEWER_HTML = `<div class="viewer-frame">
+  <header class="viewer-command-slot">{{command}}</header>
+  <div class="viewer-navigation-slot">{{navigation}}</div>
+  <main class="viewer-content-slot">{{content}}</main>
+</div>`;
+var STARTER_VIEWER_CSS = `.viewer-frame {
+  display: grid;
+  gap: 8px;
+}
+.viewer-content-slot {
+  min-width: 0;
+}`;
+var STARTER_STOCK_MODULE_HTML = `<details class="module-frame" data-section="{{key}}"{{open}}>
+  <summary class="module-heading">
+    <strong>{{title}}</strong>
+    <span>{{summary}}</span>
+  </summary>
+  <div class="module-content">{{content}}</div>
+</details>`;
+var STARTER_STOCK_MODULE_CSS = `.module-frame {
+  border: 1px solid var(--loomos-soft-border);
+  border-radius: 8px;
+  background: var(--loomos-surface-1);
+}
+.module-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 8px 10px;
+}
+.module-content {
+  border-top: 1px solid var(--loomos-soft-border);
+  padding: 10px;
+}`;
+function replaceTrustedSlot(source, token, value) {
+  return source.replaceAll(`{{${token}}}`, value);
+}
+function renderViewerPresentation(htmlTemplate, cssTemplate, slots) {
+  const wrapperClass = "loomos-cmod-viewer-shell";
+  const selected2 = htmlTemplate.includes("{{content}}") ? htmlTemplate : STARTER_VIEWER_HTML;
+  let html = sanitizeCustomHtml(selected2 || STARTER_VIEWER_HTML);
+  html = replaceTrustedSlot(html, "command", slots.command);
+  html = replaceTrustedSlot(html, "navigation", slots.navigation);
+  html = replaceTrustedSlot(html, "content", slots.content);
+  html = html.replace(/\{\{[^{}]+\}\}/g, "");
+  return {
+    html,
+    css: scopeCustomCss(cssTemplate || STARTER_VIEWER_CSS, "viewer-shell"),
+    wrapperClass
+  };
+}
+function renderStockModulePresentation(moduleKey, title, summary, content, open, htmlTemplate, cssTemplate) {
+  const wrapperClass = `loomos-cmod-stock-${moduleKey.toLowerCase()}`;
+  const selected2 = htmlTemplate.includes("{{content}}") ? htmlTemplate : STARTER_STOCK_MODULE_HTML;
+  let html = sanitizeCustomHtml(selected2 || STARTER_STOCK_MODULE_HTML);
+  html = html.replaceAll("{{key}}", escapeTemplateData(moduleKey)).replaceAll("{{title}}", escapeTemplateData(title)).replaceAll("{{summary}}", escapeTemplateData(summary)).replaceAll("{{open}}", open ? " open" : "");
+  html = replaceTrustedSlot(html, "content", content);
+  html = html.replace(/\{\{[^{}]+\}\}/g, "");
+  return {
+    html,
+    css: scopeCustomCss(cssTemplate || STARTER_STOCK_MODULE_CSS, `stock-${moduleKey}`),
+    wrapperClass
   };
 }
 
@@ -5613,7 +5747,24 @@ function renderAppearanceProfile(appearance) {
     </details>
   `;
 }
-function section(key, title, summary, body, open = false) {
+function section(key, title, summary, body, open = false, settings, moduleKey) {
+  const presentation = moduleKey ? settings?.stockModuleOverrides?.[moduleKey] : void 0;
+  if (moduleKey && presentation?.presentationEnabled) {
+    const rendered = renderStockModulePresentation(
+      moduleKey,
+      title,
+      summary,
+      body,
+      open,
+      presentation.htmlTemplate ?? "",
+      presentation.cssTemplate ?? ""
+    );
+    return `
+      <style>${rendered.css}</style>
+      <section class="loomos-stock-template ${rendered.wrapperClass}" data-module-presentation="${escapeHtml(moduleKey)}">
+        ${rendered.html}
+      </section>`;
+  }
   return `
     <details class="loomos-section" data-section="${escapeHtml(key)}"${open ? " open" : ""}>
       <summary>
@@ -5623,7 +5774,7 @@ function section(key, title, summary, body, open = false) {
       <div class="loomos-section-body">${body}</div>
     </details>`;
 }
-function renderKernel(state) {
+function renderKernel(state, settings) {
   const kernel = state.kernel;
   return section("kernel", "Kernel", kernel.scene || "Current scene", `
     <div class="loomos-hero">
@@ -5643,9 +5794,9 @@ function renderKernel(state) {
     </dl>
     <div class="loomos-subhead">Constraints</div>
     ${chips(kernel.constraints)}
-  `);
+  `, false, settings, "sceneKernel");
 }
-function renderDelta(state) {
+function renderDelta(state, settings) {
   const delta = state.delta;
   return section("delta", "Delta", delta.headline || "No major change", `
     <div class="loomos-callout">${clampProse(delta.headline, 140)}</div>
@@ -5664,9 +5815,9 @@ function renderDelta(state) {
       <div><div class="loomos-subhead">Newly established</div>${chips(delta.newlyEstablished)}</div>
       <div><div class="loomos-subhead">Carried forward</div>${chips(delta.carriedForward)}</div>
     </div>
-  `);
+  `, false, settings, "deltas");
 }
-function renderMeters(state) {
+function renderMeters(state, settings) {
   return section("meters", "Meters", `${state.meters.length} diagnostics`, `
     <div class="loomos-meter-grid">
       ${state.meters.length === 0 ? `<p class="loomos-muted">No meter evidence in this state.</p>` : state.meters.map((meter) => {
@@ -5689,7 +5840,7 @@ function renderMeters(state) {
             `;
   }).join("")}
     </div>
-  `);
+  `, false, settings, "meters");
 }
 function renderCast(state, settings) {
   return section("cast", "Cast Matrix", `${state.castMatrix.length} tracked`, `
@@ -5737,7 +5888,7 @@ function renderCast(state, settings) {
             `;
   }).join("")}
     </div>
-  `, true);
+  `, true, settings, "castCore");
 }
 function renderWorld(state, settings) {
   const scene = state.scene;
@@ -5773,9 +5924,9 @@ function renderWorld(state, settings) {
     (item) => `${item.thing}: ${item.state}`
   ))}</div>
             </div>` : ""}` : ""}
-  `);
+  `, true, settings, "worldSpace");
 }
-function renderStory(state) {
+function renderStory(state, settings) {
   const story = state.storyState;
   const live = story.threadLoom.filter((thread) => thread.status !== "resolved");
   return section("story", "Thread Loom", `${live.length} live threads`, `
@@ -5806,9 +5957,9 @@ function renderStory(state) {
     (item) => `${item.who}: ${item.action}`
   ))}</div>
     </div>
-  `, true);
+  `, true, settings, "storyThreads");
 }
-function renderContinuity(state) {
+function renderContinuity(state, settings) {
   const firewall = state.continuityFirewall;
   const riskCount = firewall.risks.length;
   const explainerHtml = `
@@ -5884,7 +6035,7 @@ function renderContinuity(state) {
         ${chips(firewall.impossibleNext)}
       </div>
     </details>
-  `, true);
+  `, true, settings, "continuity");
 }
 function renderTools(state, settings) {
   const tools = state.tools;
@@ -5932,7 +6083,7 @@ function renderTools(state, settings) {
   }
   return blocks.length === 0 ? "" : section("tools", "Tools", `${blocks.length} active`, `<div class="loomos-card-grid">${blocks.join("")}</div>`);
 }
-function renderAudit(state) {
+function renderAudit(state, settings) {
   return section("audit", "Audit", `${state.auditLog.length} entries`, `
     <div class="loomos-list">
       ${state.auditLog.map((entry) => `
@@ -5946,7 +6097,7 @@ function renderAudit(state) {
         </article>
       `).join("") || `<p class="loomos-muted">No audit entries.</p>`}
     </div>
-  `);
+  `, false, settings, "auditLog");
 }
 function renderOverviewCard(state, settings) {
   const deltaHeadline = state.delta?.headline || "No major changes";
@@ -6080,9 +6231,9 @@ function renderDashboard(state, settings, activeTab = "overview") {
   if (activeTab === "overview") {
     const overview = renderOverviewCard(state, settings);
     const sections = [
-      visible(settings, "sceneKernel") ? renderKernel(state) : "",
-      visible(settings, "deltas") ? renderDelta(state) : "",
-      visible(settings, "meters") ? renderMeters(state) : "",
+      visible(settings, "sceneKernel") ? renderKernel(state, settings) : "",
+      visible(settings, "deltas") ? renderDelta(state, settings) : "",
+      visible(settings, "meters") ? renderMeters(state, settings) : "",
       renderTools(state, settings),
       ...renderCustomModules(state, settings)
     ].filter(Boolean);
@@ -6102,14 +6253,14 @@ function renderDashboard(state, settings, activeTab = "overview") {
   }
   if (activeTab === "story") {
     const sections = [
-      visible(settings, "storyThreads") ? renderStory(state) : ""
+      visible(settings, "storyThreads") ? renderStory(state, settings) : ""
     ].filter(Boolean);
     return sections.length > 0 ? `<div class="loomos-dashboard">${sections.join("")}</div>` : `<div class="loomos-empty"><h3>Story threads display is hidden</h3><p>Enable Story Threads display in settings.</p></div>`;
   }
   if (activeTab === "continuity") {
     const sections = [
-      visible(settings, "continuity") ? renderContinuity(state) : "",
-      visible(settings, "auditLog") ? renderAudit(state) : ""
+      visible(settings, "continuity") ? renderContinuity(state, settings) : "",
+      visible(settings, "auditLog") ? renderAudit(state, settings) : ""
     ].filter(Boolean);
     return sections.length > 0 ? `<div class="loomos-dashboard">${sections.join("")}</div>` : `<div class="loomos-empty"><h3>Continuity and Audit display are hidden</h3><p>Enable Continuity Firewall or Audit Log display in settings.</p></div>`;
   }
@@ -6127,8 +6278,8 @@ function renderHistoryTab(items, filter, activeIdentity) {
       </header>
       <div class="loomos-search-bar">
         <input class="loomos-input" type="search" placeholder="Search scene, focus, or location"
-          data-loomos-action="filter-history" value="${escapeHtml(filter)}" />
-        ${filter ? `<button class="loomos-button-clear" data-loomos-action="clear-history-filter">&times;</button>` : ""}
+          data-history-filter value="${escapeHtml(filter)}" aria-label="Filter tracker history" />
+        ${filter ? `<button class="loomos-button-clear" data-action="clear-history-filter" title="Clear history search" aria-label="Clear history search">&times;</button>` : ""}
         <span class="loomos-search-count">${filtered.length} / ${items.length}</span>
       </div>
       ${filtered.length === 0 ? `<div class="loomos-empty"><h3>No matching history entries</h3><p>Try a different search term.</p></div>` : `<div class="loomos-history-list">${filtered.map((item) => {
@@ -6152,11 +6303,14 @@ function renderHistoryTab(items, filter, activeIdentity) {
                   <p class="loomos-history-entry-delta">${clampProse(item.deltaHeadline, 120)}</p>
                 </div>
                 <div class="loomos-history-entry-actions">
-                  <button class="loomos-button loomos-btn-sm" data-loomos-action="load-history-state" 
-                    data-message-id="${escapeHtml(item.identity.messageId)}" data-swipe-id="${item.identity.swipeId}">
+                  <button class="loomos-button loomos-btn-sm" data-action="load-history-state"
+                    data-chat-id="${escapeHtml(item.identity.chatId)}"
+                    data-message-id="${escapeHtml(item.identity.messageId)}" data-swipe-id="${item.identity.swipeId}"
+                    ${isActive ? "disabled" : ""}>
                     ${isActive ? "Current" : "Load"}
                   </button>
-                  <button class="loomos-button loomos-button-danger loomos-btn-sm" data-loomos-action="delete-history-state"
+                  <button class="loomos-button loomos-button-danger loomos-btn-sm" data-action="delete-history-state"
+                      data-chat-id="${escapeHtml(item.identity.chatId)}"
                       data-message-id="${escapeHtml(item.identity.messageId)}" data-swipe-id="${item.identity.swipeId}">
                       Delete
                     </button>
@@ -6202,7 +6356,7 @@ function renderInjectionPreview(preview) {
         <summary>Preview text (${preview.text.length} chars)</summary>
         <div class="loomos-cast-extra-body">
           <pre class="loomos-injection-preview-text">${escapeHtml(preview.text)}</pre>
-          <button class="loomos-button loomos-btn-sm" data-loomos-action="copy-injection-preview">Copy</button>
+          <button class="loomos-button loomos-btn-sm" data-action="copy-injection-preview">Copy</button>
         </div>
       </details>
     </div>
@@ -8163,6 +8317,339 @@ var LOOMOS_STYLES = `
       animation: none;
     }
   }
+
+  /* 0.1.10 chat tracker viewer */
+  .loomos-root[data-view="modal"] {
+    container-name: loomos-viewer;
+    container-type: inline-size;
+    gap: 0;
+    overflow-x: clip;
+    padding: 0 6px calc(12px + env(safe-area-inset-bottom)) !important;
+  }
+  .loomos-viewer-shell,
+  .loomos-viewer-frame {
+    align-content: start;
+    display: grid;
+    gap: 8px;
+    grid-auto-rows: max-content;
+    min-width: 0;
+  }
+  .loomos-viewer-command {
+    backdrop-filter: blur(18px) saturate(1.12);
+    background: color-mix(in srgb, var(--loomos-canvas) 94%, transparent);
+    border: 1px solid var(--loomos-soft-border);
+    border-top: 0;
+    border-radius: 0 0 8px 8px;
+    display: grid;
+    gap: 9px;
+    margin-inline: -6px;
+    padding: 9px 8px 8px;
+    position: sticky;
+    top: 0;
+    z-index: 110;
+  }
+  .loomos-viewer-context {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .loomos-viewer-title-row {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+  }
+  .loomos-viewer-title-row h1 {
+    font-size: 18px;
+    line-height: 1.2;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-wrap: balance;
+  }
+  .loomos-viewer-context p,
+  .loomos-viewer-context small {
+    color: var(--loomos-muted);
+    font-size: 10px;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .loomos-viewer-context small {
+    color: color-mix(in srgb, var(--loomos-muted) 78%, transparent);
+  }
+  .loomos-viewer-actions {
+    display: grid;
+    gap: 5px;
+    grid-template-columns: minmax(140px, 1.8fr) repeat(2, minmax(72px, 1fr));
+  }
+  .loomos-viewer-actions .loomos-button {
+    border-radius: 7px;
+    min-height: 42px;
+    padding-inline: 8px;
+  }
+  .loomos-viewer-primary {
+    font-weight: 900;
+  }
+  .loomos-root[data-view="modal"] .loomos-viewer-tabs {
+    background: var(--loomos-surface-2);
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 8px;
+    display: grid;
+    gap: 3px;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    margin: 0;
+    padding: 4px;
+    position: sticky;
+    top: 112px;
+    z-index: 105;
+  }
+  .loomos-root[data-view="modal"] .loomos-viewer-tabs .loomos-tab-btn {
+    border-radius: 6px;
+    min-height: 40px;
+    padding: 5px 4px;
+  }
+  .loomos-viewer-pane {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+    padding-top: 0;
+  }
+  .loomos-root[data-view="modal"] .loomos-dashboard {
+    gap: 7px;
+  }
+  .loomos-root[data-view="modal"] .loomos-overview-card {
+    border-left-width: 4px;
+    padding: 12px;
+  }
+  .loomos-root[data-view="modal"] .loomos-overview-headline {
+    font-size: 16px;
+    text-wrap: balance;
+  }
+  .loomos-root[data-view="modal"] .loomos-section,
+  .loomos-root[data-view="modal"] .loomos-stock-template {
+    box-shadow: 0 1px 0 rgb(255 255 255 / .025);
+  }
+  .loomos-root[data-view="modal"] .loomos-section[open] > summary {
+    background: color-mix(in srgb, var(--loomos-surface-3) 72%, transparent);
+  }
+  .loomos-root[data-view="modal"] .loomos-cast-meta {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .loomos-root[data-view="modal"] .loomos-card {
+    content-visibility: auto;
+    contain-intrinsic-size: 210px;
+  }
+  .loomos-root[data-view="modal"] .loomos-history-list {
+    max-height: none;
+    overflow: visible;
+  }
+  .loomos-root[data-view="modal"] .loomos-history-entry {
+    content-visibility: auto;
+    contain-intrinsic-size: 190px;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) 92px;
+    padding: 10px;
+  }
+  .loomos-root[data-view="modal"] .loomos-history-entry-actions {
+    align-content: stretch;
+    display: grid;
+    gap: 5px;
+    grid-template-columns: 1fr;
+  }
+  .loomos-root[data-view="modal"] .loomos-history-entry-actions .loomos-button {
+    min-height: 40px;
+    width: 100%;
+  }
+  .loomos-root[data-view="modal"] .loomos-history-active {
+    box-shadow: inset 3px 0 0 var(--loomos-accent);
+  }
+  .loomos-stock-template {
+    min-width: 0;
+  }
+
+  /* Schema and Presentation Studio */
+  .loomos-creation-studio > summary {
+    min-height: 48px;
+  }
+  .loomos-studio-hero {
+    align-items: start;
+    border-bottom: 1px solid var(--loomos-soft-border);
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    padding-bottom: 10px;
+  }
+  .loomos-studio-hero h3,
+  .loomos-studio-library-heading h3,
+  .loomos-editor-intro h3 {
+    font-size: 15px;
+    margin: 2px 0 4px;
+  }
+  .loomos-studio-hero p {
+    color: var(--loomos-muted);
+    font-size: 11px;
+    margin: 0;
+    max-width: 68ch;
+  }
+  .loomos-studio-actions {
+    display: grid;
+    gap: 6px;
+    grid-template-columns: minmax(150px, 1.5fr) repeat(2, minmax(110px, 1fr));
+  }
+  .loomos-studio-library {
+    display: grid;
+    gap: 5px;
+  }
+  .loomos-studio-library-heading {
+    align-items: end;
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 2px 4px;
+  }
+  .loomos-studio-library-heading > span {
+    color: var(--loomos-muted);
+    font-size: 11px;
+  }
+  .loomos-studio-module-row {
+    align-items: center;
+    border-top: 1px solid var(--loomos-soft-border);
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 8px 2px;
+  }
+  .loomos-studio-module-copy {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+  .loomos-studio-module-title {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .loomos-studio-module-title code {
+    color: var(--loomos-muted);
+    font-size: 9px;
+  }
+  .loomos-studio-module-copy p {
+    color: var(--loomos-muted);
+    font-size: 10px;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .loomos-studio-module-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: end;
+  }
+  .loomos-studio-empty {
+    min-height: 64px;
+  }
+  .loomos-portable-dialog,
+  .loomos-viewer-editor {
+    display: grid;
+    gap: 10px;
+  }
+  .loomos-portable-json {
+    font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+    min-height: 280px;
+    resize: vertical;
+  }
+  .loomos-file-drop {
+    align-items: center;
+    background: var(--loomos-surface-3);
+    border: 1px dashed color-mix(in srgb, var(--loomos-accent) 52%, var(--loomos-border));
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    min-height: 54px;
+    padding: 8px;
+  }
+  .loomos-file-drop input {
+    max-width: 190px;
+  }
+  .loomos-dialog-error {
+    color: #e56b70;
+    font-size: 11px;
+    margin: 0;
+  }
+  .loomos-editor-intro {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+  }
+  .loomos-code-grid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .loomos-code-grid .loomos-code-editor {
+    min-height: 280px;
+  }
+  .loomos-viewer-template-preview {
+    background: var(--loomos-canvas);
+    max-height: 420px;
+    overflow: auto;
+    padding: 6px;
+  }
+
+  @container loomos-viewer (max-width: 620px) {
+    .loomos-viewer-actions {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .loomos-viewer-actions .loomos-viewer-primary {
+      grid-column: 1 / -1;
+    }
+    .loomos-root[data-view="modal"] .loomos-viewer-tabs {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      position: static;
+    }
+    .loomos-root[data-view="modal"] .loomos-overview-stats {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @container loomos-viewer (max-width: 420px) {
+    .loomos-root[data-view="modal"] .loomos-history-entry {
+      grid-template-columns: 1fr;
+    }
+    .loomos-root[data-view="modal"] .loomos-history-entry-actions {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .loomos-root[data-view="modal"] .loomos-cast-meta {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 620px) {
+    .loomos-studio-actions,
+    .loomos-code-grid {
+      grid-template-columns: 1fr;
+    }
+    .loomos-studio-module-row {
+      align-items: stretch;
+      grid-template-columns: 1fr;
+    }
+    .loomos-studio-module-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .loomos-editor-intro,
+    .loomos-studio-hero {
+      align-items: stretch;
+      flex-direction: column;
+    }
+  }
 `;
 
 // src/frontend.ts
@@ -8221,6 +8708,7 @@ function setup(ctx) {
   let modal = null;
   let modalListenerCleanup = null;
   let activeTab = "overview";
+  let viewerTab = "overview";
   const tab = ctx.ui.registerDrawerTab({
     id: "command-deck",
     title: "LoomOS Command Deck",
@@ -8291,6 +8779,7 @@ function setup(ctx) {
     }
     const searchQuery = tab.root.querySelector("[data-module-search]")?.value ?? "";
     const savedTab = activeTab;
+    const savedViewerTab = viewerTab;
     const scrollPositions = /* @__PURE__ */ new Map();
     let curr = tab.root;
     while (curr) {
@@ -8317,6 +8806,8 @@ function setup(ctx) {
         focusedSelector = `[data-custom-module="${active.getAttribute("data-custom-module")}"][data-axis="${active.getAttribute("data-axis")}"]`;
       } else if (active.hasAttribute("data-module-search")) {
         focusedSelector = "[data-module-search]";
+      } else if (active.hasAttribute("data-history-filter")) {
+        focusedSelector = "[data-history-filter]";
       } else if (active.hasAttribute("data-action")) {
         focusedSelector = `[data-action="${active.getAttribute("data-action")}"]`;
       } else if (active.hasAttribute("data-preset-action")) {
@@ -8337,6 +8828,7 @@ function setup(ctx) {
       openDetails,
       searchQuery,
       savedTab,
+      savedViewerTab,
       focusedSelector,
       selectionStart,
       selectionEnd
@@ -8344,6 +8836,7 @@ function setup(ctx) {
   }
   function restoreUiState(uiSnapshot, preserveDisclosure = true) {
     activeTab = uiSnapshot.savedTab;
+    viewerTab = uiSnapshot.savedViewerTab;
     if (preserveDisclosure) {
       tab.root.querySelectorAll("details[data-details], details[data-section], details[data-group]").forEach((d) => {
         const key = d.getAttribute("data-details") || d.getAttribute("data-section") || d.getAttribute("data-group");
@@ -8750,59 +9243,81 @@ function setup(ctx) {
   }
   function renderSchemaPromptStudio() {
     const modules = getEffectiveModuleCatalog(settings);
+    const customModules = settings.customModules ?? [];
     return `
-      <details class="loomos-schema-studio" data-details="schema-prompt-studio">
+      <details class="loomos-schema-studio loomos-creation-studio" data-details="schema-prompt-studio">
         <summary>
-          <span>Schema & Prompt Studio</span>
-          <small>${modules.length} stock module templates</small>
+          <span>Schema & Presentation Studio</span>
+          <small>${modules.length + customModules.length} modules</small>
         </summary>
         <div class="loomos-schema-studio-body">
-          <p class="loomos-hint">These are the exact generation-facing contracts used by the compiler. Schema and compiler replacements affect prompting; the strict State V2 runtime validator remains locked for storage safety.</p>
-          <div class="loomos-bulk-actions">
-            <button type="button" class="loomos-button loomos-btn-sm" data-action="copy-schema-catalog">Copy All Module Contracts</button>
+          <div class="loomos-studio-hero">
+            <div>
+              <span class="loomos-kicker">Creation workspace</span>
+              <h3>Build the tracker you want to read</h3>
+              <p>Generation contracts control what the AI tracks. Presentation templates control how the chat viewer and module output are arranged and styled. Runtime State V2 validation remains locked for storage safety.</p>
+            </div>
+            <span class="loomos-status">${settings.viewerTemplateEnabled ? "Custom viewer active" : "Native viewer active"}</span>
           </div>
-          <div class="loomos-schema-module-list">
+          <div class="loomos-studio-actions">
+            <button type="button" class="loomos-button loomos-button-primary" data-studio-action="edit-viewer">Edit Viewer HTML/CSS</button>
+            <button type="button" class="loomos-button" data-studio-action="import-module">Import Module</button>
+            <button type="button" class="loomos-button" data-action="copy-schema-catalog">Copy All Contracts</button>
+          </div>
+          <section class="loomos-studio-library">
+            <div class="loomos-studio-library-heading">
+              <div><span class="loomos-kicker">Module library</span><h3>Stock modules</h3></div>
+              <span>${modules.length}</span>
+            </div>
             ${modules.map((module) => {
-      const stock = MODULE_CATALOG.find((candidate) => candidate.key === module.key);
       const overridden = module.overridden;
-      const promptBlock = buildStockModulePromptBlock(module.key, settings.stockModuleOverrides);
+      const presentation = settings.stockModuleOverrides?.[module.key]?.presentationEnabled;
       return `
-                <details class="loomos-schema-module">
-                  <summary>
-                    <span>${escapeHtml(module.label)} <code>${escapeHtml(module.key)}</code></span>
-                    <span class="loomos-badge">${overridden ? "Customized" : "Stock"}</span>
-                  </summary>
-                  <div class="loomos-schema-module-body">
-                    <div>
-                      <span class="loomos-subhead">Effective generation schema</span>
-                      <pre class="loomos-contract-code">${escapeHtml(module.schemaSummary)}</pre>
+                <article class="loomos-studio-module-row">
+                  <div class="loomos-studio-module-copy">
+                    <div class="loomos-studio-module-title">
+                      <strong>${escapeHtml(module.label)}</strong>
+                      <code>${escapeHtml(module.key)}</code>
+                      ${overridden ? `<span class="loomos-badge">Customized</span>` : ""}
+                      ${presentation ? `<span class="loomos-badge loomos-badge-ok">Template</span>` : ""}
                     </div>
-                    ${module.schemaSummary !== stock.schemaSummary ? `
-                      <details class="loomos-cast-extra">
-                        <summary>Stock schema template</summary>
-                        <div class="loomos-cast-extra-body"><pre class="loomos-contract-code">${escapeHtml(stock.schemaSummary)}</pre></div>
-                      </details>
-                    ` : ""}
-                    <div>
-                      <span class="loomos-subhead">Effective compiler instruction</span>
-                      <pre class="loomos-contract-code">${escapeHtml(module.compilerInstruction)}</pre>
-                    </div>
-                    <details class="loomos-cast-extra">
-                      <summary>Exact module prompt block</summary>
-                      <div class="loomos-cast-extra-body"><pre class="loomos-contract-code">${escapeHtml(promptBlock)}</pre></div>
-                    </details>
-                    <div class="loomos-schema-actions">
-                      <button type="button" class="loomos-button loomos-btn-sm" data-stock-action="inspect" data-stock-key="${escapeHtml(module.key)}">Inspect Full Contract</button>
-                      <button type="button" class="loomos-button loomos-btn-sm" data-stock-action="edit" data-stock-key="${escapeHtml(module.key)}">Edit / Replace</button>
-                      <button type="button" class="loomos-button loomos-btn-sm" data-action="copy-module-prompt" data-schema-module="${escapeHtml(module.key)}">Copy Prompt Block</button>
-                      <button type="button" class="loomos-button loomos-btn-sm" data-action="copy-full-module-prompt" data-schema-module="${escapeHtml(module.key)}">Copy Full Generated Prompt</button>
-                      ${overridden ? `<button type="button" class="loomos-button loomos-button-danger loomos-btn-sm" data-stock-action="reset" data-stock-key="${escapeHtml(module.key)}">Reset</button>` : ""}
-                    </div>
+                    <p>${escapeHtml(module.description)}</p>
                   </div>
-                </details>
+                  <div class="loomos-studio-module-actions">
+                    <button type="button" class="loomos-button loomos-btn-sm" data-stock-action="inspect" data-stock-key="${escapeHtml(module.key)}">Inspect</button>
+                    <button type="button" class="loomos-button loomos-btn-sm" data-stock-action="edit" data-stock-key="${escapeHtml(module.key)}">Edit</button>
+                    <button type="button" class="loomos-button loomos-btn-sm" data-studio-action="export-stock" data-stock-key="${escapeHtml(module.key)}">Export</button>
+                    ${overridden ? `<button type="button" class="loomos-button loomos-button-danger loomos-btn-sm" data-stock-action="reset" data-stock-key="${escapeHtml(module.key)}">Reset</button>` : ""}
+                  </div>
+                </article>
               `;
     }).join("")}
-          </div>
+          </section>
+          <section class="loomos-studio-library">
+            <div class="loomos-studio-library-heading">
+              <div><span class="loomos-kicker">Portable modules</span><h3>Custom modules</h3></div>
+              <span>${customModules.length}</span>
+            </div>
+            ${customModules.length === 0 ? `<div class="loomos-empty loomos-studio-empty"><p>No custom modules yet. Import one or duplicate a stock module from the module matrix.</p></div>` : customModules.map((module) => `
+                <article class="loomos-studio-module-row">
+                  <div class="loomos-studio-module-copy">
+                    <div class="loomos-studio-module-title">
+                      <strong>${escapeHtml(module.label)}</strong>
+                      <code>${escapeHtml(module.id)}</code>
+                      <span class="loomos-badge">Custom</span>
+                      ${module.allowHtmlTemplate ? `<span class="loomos-badge loomos-badge-ok">HTML/CSS</span>` : ""}
+                    </div>
+                    <p>${escapeHtml(module.description || module.compilerInstruction)}</p>
+                  </div>
+                  <div class="loomos-studio-module-actions">
+                    <button type="button" class="loomos-button loomos-btn-sm" data-custom-action="edit" data-custom-id="${escapeHtml(module.id)}">Edit</button>
+                    <button type="button" class="loomos-button loomos-btn-sm" data-custom-action="duplicate" data-custom-id="${escapeHtml(module.id)}">Duplicate</button>
+                    <button type="button" class="loomos-button loomos-btn-sm" data-studio-action="export-custom" data-custom-id="${escapeHtml(module.id)}">Export</button>
+                    <button type="button" class="loomos-button loomos-button-danger loomos-btn-sm" data-custom-action="delete" data-custom-id="${escapeHtml(module.id)}">Delete</button>
+                  </div>
+                </article>
+              `).join("")}
+          </section>
         </div>
       </details>
     `;
@@ -9049,7 +9564,7 @@ function setup(ctx) {
   }
   function diagnosticText() {
     const lines = [
-      `version: 0.1.9`,
+      `version: 0.1.10`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -9070,7 +9585,7 @@ function setup(ctx) {
       <button class="loomos-button loomos-button-primary" data-action="generate"${disabled(!permissions.generation || !permissions.chatMutation || Boolean(activeGenerationRequestId))}>Generate State</button>
     </div>`;
   }
-  function tabsNavHtml(selectedTab = activeTab, includeSettings = true) {
+  function tabsNavHtml(selectedTab = activeTab, includeSettings = true, scope = "drawer") {
     const tabs = [
       { id: "overview", label: "Pulse", meta: state ? state.activeModules.length : 0 },
       { id: "cast", label: "Cast", meta: state?.castMatrix.length ?? 0 },
@@ -9080,8 +9595,8 @@ function setup(ctx) {
       { id: "history", label: "History", meta: historyItems.length },
       ...includeSettings ? [{ id: "settings", label: "Setup", meta: MODULE_KEYS.filter((key) => settings.moduleSettings[key].track).length }] : []
     ];
-    return `<nav class="loomos-tabs-nav" aria-label="Tracker views" role="tablist">${tabs.map(
-      (tabItem) => `<button class="loomos-tab-btn${selectedTab === tabItem.id ? " active" : ""}" data-tab="${tabItem.id}" role="tab" aria-selected="${selectedTab === tabItem.id}">
+    return `<nav class="loomos-tabs-nav${scope === "viewer" ? " loomos-viewer-tabs" : ""}" aria-label="Tracker views" role="tablist">${tabs.map(
+      (tabItem) => `<button class="loomos-tab-btn${selectedTab === tabItem.id ? " active" : ""}" data-tab="${tabItem.id}" data-tab-scope="${scope}" role="tab" aria-selected="${selectedTab === tabItem.id}">
         <span>${tabItem.label}</span><small>${tabItem.meta}</small>
       </button>`
     ).join("")}</nav>`;
@@ -9128,19 +9643,57 @@ function setup(ctx) {
             ${settings.showInjectionPreview && injectionPreview ? renderInjectionPreview(injectionPreview) : ""}` : activeTab === "history" ? renderHistoryTab(historyItems, historyFilter, activeIdentity) : activeTab === "injection" ? injectionPreview ? renderInjectionPreview(injectionPreview) : "" : state ? renderDashboard(state, settings, activeTab) : emptyStateHtml()}
       </main>`;
   }
+  function viewerCommandHtml() {
+    const canGenerate = permissions.generation && permissions.chatMutation;
+    const busy = activeGenerationRequestId !== null;
+    const stateLabel = busy ? "Compiling" : state ? "Synced" : "No state";
+    const sceneTitle = state?.kernel.scene || "Exact-swipe tracker";
+    const sceneMeta = state ? [state.kernel.location, state.kernel.timeframe].filter(Boolean).join(" \xB7 ") : status;
+    return `
+      <section class="loomos-viewer-command">
+        <div class="loomos-viewer-context">
+          <span class="loomos-kicker">LoomOS tracker</span>
+          <div class="loomos-viewer-title-row">
+            <h1>${escapeHtml(sceneTitle)}</h1>
+            <span class="loomos-state-pill${busy ? " is-busy" : state ? " is-ready" : ""}" title="${escapeHtml(elapsedLabel())}">
+              <i></i>${stateLabel}
+            </span>
+          </div>
+          <p>${escapeHtml(sceneMeta || exactLabel())}</p>
+          <small>${escapeHtml(exactLabel())}</small>
+        </div>
+        <div class="loomos-viewer-actions">
+          ${busy ? `<button class="loomos-button loomos-button-danger loomos-button-pulse loomos-viewer-primary" data-action="cancel">Stop compile</button>` : `<button class="loomos-button loomos-button-primary loomos-viewer-primary" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh tracker" : "Generate tracker"}</button>`}
+          <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation || busy)}>Reload</button>
+          ${state && !busy ? `<button class="loomos-button loomos-button-danger" data-action="delete">Delete</button>` : ""}
+        </div>
+      </section>`;
+  }
   function renderViewer() {
     if (!modal) return;
-    const viewerTab = activeTab === "settings" ? "overview" : activeTab;
     modal.root.className = "loomos-root";
     modal.root.dataset.skin = settings.skin;
     modal.root.dataset.view = "modal";
-    modal.setTitle("LoomOS");
-    modal.root.innerHTML = `
-      ${stickyHeaderHtml(Boolean(state) || historyItems.length > 0, "modal", viewerTab)}
+    modal.setTitle("LoomOS Tracker");
+    const command = viewerCommandHtml();
+    const navigation = tabsNavHtml(viewerTab, false, "viewer");
+    const content = `
       ${compileStatusCardHtml()}
-      <main class="loomos-tab-pane" role="tabpanel">
+      <main class="loomos-tab-pane loomos-viewer-pane" role="tabpanel">
         ${viewerTab === "history" ? renderHistoryTab(historyItems, historyFilter, activeIdentity) : viewerTab === "injection" ? injectionPreview ? renderInjectionPreview(injectionPreview) : "" : state ? renderDashboard(state, settings, viewerTab) : emptyStateHtml()}
       </main>`;
+    const shell = settings.viewerTemplateEnabled ? renderViewerPresentation(
+      settings.viewerHtmlTemplate || STARTER_VIEWER_HTML,
+      settings.viewerCssTemplate || STARTER_VIEWER_CSS,
+      { command, navigation, content }
+    ) : {
+      html: `<div class="loomos-viewer-frame">${command}${navigation}${content}</div>`,
+      css: "",
+      wrapperClass: ""
+    };
+    modal.root.innerHTML = `
+      ${shell.css ? `<style>${shell.css}</style>` : ""}
+      <div class="loomos-viewer-shell ${shell.wrapperClass}">${shell.html}</div>`;
   }
   function renderAll(preserveDisclosure = true) {
     const uiState = captureUiState();
@@ -9150,27 +9703,31 @@ function setup(ctx) {
     restoreUiState(uiState, preserveDisclosure);
   }
   function openViewer() {
-    if (activeTab === "settings") activeTab = "overview";
+    viewerTab = activeTab === "settings" ? "overview" : activeTab;
     if (modal) {
       renderViewer();
       return;
     }
     modal = ctx.ui.showModal({
-      title: "LoomOS",
+      title: "LoomOS Tracker",
       width: Math.min(1100, typeof window !== "undefined" ? window.innerWidth - 8 : 420),
       maxHeight: typeof window !== "undefined" ? Math.min(900, window.innerHeight - 12) : 680
     });
     const root = modal.root;
     const onClick = (event) => handleActionClick(event);
+    const onInput = (event) => handleRootInput(event);
     root.addEventListener("click", onClick);
+    root.addEventListener("input", onInput);
     const removeDismiss = modal.onDismiss(() => {
       root.removeEventListener("click", onClick);
+      root.removeEventListener("input", onInput);
       removeDismiss();
       modal = null;
       modalListenerCleanup = null;
     });
     modalListenerCleanup = () => {
       root.removeEventListener("click", onClick);
+      root.removeEventListener("input", onInput);
       removeDismiss();
       modal?.dismiss();
       modal = null;
@@ -9289,7 +9846,7 @@ function setup(ctx) {
     renderAll();
   }
   function reloadState() {
-    const identity = currentRequest();
+    const identity = state?.identity ?? currentRequest();
     if (!identity?.messageId) {
       activeIdentity = null;
       state = null;
@@ -9302,7 +9859,7 @@ function setup(ctx) {
     renderAll();
   }
   async function deleteCurrentState() {
-    const identity = currentRequest();
+    const identity = state?.identity ?? currentRequest();
     if (!identity?.messageId) return;
     const { confirmed } = await ctx.ui.showConfirm({
       title: "Delete LoomOS State",
@@ -9312,6 +9869,54 @@ function setup(ctx) {
     });
     if (!confirmed) return;
     send({ type: "delete_state", requestId: requestId("delete"), identity });
+  }
+  function historyIdentityFromButton(button) {
+    const chatId = button.dataset.chatId;
+    const messageId = button.dataset.messageId;
+    const swipeId = Number(button.dataset.swipeId);
+    if (!chatId || !messageId || !Number.isInteger(swipeId) || swipeId < 0) return null;
+    return { chatId, messageId, swipeId };
+  }
+  function loadHistoryState(button) {
+    const identity = historyIdentityFromButton(button);
+    if (!identity) {
+      status = "Could not read that history entry.";
+      renderAll();
+      return;
+    }
+    status = `Loading ${identity.messageId.slice(0, 8)} swipe ${identity.swipeId}`;
+    viewerTab = "overview";
+    send({
+      type: "load_history_state",
+      requestId: requestId("history-load"),
+      identity
+    });
+    renderAll(false);
+  }
+  async function deleteHistoryState(button) {
+    const identity = historyIdentityFromButton(button);
+    if (!identity) {
+      status = "Could not read that history entry.";
+      renderAll();
+      return;
+    }
+    const entry = historyItems.find(
+      (item) => item.identity.chatId === identity.chatId && item.identity.messageId === identity.messageId && item.identity.swipeId === identity.swipeId
+    );
+    const { confirmed } = await ctx.ui.showConfirm({
+      title: "Delete tracker history",
+      message: `Delete "${entry?.kernelScene || identity.messageId}" for swipe ${identity.swipeId}? This removes the stored tracker only.`,
+      variant: "danger",
+      confirmLabel: "Delete tracker"
+    });
+    if (!confirmed) return;
+    status = "Deleting history tracker";
+    send({
+      type: "delete_history_state",
+      requestId: requestId("history-delete"),
+      identity
+    });
+    renderAll();
   }
   function showWhatChangedModal() {
     if (!state) return;
@@ -9624,6 +10229,232 @@ function setup(ctx) {
       pm.root.querySelector("#import-cancel")?.addEventListener("click", () => pm.dismiss());
     }
   }
+  function downloadJsonFile(filename, value) {
+    const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+  function safeFilename(value) {
+    return value.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "module";
+  }
+  function openModuleExport(title, filename, bundle) {
+    const json = JSON.stringify(bundle, null, 2);
+    const em = ctx.ui.showModal({
+      title,
+      width: Math.min(680, window.innerWidth - 12),
+      maxHeight: Math.min(700, window.innerHeight - 20)
+    });
+    em.root.className = "loomos-root";
+    em.root.innerHTML = `
+      <div class="loomos-prompt-dialog loomos-portable-dialog" data-skin="${settings.skin}">
+        <p class="loomos-hint">This bundle includes the module contract, controls, and presentation template. It can be imported into another LoomOS installation.</p>
+        <textarea class="loomos-input loomos-portable-json" id="module-export-json" readonly>${escapeHtml(json)}</textarea>
+        <div class="loomos-dialog-buttons">
+          <button type="button" class="loomos-button loomos-button-primary" id="module-export-copy">Copy JSON</button>
+          <button type="button" class="loomos-button" id="module-export-download">Download</button>
+          <button type="button" class="loomos-button" id="module-export-close">Close</button>
+        </div>
+      </div>`;
+    em.root.querySelector("#module-export-copy")?.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(json);
+      status = "Module bundle copied";
+    });
+    em.root.querySelector("#module-export-download")?.addEventListener("click", () => {
+      downloadJsonFile(filename, bundle);
+    });
+    em.root.querySelector("#module-export-close")?.addEventListener("click", () => em.dismiss());
+    const dismiss = em.onDismiss(() => {
+      dismiss();
+    });
+  }
+  function openModuleImport() {
+    const im = ctx.ui.showModal({
+      title: "Import LoomOS Module",
+      width: Math.min(680, window.innerWidth - 12),
+      maxHeight: Math.min(720, window.innerHeight - 20)
+    });
+    im.root.className = "loomos-root";
+    im.root.innerHTML = `
+      <div class="loomos-prompt-dialog loomos-portable-dialog" data-skin="${settings.skin}">
+        <p class="loomos-hint">Choose a LoomOS module JSON file or paste a bundle. Stock bundles replace that module's controls, contract overrides, and presentation. Custom bundles are added as portable custom modules.</p>
+        <label class="loomos-file-drop">
+          <span>Choose module JSON</span>
+          <input type="file" id="module-import-file" accept=".json,application/json">
+        </label>
+        <label class="loomos-field"><span>Module JSON</span>
+          <textarea class="loomos-input loomos-portable-json" id="module-import-json" placeholder='{"format":"loomos-module","version":1,...}'></textarea>
+        </label>
+        <div class="loomos-dialog-buttons">
+          <button type="button" class="loomos-button loomos-button-primary" id="module-import-confirm">Import Module</button>
+          <button type="button" class="loomos-button" id="module-import-cancel">Cancel</button>
+        </div>
+        <p class="loomos-dialog-error" id="module-import-error" role="alert"></p>
+      </div>`;
+    const textarea = im.root.querySelector("#module-import-json");
+    im.root.querySelector("#module-import-file")?.addEventListener("change", async (event) => {
+      const file = event.currentTarget.files?.[0];
+      if (file && textarea) textarea.value = await file.text();
+    });
+    im.root.querySelector("#module-import-confirm")?.addEventListener("click", () => {
+      const errorRoot = im.root.querySelector("#module-import-error");
+      try {
+        const parsedJson = JSON.parse(textarea?.value.trim() || "");
+        const bundle = parseModuleBundle(parsedJson);
+        if (bundle.kind === "stock") {
+          settings = LoomOSSettingsSchema.parse({
+            ...settings,
+            moduleSettings: {
+              ...settings.moduleSettings,
+              [bundle.key]: {
+                ...bundle.control,
+                track: CORE_TRACKING_MODULES.has(bundle.key) ? true : bundle.control.track
+              }
+            },
+            stockModuleOverrides: {
+              ...settings.stockModuleOverrides,
+              [bundle.key]: bundle.override
+            }
+          });
+          status = `Imported stock module "${bundle.key}"`;
+        } else {
+          const exists = settings.customModules.some((module) => module.id === bundle.module.id);
+          const imported = CustomModuleSchema.parse({
+            ...bundle.module,
+            id: exists ? "cmod_" + crypto.randomUUID().replace(/-/g, "").substring(0, 12) : bundle.module.id,
+            label: exists ? `${bundle.module.label} (Imported)` : bundle.module.label
+          });
+          settings = LoomOSSettingsSchema.parse({
+            ...settings,
+            customModules: [...settings.customModules, imported]
+          });
+          status = `Imported custom module "${imported.label}"`;
+        }
+        send({ type: "save_settings", requestId: requestId("module-import"), settings });
+        im.dismiss();
+        renderAll();
+      } catch (error) {
+        if (errorRoot) errorRoot.textContent = error instanceof Error ? error.message : String(error);
+      }
+    });
+    im.root.querySelector("#module-import-cancel")?.addEventListener("click", () => im.dismiss());
+    const dismiss = im.onDismiss(() => {
+      dismiss();
+    });
+  }
+  function openViewerPresentationEditor() {
+    let enabled = settings.viewerTemplateEnabled;
+    let htmlTemplate = settings.viewerHtmlTemplate || STARTER_VIEWER_HTML;
+    let cssTemplate = settings.viewerCssTemplate || STARTER_VIEWER_CSS;
+    const vm = ctx.ui.showModal({
+      title: "Viewer Presentation",
+      width: Math.min(920, window.innerWidth - 8),
+      maxHeight: Math.min(860, window.innerHeight - 12)
+    });
+    vm.root.className = "loomos-root";
+    const syncDraft = () => {
+      enabled = vm.root.querySelector("#viewer-template-enabled")?.checked ?? enabled;
+      htmlTemplate = vm.root.querySelector("#viewer-template-html")?.value ?? htmlTemplate;
+      cssTemplate = vm.root.querySelector("#viewer-template-css")?.value ?? cssTemplate;
+    };
+    const refreshPreview = () => {
+      syncDraft();
+      const preview = renderViewerPresentation(
+        htmlTemplate,
+        cssTemplate,
+        {
+          command: `<section class="loomos-viewer-command"><div class="loomos-viewer-context"><span class="loomos-kicker">Preview</span><div class="loomos-viewer-title-row"><h1>${escapeHtml(state?.kernel.scene || "Tracker scene")}</h1><span class="loomos-state-pill is-ready"><i></i>Synced</span></div><p>${escapeHtml(state?.kernel.location || "Current location")}</p></div></section>`,
+          navigation: tabsNavHtml(viewerTab, false, "viewer"),
+          content: state ? renderDashboard(state, settings, viewerTab === "history" ? "overview" : viewerTab) : `<div class="loomos-empty"><h3>Tracker content</h3><p>Generate a tracker to preview live module data.</p></div>`
+        }
+      );
+      const previewRoot = vm.root.querySelector("#viewer-template-preview");
+      if (previewRoot) {
+        previewRoot.innerHTML = `<style>${preview.css}</style><div class="loomos-viewer-shell ${preview.wrapperClass}">${preview.html}</div>`;
+      }
+    };
+    vm.root.innerHTML = `
+      <div class="loomos-prompt-dialog loomos-viewer-editor" data-skin="${settings.skin}">
+        <div class="loomos-editor-intro">
+          <div><span class="loomos-kicker">Safe slot template</span><h3>Tracker viewer HTML & CSS</h3></div>
+          <label class="loomos-check"><input type="checkbox" id="viewer-template-enabled"${checked(enabled)}><span>Use custom viewer template</span></label>
+        </div>
+        <p class="loomos-hint">Arrange <code>{{command}}</code>, <code>{{navigation}}</code>, and <code>{{content}}</code> anywhere in the HTML shell. CSS is scoped to the viewer. Scripts, external assets, event handlers, fixed positioning, and unsafe URLs are removed.</p>
+        <div class="loomos-code-grid">
+          <label class="loomos-field"><span>Viewer HTML</span><textarea class="loomos-input loomos-code-editor" id="viewer-template-html" maxlength="16000">${escapeHtml(htmlTemplate)}</textarea></label>
+          <label class="loomos-field"><span>Viewer CSS</span><textarea class="loomos-input loomos-code-editor" id="viewer-template-css" maxlength="16000">${escapeHtml(cssTemplate)}</textarea></label>
+        </div>
+        <div class="loomos-dialog-buttons">
+          <button type="button" class="loomos-button" id="viewer-template-reset">Reset Starter</button>
+          <button type="button" class="loomos-button" id="viewer-template-refresh">Refresh Preview</button>
+          <button type="button" class="loomos-button loomos-button-primary" id="viewer-template-save">Save Viewer</button>
+          <button type="button" class="loomos-button" id="viewer-template-cancel">Cancel</button>
+        </div>
+        <div class="loomos-template-preview loomos-viewer-template-preview" id="viewer-template-preview"></div>
+      </div>`;
+    vm.root.querySelector("#viewer-template-reset")?.addEventListener("click", () => {
+      htmlTemplate = STARTER_VIEWER_HTML;
+      cssTemplate = STARTER_VIEWER_CSS;
+      const html = vm.root.querySelector("#viewer-template-html");
+      const css = vm.root.querySelector("#viewer-template-css");
+      if (html) html.value = htmlTemplate;
+      if (css) css.value = cssTemplate;
+      refreshPreview();
+    });
+    vm.root.querySelector("#viewer-template-refresh")?.addEventListener("click", refreshPreview);
+    vm.root.querySelector("#viewer-template-save")?.addEventListener("click", () => {
+      syncDraft();
+      settings = LoomOSSettingsSchema.parse({
+        ...settings,
+        viewerTemplateEnabled: enabled,
+        viewerHtmlTemplate: htmlTemplate,
+        viewerCssTemplate: cssTemplate
+      });
+      send({ type: "save_settings", requestId: requestId("viewer-template"), settings });
+      status = enabled ? "Custom viewer presentation saved" : "Native viewer presentation restored";
+      vm.dismiss();
+      renderAll();
+    });
+    vm.root.querySelector("#viewer-template-cancel")?.addEventListener("click", () => vm.dismiss());
+    const dismiss = vm.onDismiss(() => {
+      dismiss();
+    });
+    refreshPreview();
+  }
+  function handleStudioAction(action, button) {
+    if (action === "edit-viewer") {
+      openViewerPresentationEditor();
+      return;
+    }
+    if (action === "import-module") {
+      openModuleImport();
+      return;
+    }
+    if (action === "export-stock") {
+      const key = button.dataset.stockKey;
+      if (!key || !MODULE_KEYS.includes(key)) return;
+      const module = getEffectiveModuleCatalog(settings).find((candidate) => candidate.key === key);
+      openModuleExport(
+        `Export ${module?.label || key}`,
+        `loomos-${safeFilename(module?.label || key)}.json`,
+        exportStockModuleBundle(key, settings)
+      );
+      return;
+    }
+    if (action === "export-custom") {
+      const id = button.dataset.customId;
+      const module = settings.customModules.find((candidate) => candidate.id === id);
+      if (!module) return;
+      openModuleExport(
+        `Export ${module.label}`,
+        `loomos-${safeFilename(module.label)}.json`,
+        exportCustomModuleBundle(module)
+      );
+    }
+  }
   function handleStockModuleAction(action, moduleKey) {
     if (action === "inspect") {
       const entry = MODULE_CATALOG.find((m) => m.key === moduleKey);
@@ -9764,6 +10595,16 @@ function setup(ctx) {
           <label class="loomos-field"><span>Additional compiler guidance</span><textarea class="loomos-input" id="sm-addendum" style="height:80px;" placeholder="Appended after the effective compiler instruction">${escapeHtml(ov?.compilerGuidanceAddendum || "")}</textarea></label>
           <label class="loomos-field"><span>Injection priority (higher = injected first)</span><input class="loomos-input" type="number" id="sm-priority" value="${ov?.injectionPriority ?? ""}" placeholder="Auto"></label>
           <label class="loomos-field"><span>Render hint</span><input class="loomos-input" type="text" id="sm-render-hint" value="${escapeHtml(ov?.renderHint || "")}" placeholder="Custom render behavior hint"></label>
+          <details class="loomos-editor-section"${ov?.presentationEnabled ? " open" : ""}>
+            <summary>Module HTML/CSS Presentation <span class="loomos-badge">Sanitized</span></summary>
+            <div class="loomos-editor-section-body">
+              <label class="loomos-check"><input type="checkbox" id="sm-presentation-enabled"${checked(ov?.presentationEnabled === true)}><span>Use a custom presentation wrapper for this module</span></label>
+              <p class="loomos-hint">Use <code>{{title}}</code>, <code>{{summary}}</code>, <code>{{content}}</code>, <code>{{key}}</code>, and <code>{{open}}</code>. The module's escaped tracker content is inserted into <code>{{content}}</code>.</p>
+              <label class="loomos-field"><span>Module HTML</span><textarea class="loomos-input loomos-code-editor" id="sm-html-template" maxlength="12000">${escapeHtml(ov?.htmlTemplate || STARTER_STOCK_MODULE_HTML)}</textarea></label>
+              <label class="loomos-field"><span>Module CSS</span><textarea class="loomos-input loomos-code-editor" id="sm-css-template" maxlength="12000">${escapeHtml(ov?.cssTemplate || STARTER_STOCK_MODULE_CSS)}</textarea></label>
+              <button type="button" class="loomos-button loomos-btn-sm" id="sm-template-reset">Reset Starter Template</button>
+            </div>
+          </details>
           <label class="loomos-check" style="margin-top:4px;"><input type="checkbox" id="sm-hidden"${checked(ov?.hiddenFromSettings === true)}><span>Hidden from settings</span></label>
           <label class="loomos-check"><input type="checkbox" id="sm-def-display"${checked(ov?.defaultDisplay === true)}><span>Default display enabled</span></label>
           <label class="loomos-check"><input type="checkbox" id="sm-def-inject"${checked(ov?.defaultInject === true)}><span>Default inject enabled</span></label>
@@ -9803,6 +10644,11 @@ function setup(ctx) {
         }
         const renderHint = em.root.querySelector("#sm-render-hint")?.value.trim();
         if (renderHint) override.renderHint = renderHint;
+        override.presentationEnabled = em.root.querySelector("#sm-presentation-enabled")?.checked ?? false;
+        const htmlTemplate = em.root.querySelector("#sm-html-template")?.value;
+        const cssTemplate = em.root.querySelector("#sm-css-template")?.value;
+        if (htmlTemplate) override.htmlTemplate = htmlTemplate;
+        if (cssTemplate) override.cssTemplate = cssTemplate;
         override.hiddenFromSettings = em.root.querySelector("#sm-hidden")?.checked ?? false;
         override.defaultDisplay = em.root.querySelector("#sm-def-display")?.checked ?? false;
         override.defaultInject = em.root.querySelector("#sm-def-inject")?.checked ?? false;
@@ -9817,6 +10663,12 @@ function setup(ctx) {
         status = `Override saved for "${ov?.label || entry.label}"`;
         em.dismiss();
         renderAll();
+      });
+      em.root.querySelector("#sm-template-reset")?.addEventListener("click", () => {
+        const html = em.root.querySelector("#sm-html-template");
+        const css = em.root.querySelector("#sm-css-template");
+        if (html) html.value = STARTER_STOCK_MODULE_HTML;
+        if (css) css.value = STARTER_STOCK_MODULE_CSS;
       });
       em.root.querySelector("#sm-cancel")?.addEventListener("click", () => em.dismiss());
       const dismiss = em.onDismiss(() => {
@@ -10314,6 +11166,14 @@ ${draft.cssTemplate}`);
         historyItems = response.items;
         refreshAllMessageWidgets();
         break;
+      case "history_state_deleted": {
+        historyItems = response.items;
+        const deletedActive = activeIdentity?.chatId === response.identity.chatId && activeIdentity.messageId === response.identity.messageId && activeIdentity.swipeId === response.identity.swipeId;
+        if (deletedActive) state = null;
+        status = "History tracker deleted";
+        refreshAllMessageWidgets();
+        break;
+      }
       case "injection_preview":
         injectionPreview = response.preview;
         break;
@@ -10333,7 +11193,13 @@ ${draft.cssTemplate}`);
     const tabBtn = target.closest("[data-tab]");
     if (tabBtn) {
       const newTab = tabBtn.dataset.tab;
-      if (newTab && newTab !== activeTab) {
+      const scope = tabBtn.dataset.tabScope;
+      if (scope === "viewer") {
+        if (newTab && newTab !== viewerTab) {
+          viewerTab = newTab;
+          renderViewer();
+        }
+      } else if (newTab && newTab !== activeTab) {
         activeTab = newTab;
         renderAll(false);
       }
@@ -10349,6 +11215,18 @@ ${draft.cssTemplate}`);
         send({ type: "cancel_generation", requestId: activeGenerationRequestId });
       }
       if (action === "delete") void deleteCurrentState();
+      if (action === "load-history-state") loadHistoryState(actionBtn);
+      if (action === "delete-history-state") void deleteHistoryState(actionBtn);
+      if (action === "clear-history-filter") {
+        historyFilter = "";
+        renderAll();
+      }
+      if (action === "copy-injection-preview" && injectionPreview) {
+        void navigator.clipboard.writeText(injectionPreview.text).then(() => {
+          status = "Injection preview copied";
+          renderAll();
+        });
+      }
       if (action === "permissions") void requestPermissions();
       if (action === "what-changed" && state) void showWhatChangedModal();
       if (action === "copy-debug-report" && pipeline?.debugReport) {
@@ -10387,6 +11265,12 @@ ${draft.cssTemplate}`);
           renderAll();
         }
       }
+      return;
+    }
+    const studioBtn = target.closest("[data-studio-action]");
+    if (studioBtn) {
+      const action = studioBtn.dataset.studioAction;
+      if (action) handleStudioAction(action, studioBtn);
       return;
     }
     const presetBtn = target.closest("[data-preset-action]");
@@ -10436,6 +11320,11 @@ ${draft.cssTemplate}`);
   }
   function handleRootInput(event) {
     const target = event.target;
+    if (target?.matches("[data-history-filter]")) {
+      historyFilter = target.value;
+      renderAll();
+      return;
+    }
     if (!target?.matches("[data-module-search]")) return;
     const query = target.value.trim().toLowerCase();
     tab.root.querySelectorAll("[data-module-row]").forEach((row) => {

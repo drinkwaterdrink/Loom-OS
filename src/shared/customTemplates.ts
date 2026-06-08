@@ -55,7 +55,7 @@ export function safeCustomModuleId(moduleId: string): string {
 
 export function sanitizeCustomHtml(template: string): string {
   return template
-    .slice(0, 8000)
+    .slice(0, 16000)
     .replace(BLOCKED_PAIRED_TAGS, "")
     .replace(BLOCKED_SINGLE_TAGS, "")
     .replace(EVENT_ATTRIBUTES, "")
@@ -66,7 +66,7 @@ export function sanitizeCustomHtml(template: string): string {
 
 export function sanitizeCustomCss(css: string): string {
   return css
-    .slice(0, 8000)
+    .slice(0, 16000)
     .replace(/@import\b[^;]*;?/gi, "")
     .replace(/url\s*\(\s*(['"]?)(?:https?:|data:|javascript:|\/\/)[\s\S]*?\1\s*\)/gi, "none")
     .replace(/expression\s*\([^)]*\)/gi, "")

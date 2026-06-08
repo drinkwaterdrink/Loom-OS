@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  renderDashboard,
   renderHistoryTab,
   renderInjectionPreview,
   renderWhatChangedModal,
 } from "../src/frontend/render";
-import { DEFAULT_SETTINGS } from "../src/shared/schemas";
+import { DEFAULT_SETTINGS, LoomOSSettingsSchema } from "../src/shared/schemas";
 import { makeState } from "./fixtures";
 import type { StateHistoryItem, InjectionPreview, StateIdentity } from "../src/shared/types";
 
@@ -75,8 +76,10 @@ test("renderHistoryTab highlights active entry", () => {
 
 test("renderHistoryTab shows delete buttons", () => {
   const html = renderHistoryTab(historyItems, "", null);
-  const match = html.match(/data-loomos-action="delete-history-state"/g);
+  const match = html.match(/data-action="delete-history-state"/g);
   assert.equal(match?.length, 2);
+  assert.match(html, /data-action="load-history-state"/);
+  assert.match(html, /data-chat-id="chat\/alpha"/);
 });
 
 test("renderInjectionPreview shows within budget", () => {
@@ -139,11 +142,27 @@ test("enhanced renderContinuity renders explainer and metrics", async () => {
 
 test("cast dashboard renders the dedicated immutable appearance profile", async () => {
   const state = makeState();
-  const { renderDashboard } = await import("../src/frontend/render");
   const html = renderDashboard(state, DEFAULT_SETTINGS, "cast");
   assert.match(html, /Immutable Appearance/);
   assert.match(html, /Slim with subtle curves/);
   assert.match(html, /Modest/);
   assert.match(html, /A faint crescent scar beneath the left eye/);
   assert.match(html, /Dark tied-back hair/);
+});
+
+test("stock presentation can use the safe starter HTML with custom CSS only", () => {
+  const settings = LoomOSSettingsSchema.parse({
+    ...DEFAULT_SETTINGS,
+    stockModuleOverrides: {
+      sceneKernel: {
+        presentationEnabled: true,
+        cssTemplate: ".module-frame { border-width: 2px; }",
+      },
+    },
+  });
+  const html = renderDashboard(makeState(), settings, "overview");
+  assert.match(html, /data-module-presentation="sceneKernel"/);
+  assert.match(html, /loomos-cmod-stock-scenekernel/);
+  assert.match(html, /class="module-frame"/);
+  assert.match(html, /border-width: 2px/);
 });

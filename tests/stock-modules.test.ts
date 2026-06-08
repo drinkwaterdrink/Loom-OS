@@ -100,10 +100,10 @@ test("frontend renders stock actions and editor/inspector handlers", async () =>
   }
   assert.match(source, /Copy Structure/);
   assert.match(source, /Save Override/);
-  assert.match(source, /Schema & Prompt Studio/);
+  assert.match(source, /Schema & Presentation Studio/);
   assert.match(source, /Generation schema replacement/);
   assert.match(source, /Compiler instruction replacement/);
-  assert.match(source, /Copy Full Generated Prompt/);
+  assert.match(source, /Copy Full Prompt/);
   assert.match(source, /stockModuleOverrides:\s*\{/);
   assert.match(source, /delete newOverrides\[moduleKey\]/);
   assert.match(source, /createCustomModuleFromStock/);

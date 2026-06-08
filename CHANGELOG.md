@@ -2,6 +2,30 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.10] - 2026-06-08
+
+### Added
+
+- A dedicated scene-first chat tracker viewer with its own tab state, compact command header, responsive three-by-two mobile navigation, container-query layouts, and dense module presentation.
+- Schema & Presentation Studio controls for editing the viewer HTML/CSS shell with live preview, starter templates, safe content slots, sanitized markup, and scoped CSS.
+- Stock module presentation overrides with editable HTML/CSS wrappers and safe `key`, `title`, `summary`, `content`, and `open` template tokens.
+- Per-module JSON import/export for stock and custom modules, including module controls, generation contracts, typed custom fields, and presentation templates.
+- Regression coverage for module bundle round-trips, presentation sanitization, viewer slots, and exact archived-state operations.
+
+### Changed
+
+- Rebuilt the pop-up tracker opened inside chat without changing the drawer's Setup-oriented organization.
+- Separated viewer and drawer navigation state so browsing the modal no longer changes the active drawer workspace.
+- Reorganized Schema & Prompt Studio into a compact module library and renamed it Schema & Presentation Studio.
+- Increased the sanitizer processing window for presentation HTML/CSS to support the larger viewer and stock module editors.
+
+### Fixed
+
+- History Load and Delete controls now dispatch through the frontend action handler instead of rendering inert attributes.
+- Historical states now load directly by exact stored `chatId + messageId + swipeId` identity rather than requiring the old message or swipe to remain live.
+- Historical Delete now removes the exact archived file, returns the refreshed history list, and clears the viewer only when the deleted tracker was the active one.
+- History search clearing and injection-preview copy controls now use the active event delegation path.
+
 ## [0.1.9] - 2026-06-08
 
 ### Added

@@ -264,6 +264,9 @@ export interface StockModuleOverride {
   injectionPriority?: number;
   renderHint?: string;
   hiddenFromSettings?: boolean;
+  presentationEnabled?: boolean;
+  htmlTemplate?: string;
+  cssTemplate?: string;
 }
 
 export type StockModuleOverrides = Partial<Record<ModuleKey, StockModuleOverride>>;
