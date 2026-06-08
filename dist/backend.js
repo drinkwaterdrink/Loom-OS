@@ -4085,7 +4085,7 @@ var MODULE_CATALOG = [
     schemaSummary: "scene, location, timeframe, date, time, elapsed, weather, pov, tone, topic, theme, objective, summary, currentFocus, nextFocus, currentRisk, stopMode, stopWhy, constraints[]",
     compilerInstruction: "Scene metadata, focus, and constraints from transcript and seed. Ground in transcript evidence; carry forward stable scene context.",
     injectionBehavior: "Injected as scene: location, time, focus line. Always included when enabled.",
-    renderBehavior: "Overview tab \u2014 hero block with scene name, focus, summary, constraints, facts list."
+    renderBehavior: "Pulse view \u2014 compact scene focus, summary, constraints, and facts."
   },
   {
     key: "deltas",
@@ -4097,7 +4097,7 @@ var MODULE_CATALOG = [
     schemaSummary: "headline, changedModules[], changes[{text, age, module, importance}], carriedForward[], newlyEstablished[]",
     compilerInstruction: "Compare prior seed state with newest transcript evidence. Output real diffs with importance labels. Carry forward unchanged facts.",
     injectionBehavior: "Injected first as delta: headline and top 4 changes. Highest injection priority.",
-    renderBehavior: "Overview tab \u2014 headline callout, change list with importance badges, two-column carried/newly."
+    renderBehavior: "Pulse view \u2014 expandable headline, change list, and carried/newly-established facts."
   },
   {
     key: "meters",
@@ -4109,7 +4109,7 @@ var MODULE_CATALOG = [
     schemaSummary: "id (enum), label, value 0-100, pct, band, color, trend (enum), note",
     compilerInstruction: "Diagnose scene tension, danger, social heat, coherence, hidden info, and omen based on current narrative pressure. Never command escalation.",
     injectionBehavior: "Not injected by default. Moderate value for scene awareness.",
-    renderBehavior: "Overview tab \u2014 meter grid with bar visualization, trend icons, band labels."
+    renderBehavior: "Pulse view \u2014 compact meter grid with bars, trends, and band labels."
   },
   {
     key: "castCore",
@@ -4121,7 +4121,7 @@ var MODULE_CATALOG = [
     schemaSummary: "id, name, kind, qty, role, location, status, awareness, threat, spotlight, emotionalState, intent, goals[], stableFacts[], continuity{}, changed, changeNote",
     compilerInstruction: "Track all named characters appearing in the scene. Maintain identity, presence, role, location, status, awareness, intent, goals, stable facts, and uncertainty. Mark changed=true and add changeNote when tracked state updates. Crowd/background groups are summarized compactly.",
     injectionBehavior: "Injected as cast.Name: status; intent; goal for POV/main/high-spotlight characters. Up to 6 entries.",
-    renderBehavior: "Cast tab \u2014 full character ledger with search, filters, expandable detail panels. Overview tab \u2014 compact cast cards."
+    renderBehavior: "Cast view \u2014 dense character ledger rows with expandable appearance and turn details."
   },
   {
     key: "appearance",
@@ -4217,7 +4217,7 @@ var MODULE_CATALOG = [
     schemaSummary: "establishedFacts[], antiRetconAnchors[], pendingConsequences[{cause, pending, trigger, urgency, status, evidence, changed}], offscreenState[], bannedNext[{text, reason, scope, color, source}], impossibleNext[], risks[]{severity, issue, evidence, recommendation}, terms[{party, term, risk, status, binding, evidence}]",
     compilerInstruction: "Protect story coherence. Maintain established facts and anti-retcon anchors. Track pending narrative consequences with urgency and trigger conditions. Log avoided moves with reason and scope. Track character agreements/terms. Detect continuity conflicts as risks.",
     injectionBehavior: "Injected as anchor:, pending:, and risk. entries. High priority for continuity safety.",
-    renderBehavior: "Continuity tab \u2014 explainer, metrics bar, risk cards, facts/anchors/consequences/terms/avoid lists."
+    renderBehavior: "Memory view \u2014 metrics, risk cards, facts, anchors, consequences, terms, and avoid lists."
   },
   {
     key: "secretsRumors",
@@ -4241,7 +4241,7 @@ var MODULE_CATALOG = [
     schemaSummary: "userAction, worldResponse, risk, blockers[]",
     compilerInstruction: "Track the user's current action, its expected world response, risk assessment, and mechanical blockers.",
     injectionBehavior: "Injected as action: action; response; risk. Medium-high priority.",
-    renderBehavior: "Overview tab \u2014 action card with response, risk, blocker chips."
+    renderBehavior: "Pulse view \u2014 expandable action response, risk, and blocker details."
   },
   {
     key: "dialogueState",
@@ -4253,7 +4253,7 @@ var MODULE_CATALOG = [
     schemaSummary: "openThread, socialMask, levers[], taboos[]",
     compilerInstruction: "Track active dialogue threads, social masks characters are wearing, conversational levers, and established taboos.",
     injectionBehavior: "Experimental \u2014 not injected by default.",
-    renderBehavior: "Overview tab \u2014 dialogue card (only when enabled)."
+    renderBehavior: "Pulse view \u2014 dialogue card when enabled."
   },
   {
     key: "directorStyle",
@@ -4265,7 +4265,7 @@ var MODULE_CATALOG = [
     schemaSummary: "primary, mask, push, voiceCues[]",
     compilerInstruction: "Track optional director-style scene framing, narrative mask, push direction, and voice cues for the writer.",
     injectionBehavior: "Experimental \u2014 not injected by default.",
-    renderBehavior: "Overview tab \u2014 director card (only when enabled)."
+    renderBehavior: "Pulse view \u2014 director card when enabled."
   },
   {
     key: "closenessState",
@@ -4277,7 +4277,7 @@ var MODULE_CATALOG = [
     schemaSummary: "emotional, physical, consentSignals[], boundaries[]",
     compilerInstruction: "Track non-explicit emotional and physical closeness between characters. Always PG. Focus on consent signals and established boundaries.",
     injectionBehavior: "Experimental \u2014 not injected by default.",
-    renderBehavior: "Overview tab \u2014 closeness card (only when enabled)."
+    renderBehavior: "Pulse view \u2014 closeness card when enabled."
   },
   {
     key: "imagePrompt",
@@ -4289,7 +4289,7 @@ var MODULE_CATALOG = [
     schemaSummary: "aspect, shot, medium, subject, positive, negative, full, hint",
     compilerInstruction: "Assemble a compact text-to-image prompt from the current scene if visually distinctive. Aspect, shot type, medium, subject, and style cues.",
     injectionBehavior: "Not injected by default. Consumes significant budget if enabled.",
-    renderBehavior: "Overview tab \u2014 image prompt card with shot/medium, subject, hint."
+    renderBehavior: "Pulse view \u2014 image prompt card with shot, medium, subject, and hint."
   },
   {
     key: "auditLog",
@@ -4301,7 +4301,7 @@ var MODULE_CATALOG = [
     schemaSummary: "system, marker, result, repaired, notes",
     compilerInstruction: "Log each compiler run: system name, identity marker, validation result, repair flag, and notes. Minimum verbosity.",
     injectionBehavior: "Not injected.",
-    renderBehavior: "Continuity tab \u2014 audit log list."
+    renderBehavior: "Memory view \u2014 expandable audit log list."
   }
 ];
 function control(track, display = track, inject = false) {

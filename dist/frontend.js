@@ -44,7 +44,7 @@ var MODULE_CATALOG = [
     schemaSummary: "scene, location, timeframe, date, time, elapsed, weather, pov, tone, topic, theme, objective, summary, currentFocus, nextFocus, currentRisk, stopMode, stopWhy, constraints[]",
     compilerInstruction: "Scene metadata, focus, and constraints from transcript and seed. Ground in transcript evidence; carry forward stable scene context.",
     injectionBehavior: "Injected as scene: location, time, focus line. Always included when enabled.",
-    renderBehavior: "Overview tab \u2014 hero block with scene name, focus, summary, constraints, facts list."
+    renderBehavior: "Pulse view \u2014 compact scene focus, summary, constraints, and facts."
   },
   {
     key: "deltas",
@@ -56,7 +56,7 @@ var MODULE_CATALOG = [
     schemaSummary: "headline, changedModules[], changes[{text, age, module, importance}], carriedForward[], newlyEstablished[]",
     compilerInstruction: "Compare prior seed state with newest transcript evidence. Output real diffs with importance labels. Carry forward unchanged facts.",
     injectionBehavior: "Injected first as delta: headline and top 4 changes. Highest injection priority.",
-    renderBehavior: "Overview tab \u2014 headline callout, change list with importance badges, two-column carried/newly."
+    renderBehavior: "Pulse view \u2014 expandable headline, change list, and carried/newly-established facts."
   },
   {
     key: "meters",
@@ -68,7 +68,7 @@ var MODULE_CATALOG = [
     schemaSummary: "id (enum), label, value 0-100, pct, band, color, trend (enum), note",
     compilerInstruction: "Diagnose scene tension, danger, social heat, coherence, hidden info, and omen based on current narrative pressure. Never command escalation.",
     injectionBehavior: "Not injected by default. Moderate value for scene awareness.",
-    renderBehavior: "Overview tab \u2014 meter grid with bar visualization, trend icons, band labels."
+    renderBehavior: "Pulse view \u2014 compact meter grid with bars, trends, and band labels."
   },
   {
     key: "castCore",
@@ -80,7 +80,7 @@ var MODULE_CATALOG = [
     schemaSummary: "id, name, kind, qty, role, location, status, awareness, threat, spotlight, emotionalState, intent, goals[], stableFacts[], continuity{}, changed, changeNote",
     compilerInstruction: "Track all named characters appearing in the scene. Maintain identity, presence, role, location, status, awareness, intent, goals, stable facts, and uncertainty. Mark changed=true and add changeNote when tracked state updates. Crowd/background groups are summarized compactly.",
     injectionBehavior: "Injected as cast.Name: status; intent; goal for POV/main/high-spotlight characters. Up to 6 entries.",
-    renderBehavior: "Cast tab \u2014 full character ledger with search, filters, expandable detail panels. Overview tab \u2014 compact cast cards."
+    renderBehavior: "Cast view \u2014 dense character ledger rows with expandable appearance and turn details."
   },
   {
     key: "appearance",
@@ -176,7 +176,7 @@ var MODULE_CATALOG = [
     schemaSummary: "establishedFacts[], antiRetconAnchors[], pendingConsequences[{cause, pending, trigger, urgency, status, evidence, changed}], offscreenState[], bannedNext[{text, reason, scope, color, source}], impossibleNext[], risks[]{severity, issue, evidence, recommendation}, terms[{party, term, risk, status, binding, evidence}]",
     compilerInstruction: "Protect story coherence. Maintain established facts and anti-retcon anchors. Track pending narrative consequences with urgency and trigger conditions. Log avoided moves with reason and scope. Track character agreements/terms. Detect continuity conflicts as risks.",
     injectionBehavior: "Injected as anchor:, pending:, and risk. entries. High priority for continuity safety.",
-    renderBehavior: "Continuity tab \u2014 explainer, metrics bar, risk cards, facts/anchors/consequences/terms/avoid lists."
+    renderBehavior: "Memory view \u2014 metrics, risk cards, facts, anchors, consequences, terms, and avoid lists."
   },
   {
     key: "secretsRumors",
@@ -200,7 +200,7 @@ var MODULE_CATALOG = [
     schemaSummary: "userAction, worldResponse, risk, blockers[]",
     compilerInstruction: "Track the user's current action, its expected world response, risk assessment, and mechanical blockers.",
     injectionBehavior: "Injected as action: action; response; risk. Medium-high priority.",
-    renderBehavior: "Overview tab \u2014 action card with response, risk, blocker chips."
+    renderBehavior: "Pulse view \u2014 expandable action response, risk, and blocker details."
   },
   {
     key: "dialogueState",
@@ -212,7 +212,7 @@ var MODULE_CATALOG = [
     schemaSummary: "openThread, socialMask, levers[], taboos[]",
     compilerInstruction: "Track active dialogue threads, social masks characters are wearing, conversational levers, and established taboos.",
     injectionBehavior: "Experimental \u2014 not injected by default.",
-    renderBehavior: "Overview tab \u2014 dialogue card (only when enabled)."
+    renderBehavior: "Pulse view \u2014 dialogue card when enabled."
   },
   {
     key: "directorStyle",
@@ -224,7 +224,7 @@ var MODULE_CATALOG = [
     schemaSummary: "primary, mask, push, voiceCues[]",
     compilerInstruction: "Track optional director-style scene framing, narrative mask, push direction, and voice cues for the writer.",
     injectionBehavior: "Experimental \u2014 not injected by default.",
-    renderBehavior: "Overview tab \u2014 director card (only when enabled)."
+    renderBehavior: "Pulse view \u2014 director card when enabled."
   },
   {
     key: "closenessState",
@@ -236,7 +236,7 @@ var MODULE_CATALOG = [
     schemaSummary: "emotional, physical, consentSignals[], boundaries[]",
     compilerInstruction: "Track non-explicit emotional and physical closeness between characters. Always PG. Focus on consent signals and established boundaries.",
     injectionBehavior: "Experimental \u2014 not injected by default.",
-    renderBehavior: "Overview tab \u2014 closeness card (only when enabled)."
+    renderBehavior: "Pulse view \u2014 closeness card when enabled."
   },
   {
     key: "imagePrompt",
@@ -248,7 +248,7 @@ var MODULE_CATALOG = [
     schemaSummary: "aspect, shot, medium, subject, positive, negative, full, hint",
     compilerInstruction: "Assemble a compact text-to-image prompt from the current scene if visually distinctive. Aspect, shot type, medium, subject, and style cues.",
     injectionBehavior: "Not injected by default. Consumes significant budget if enabled.",
-    renderBehavior: "Overview tab \u2014 image prompt card with shot/medium, subject, hint."
+    renderBehavior: "Pulse view \u2014 image prompt card with shot, medium, subject, and hint."
   },
   {
     key: "auditLog",
@@ -260,7 +260,7 @@ var MODULE_CATALOG = [
     schemaSummary: "system, marker, result, repaired, notes",
     compilerInstruction: "Log each compiler run: system name, identity marker, validation result, repair flag, and notes. Minimum verbosity.",
     injectionBehavior: "Not injected.",
-    renderBehavior: "Continuity tab \u2014 audit log list."
+    renderBehavior: "Memory view \u2014 expandable audit log list."
   }
 ];
 function control(track, display = track, inject = false) {
@@ -5617,8 +5617,8 @@ function section(key, title, summary, body, open = false) {
   return `
     <details class="loomos-section" data-section="${escapeHtml(key)}"${open ? " open" : ""}>
       <summary>
-        <span>${escapeHtml(title)}</span>
-        <small>${escapeHtml(summary)}</small>
+        <span class="loomos-section-title">${escapeHtml(title)}</span>
+        <span class="loomos-section-summary">${escapeHtml(summary)}</span>
       </summary>
       <div class="loomos-section-body">${body}</div>
     </details>`;
@@ -5643,7 +5643,7 @@ function renderKernel(state) {
     </dl>
     <div class="loomos-subhead">Constraints</div>
     ${chips(kernel.constraints)}
-  `, true);
+  `);
 }
 function renderDelta(state) {
   const delta = state.delta;
@@ -5664,7 +5664,7 @@ function renderDelta(state) {
       <div><div class="loomos-subhead">Newly established</div>${chips(delta.newlyEstablished)}</div>
       <div><div class="loomos-subhead">Carried forward</div>${chips(delta.carriedForward)}</div>
     </div>
-  `, true);
+  `);
 }
 function renderMeters(state) {
   return section("meters", "Meters", `${state.meters.length} diagnostics`, `
@@ -5706,13 +5706,15 @@ function renderCast(state, settings) {
                   </div>
                   <span class="loomos-badge">${escapeHtml(member.awareness)}</span>
                 </div>
-                <div class="loomos-chip-row" style="margin: 4px 0 8px;">
-                  <span class="loomos-chip">\u{1F4CD} ${escapeHtml(member.location)}</span>
-                  <span class="loomos-chip">\u{1F3AD} ${escapeHtml(member.emotionalState)}</span>
-                  <span class="loomos-chip">\u26A0\uFE0F Threat: ${escapeHtml(member.threat.pct)}</span>
+                <div class="loomos-cast-meta">
+                  <span><b>Location</b>${escapeHtml(member.location)}</span>
+                  <span><b>Mood</b>${escapeHtml(member.emotionalState)}</span>
+                  <span><b>Threat</b>${escapeHtml(member.threat.pct)}</span>
                 </div>
-                <p><strong>Intent:</strong> ${clampProse(member.intent, 100)}</p>
-                <p><strong>Status:</strong> ${clampProse(member.status, 100)}</p>
+                <dl class="loomos-cast-summary">
+                  <div><dt>Intent</dt><dd>${clampProse(member.intent, 100)}</dd></div>
+                  <div><dt>Status</dt><dd>${clampProse(member.status, 100)}</dd></div>
+                </dl>
                 ${appearanceHtml}
                 
                 ${hasExtra ? `
@@ -5836,7 +5838,7 @@ function renderContinuity(state) {
       </div>
     </div>
   `;
-  const riskCards = firewall.risks.length === 0 ? `<div class="loomos-continuity-safe"><strong>\u2705 No continuity conflicts detected.</strong> The current state is consistent with all established facts and anchors.</div>` : `<div class="loomos-continuity-risks">${firewall.risks.map((risk) => `
+  const riskCards = firewall.risks.length === 0 ? `<div class="loomos-continuity-safe"><strong>No continuity conflicts detected.</strong> The current state is consistent with all established facts and anchors.</div>` : `<div class="loomos-continuity-risks">${firewall.risks.map((risk) => `
         <div class="loomos-continuity-risk-card loomos-severity-${risk.severity}">
           <div class="loomos-continuity-risk-header">
             <strong>${clampProse(risk.issue, 100)}</strong>
@@ -5955,20 +5957,24 @@ function renderOverviewCard(state, settings) {
   const riskCount = state.continuityFirewall?.risks?.length ?? 0;
   const injectionStatus = settings.injectionEnabled ? "Enabled" : "Disabled";
   return `
-    <div class="loomos-shell loomos-overview-card">
-      <div class="loomos-kicker">Overview</div>
-      <div class="loomos-overview-headline">${clampProse(deltaHeadline, 140)}</div>
-      <div class="loomos-overview-details">
-        <div><strong>Location:</strong> <span>${escapeHtml(location)} \xB7 ${escapeHtml(time)}</span></div>
-        <div class="loomos-overview-stats">
-          <span>\u{1F465} ${activeCastCount} Cast</span>
-          <span>\u{1F9F5} ${threadCount} Threads</span>
-          <span>\u26A0\uFE0F ${riskCount} Risks</span>
-          <span>\u{1F4E6} ${state.activeModules.length} Modules</span>
-          <span class="loomos-overview-inject-${settings.injectionEnabled ? "active" : "inactive"}">\u{1F489} Inject: ${injectionStatus}</span>
-        </div>
+    <section class="loomos-overview-card">
+      <div class="loomos-overview-topline">
+        <span class="loomos-kicker">Scene pulse</span>
+        <span class="loomos-overview-inject-${settings.injectionEnabled ? "active" : "inactive"}">Injection ${injectionStatus}</span>
       </div>
-    </div>
+      <h2 class="loomos-overview-headline">${clampProse(deltaHeadline, 180)}</h2>
+      <p class="loomos-overview-location"><strong>${escapeHtml(location)}</strong><span>${escapeHtml(time)}</span></p>
+      <div class="loomos-overview-stats">
+        <span><b>${activeCastCount}</b>Cast</span>
+        <span><b>${threadCount}</b>Threads</span>
+        <span><b>${riskCount}</b>Risks</span>
+        <span><b>${state.activeModules.length}</b>Modules</span>
+      </div>
+      <div class="loomos-overview-actions">
+        <button type="button" class="loomos-button loomos-btn-sm" data-action="what-changed">Review changes</button>
+        <span>${escapeHtml(state.kernel.currentFocus || state.kernel.objective)}</span>
+      </div>
+    </section>
   `;
 }
 function renderCustomModules(state, settings) {
@@ -6080,7 +6086,7 @@ function renderDashboard(state, settings, activeTab = "overview") {
       renderTools(state, settings),
       ...renderCustomModules(state, settings)
     ].filter(Boolean);
-    return sections.length > 0 ? `<div class="loomos-dashboard">${overview}${sections.join("")}</div>` : `<div class="loomos-dashboard">${overview}<div class="loomos-empty"><h3>All overview display modules are hidden</h3><p>Enable display for Kernel, Deltas, Meters, or Tools in the Settings tab.</p></div></div>`;
+    return sections.length > 0 ? `<div class="loomos-dashboard">${overview}${sections.join("")}</div>` : `<div class="loomos-dashboard">${overview}<div class="loomos-empty"><h3>All overview display modules are hidden</h3><p>Enable display for Kernel, Deltas, Meters, or Tools in Setup.</p></div></div>`;
   }
   if (activeTab === "cast") {
     const sections = [
@@ -6115,34 +6121,33 @@ function renderHistoryTab(items, filter, activeIdentity) {
   ) : items;
   return `
     <div class="loomos-history-tab">
-      <div class="loomos-history-explainer">
-        <p>The <strong>State History Timeline</strong> shows every state snapshot generated for this chat.
-        Click any entry to load that state for inspection. Use the search bar to filter by scene, focus, or location.</p>
-      </div>
+      <header class="loomos-view-heading">
+        <div><span class="loomos-kicker">Exact-swipe archive</span><h2>Tracker history</h2></div>
+        <span class="loomos-status">${items.length} retained</span>
+      </header>
       <div class="loomos-search-bar">
-        <input class="loomos-input" type="text" placeholder="Filter history..." 
+        <input class="loomos-input" type="search" placeholder="Search scene, focus, or location"
           data-loomos-action="filter-history" value="${escapeHtml(filter)}" />
         ${filter ? `<button class="loomos-button-clear" data-loomos-action="clear-history-filter">&times;</button>` : ""}
         <span class="loomos-search-count">${filtered.length} / ${items.length}</span>
       </div>
       ${filtered.length === 0 ? `<div class="loomos-empty"><h3>No matching history entries</h3><p>Try a different search term.</p></div>` : `<div class="loomos-history-list">${filtered.map((item) => {
     const isActive = activeIdentity?.chatId === item.identity.chatId && activeIdentity?.messageId === item.identity.messageId && activeIdentity?.swipeId === item.identity.swipeId;
-    const repaired = item.repaired ? "\u{1F6E0}\uFE0F" : "";
     return `
               <article class="loomos-history-entry${isActive ? " loomos-history-active" : ""}">
                 <div class="loomos-history-entry-main">
                   <div class="loomos-history-entry-header">
                     <strong>${escapeHtml(item.kernelScene || "N/A")}</strong>
-                    <span class="loomos-badge">${escapeHtml(item.generatedAt)}</span>
-                    ${repaired ? `<span class="loomos-badge" style="border-color:#d58a42;color:#d58a42;">repaired</span>` : ""}
+                    <span class="loomos-history-time">${escapeHtml(item.generatedAt)}</span>
+                    ${item.repaired ? `<span class="loomos-badge loomos-badge-warning">repaired</span>` : ""}
                   </div>
                   <p class="loomos-history-entry-focus">${clampProse(item.kernelFocus, 100)}</p>
                   <div class="loomos-history-entry-meta">
-                    <span>\u{1F4CD} ${escapeHtml(item.kernelLocation)}</span>
-                    <span>\u{1F550} ${escapeHtml(item.kernelTime)}</span>
-                    <span>\u{1F465} ${item.castCount}</span>
-                    <span>\u{1F9F5} ${item.threadCount}</span>
-                    <span>\u26A0\uFE0F ${item.riskCount}</span>
+                    <span>${escapeHtml(item.kernelLocation)}</span>
+                    <span>${escapeHtml(item.kernelTime)}</span>
+                    <span>${item.castCount} cast</span>
+                    <span>${item.threadCount} threads</span>
+                    <span>${item.riskCount} risks</span>
                   </div>
                   <p class="loomos-history-entry-delta">${clampProse(item.deltaHeadline, 120)}</p>
                 </div>
@@ -6658,7 +6663,7 @@ var LOOMOS_STYLES = `
 
   /* Overview Widget */
   .loomos-overview-card {
-    background: linear-gradient(135deg, var(--loomos-panel), var(--loomos-bg));
+    background: var(--loomos-panel);
     border-left: 4px solid var(--loomos-accent);
     padding: 12px 14px;
     margin-bottom: 8px;
@@ -7486,6 +7491,678 @@ var LOOMOS_STYLES = `
     min-width: 0;
     overflow-wrap: anywhere;
   }
+
+  /* 0.1.9 mobile workspace redesign */
+  .loomos-root {
+    --loomos-canvas: color-mix(in srgb, var(--loomos-bg) 92%, #000);
+    --loomos-surface-1: var(--loomos-bg);
+    --loomos-surface-2: var(--loomos-panel);
+    --loomos-surface-3: color-mix(in srgb, var(--loomos-panel) 76%, var(--loomos-bg));
+    --loomos-soft-accent: color-mix(in srgb, var(--loomos-accent) 12%, transparent);
+    --loomos-soft-border: color-mix(in srgb, var(--loomos-border) 72%, transparent);
+    background: transparent;
+    align-content: start;
+    align-items: start;
+    font-size: 13px;
+    gap: 8px;
+    grid-auto-rows: max-content;
+    line-height: 1.42;
+    max-width: none;
+    overflow: visible;
+    padding: 0 8px calc(14px + env(safe-area-inset-bottom)) !important;
+    width: 100%;
+  }
+  .loomos-root[data-view="modal"] {
+    max-width: none;
+    padding-inline: 8px !important;
+    width: 100%;
+  }
+  .loomos-root .loomos-tab-pane {
+    overflow: visible;
+  }
+  .loomos-header-sticky {
+    align-self: start;
+    backdrop-filter: blur(16px) saturate(1.15);
+    background: color-mix(in srgb, var(--loomos-canvas) 92%, transparent);
+    border: 1px solid var(--loomos-soft-border);
+    border-top: 0;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 8px 24px rgb(0 0 0 / .16);
+    margin: 0 -8px;
+    padding: 8px 8px 7px;
+    top: 0;
+  }
+  .loomos-context-bar {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    min-height: 32px;
+  }
+  .loomos-context-bar .loomos-title {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0;
+    overflow: hidden;
+  }
+  .loomos-context-bar .loomos-title strong {
+    font-size: 12px;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .loomos-context-bar .loomos-title span {
+    font-size: 10px;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .loomos-state-pill {
+    align-items: center;
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 999px;
+    color: var(--loomos-muted);
+    display: inline-flex;
+    flex: none;
+    font-size: 10px;
+    font-weight: 700;
+    gap: 5px;
+    min-height: 26px;
+    padding: 3px 8px;
+  }
+  .loomos-state-pill i {
+    background: var(--loomos-muted);
+    border-radius: 50%;
+    display: block;
+    height: 6px;
+    width: 6px;
+  }
+  .loomos-state-pill.is-ready {
+    color: #65d98b;
+  }
+  .loomos-state-pill.is-ready i {
+    background: #65d98b;
+    box-shadow: 0 0 0 3px rgb(101 217 139 / .12);
+  }
+  .loomos-state-pill.is-busy {
+    color: var(--loomos-accent);
+  }
+  .loomos-state-pill.is-busy i {
+    animation: loomos-status-pulse 1.2s ease-in-out infinite;
+    background: var(--loomos-accent);
+  }
+  @keyframes loomos-status-pulse {
+    50% { opacity: .35; transform: scale(.72); }
+  }
+  .loomos-header-actions {
+    display: grid;
+    gap: 5px;
+    grid-template-columns: minmax(108px, 1.7fr) repeat(3, minmax(58px, 1fr));
+    margin-top: 6px;
+  }
+  .loomos-header-actions .loomos-button {
+    border-radius: 7px;
+    font-size: 11px;
+    min-height: 40px;
+    min-width: 0;
+    padding: 5px 7px;
+  }
+  .loomos-header-actions .loomos-action-primary {
+    font-weight: 800;
+  }
+  .loomos-header-actions .loomos-action-delete {
+    background: color-mix(in srgb, #df5259 8%, transparent);
+  }
+  .loomos-button,
+  .loomos-select,
+  .loomos-input {
+    border-color: var(--loomos-soft-border);
+    border-radius: 7px;
+  }
+  .loomos-button {
+    min-height: 40px;
+  }
+  .loomos-button-primary {
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08);
+  }
+  .loomos-tabs-nav {
+    display: grid;
+    gap: 4px;
+    grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+    margin-top: 7px;
+    overflow: visible;
+    padding: 0;
+  }
+  .loomos-tab-btn {
+    align-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    color: var(--loomos-muted);
+    display: flex;
+    font-size: 10px;
+    gap: 5px;
+    justify-content: center;
+    min-height: 38px;
+    padding: 5px 6px;
+  }
+  .loomos-tab-btn small {
+    align-items: center;
+    background: var(--loomos-surface-3);
+    border-radius: 999px;
+    color: var(--loomos-muted);
+    display: inline-flex;
+    font-size: 9px;
+    height: 17px;
+    justify-content: center;
+    min-width: 17px;
+    padding: 0 4px;
+  }
+  .loomos-tab-btn:hover {
+    background: var(--loomos-surface-3);
+  }
+  .loomos-tab-btn.active {
+    background: var(--loomos-soft-accent);
+    border-color: color-mix(in srgb, var(--loomos-accent) 46%, var(--loomos-border));
+    color: var(--loomos-ink);
+  }
+  .loomos-tab-btn.active small {
+    background: var(--loomos-accent);
+    color: var(--lumiverse-accent-fg, #fff);
+  }
+  .loomos-tab-pane {
+    min-height: 0;
+    padding-top: 1px;
+  }
+  .loomos-view-heading {
+    align-items: end;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    padding: 4px 2px 7px;
+  }
+  .loomos-view-heading h2 {
+    font-size: 17px;
+    line-height: 1.2;
+    margin: 2px 0 0;
+  }
+  .loomos-view-heading .loomos-status {
+    flex: none;
+  }
+  .loomos-dashboard {
+    gap: 6px;
+  }
+  .loomos-shell,
+  .loomos-section {
+    background: var(--loomos-surface-1);
+    border-color: var(--loomos-soft-border);
+    border-radius: 8px;
+  }
+  .loomos-section > summary {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) auto 14px;
+    min-height: 44px;
+    padding: 8px 10px;
+  }
+  .loomos-section > summary::after {
+    color: var(--loomos-muted);
+    content: "+";
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1;
+    text-align: center;
+  }
+  .loomos-section[open] > summary::after {
+    content: "-";
+  }
+  .loomos-section-title {
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .loomos-section-summary {
+    color: var(--loomos-muted);
+    font-size: 10px;
+    max-width: 44vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .loomos-section[open] > summary {
+    border-bottom-color: var(--loomos-soft-border);
+  }
+  .loomos-section-body {
+    background: transparent;
+    border-radius: 0;
+    padding: 10px;
+  }
+  .loomos-overview-card {
+    background: var(--loomos-surface-1);
+    border: 1px solid var(--loomos-soft-border);
+    border-left: 3px solid var(--loomos-accent);
+    border-radius: 8px;
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 11px 12px;
+  }
+  .loomos-overview-topline {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+  }
+  .loomos-overview-inject-active,
+  .loomos-overview-inject-inactive {
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 7px;
+  }
+  .loomos-overview-headline {
+    font-size: 15px;
+    font-style: normal;
+    line-height: 1.35;
+    margin: 0;
+  }
+  .loomos-overview-location {
+    color: var(--loomos-muted);
+    display: flex;
+    flex-wrap: wrap;
+    font-size: 10px;
+    gap: 4px 8px;
+    margin: 0;
+  }
+  .loomos-overview-location strong {
+    color: var(--loomos-ink);
+  }
+  .loomos-overview-stats {
+    display: grid;
+    gap: 4px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0;
+  }
+  .loomos-overview-stats span {
+    align-items: center;
+    background: var(--loomos-surface-3);
+    border-radius: 6px;
+    color: var(--loomos-muted);
+    display: flex;
+    flex-direction: column;
+    font-size: 9px;
+    justify-content: center;
+    min-height: 42px;
+    white-space: normal;
+  }
+  .loomos-overview-stats b {
+    color: var(--loomos-ink);
+    font-size: 14px;
+    line-height: 1.1;
+  }
+  .loomos-overview-actions {
+    align-items: center;
+    border-top: 1px solid var(--loomos-soft-border);
+    display: grid;
+    gap: 8px;
+    grid-template-columns: auto minmax(0, 1fr);
+    padding-top: 8px;
+  }
+  .loomos-overview-actions .loomos-button {
+    min-height: 34px;
+  }
+  .loomos-overview-actions > span {
+    color: var(--loomos-muted);
+    font-size: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .loomos-facts {
+    gap: 5px 10px;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    margin: 5px 0 9px;
+  }
+  .loomos-facts div {
+    border-top-color: var(--loomos-soft-border);
+    padding-top: 5px;
+  }
+  .loomos-facts dt,
+  .loomos-subhead,
+  .loomos-field > span {
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+  .loomos-facts dd {
+    font-size: 11px;
+  }
+  .loomos-chip {
+    background: var(--loomos-surface-3);
+    border-color: transparent;
+    border-radius: 6px;
+    font-size: 10px;
+    padding: 3px 6px;
+  }
+  .loomos-card,
+  .loomos-meter {
+    background: var(--loomos-surface-3);
+    border-color: var(--loomos-soft-border);
+    border-radius: 7px;
+    padding: 9px;
+  }
+  .loomos-section[data-section="cast"] .loomos-section-body {
+    padding: 0;
+  }
+  .loomos-section[data-section="cast"] .loomos-list {
+    gap: 0;
+  }
+  .loomos-section[data-section="cast"] .loomos-card {
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--loomos-soft-border);
+    border-radius: 0;
+    padding: 11px 10px;
+  }
+  .loomos-section[data-section="cast"] .loomos-card:last-child {
+    border-bottom: 0;
+  }
+  .loomos-cast-meta {
+    display: grid;
+    gap: 4px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 7px 0;
+  }
+  .loomos-cast-meta span {
+    background: var(--loomos-surface-3);
+    border-radius: 6px;
+    color: var(--loomos-muted);
+    display: grid;
+    font-size: 10px;
+    gap: 1px;
+    padding: 5px 6px;
+  }
+  .loomos-cast-meta b {
+    color: var(--loomos-ink);
+    font-size: 8px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .loomos-cast-summary {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+  }
+  .loomos-cast-summary div {
+    display: grid;
+    gap: 2px;
+    grid-template-columns: 46px minmax(0, 1fr);
+  }
+  .loomos-cast-summary dt {
+    color: var(--loomos-muted);
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .loomos-cast-summary dd {
+    font-size: 11px;
+    margin: 0;
+  }
+  .loomos-cast-extra {
+    background: transparent;
+    border-color: var(--loomos-soft-border);
+    border-radius: 7px;
+  }
+  .loomos-cast-extra > summary {
+    min-height: 38px;
+    padding: 7px 8px;
+  }
+  .loomos-settings-view {
+    display: grid;
+    gap: 7px;
+  }
+  .loomos-settings-grid {
+    display: grid;
+    gap: 7px;
+    grid-template-columns: 1fr;
+    margin: 0;
+  }
+  .loomos-settings-cluster,
+  .loomos-preset-manager,
+  .loomos-performance-info,
+  .loomos-schema-studio,
+  .loomos-module-selector {
+    background: var(--loomos-surface-1);
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 8px;
+    margin: 0;
+    padding: 10px;
+  }
+  .loomos-settings-cluster-heading {
+    display: grid;
+    gap: 1px;
+    margin-bottom: 8px;
+  }
+  .loomos-settings-cluster-heading strong {
+    font-size: 12px;
+  }
+  .loomos-settings-cluster-heading span {
+    color: var(--loomos-muted);
+    font-size: 10px;
+  }
+  .loomos-settings-fields {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+  .loomos-settings-switches {
+    display: grid;
+    gap: 6px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-bottom: 8px;
+  }
+  .loomos-check {
+    background: var(--loomos-surface-3);
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 7px;
+    min-height: 42px;
+    padding: 6px 8px;
+  }
+  .loomos-preset-manager {
+    padding-bottom: 10px;
+  }
+  .loomos-preset-actions .loomos-button,
+  .loomos-bulk-actions .loomos-button,
+  .loomos-schema-actions .loomos-button {
+    min-height: 36px;
+  }
+  .loomos-module-group-details {
+    border-color: var(--loomos-soft-border);
+    border-radius: 7px;
+    margin-bottom: 6px;
+  }
+  .loomos-module-group-summary {
+    background: var(--loomos-surface-3);
+    min-height: 44px;
+    padding: 8px 9px;
+  }
+  .loomos-module-card {
+    gap: 6px;
+    padding: 10px 8px;
+  }
+  .loomos-history-tab {
+    gap: 7px;
+  }
+  .loomos-history-list {
+    gap: 5px;
+    max-height: none;
+    overflow: visible;
+  }
+  .loomos-history-entry {
+    background: var(--loomos-surface-1);
+    border-color: var(--loomos-soft-border);
+    border-radius: 8px;
+    padding: 9px 10px;
+  }
+  .loomos-history-entry-header {
+    display: grid;
+    gap: 3px 6px;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .loomos-history-time {
+    color: var(--loomos-muted);
+    font-size: 9px;
+  }
+  .loomos-history-entry-header .loomos-badge {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+  .loomos-history-entry-meta {
+    gap: 4px 8px;
+  }
+  .loomos-history-entry-actions .loomos-button {
+    min-height: 36px;
+  }
+  .loomos-badge-warning {
+    border-color: #d58a42;
+    color: #d58a42;
+  }
+  .loomos-search-bar {
+    background: var(--loomos-surface-1);
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 8px;
+    margin: 0;
+    padding: 5px;
+  }
+  .loomos-search-bar .loomos-input {
+    background: transparent;
+    border: 0;
+    min-height: 36px;
+  }
+  .loomos-search-bar .loomos-input:focus-visible {
+    outline: 0;
+  }
+  .loomos-compile-status {
+    border-radius: 8px;
+    margin-top: 0 !important;
+  }
+  .loomos-diagnostics > summary {
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 800;
+    list-style: none;
+  }
+  .loomos-diagnostics > summary::-webkit-details-marker {
+    display: none;
+  }
+  .loomos-continuity-explainer-text {
+    font-size: 11px;
+  }
+  .loomos-continuity-metric,
+  .loomos-continuity-risk-card {
+    background: var(--loomos-surface-3);
+    border-color: var(--loomos-soft-border);
+    border-radius: 7px;
+  }
+  .loomos-continuity-safe {
+    border-radius: 7px;
+  }
+
+  @media (min-width: 760px) {
+    .loomos-root {
+      padding-inline: 10px !important;
+    }
+    .loomos-header-sticky {
+      margin-inline: -10px;
+      padding-inline: 10px;
+    }
+    .loomos-header-actions {
+      grid-template-columns: minmax(140px, 1.6fr) repeat(4, minmax(72px, .7fr));
+    }
+    .loomos-card-grid,
+    .loomos-meter-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .loomos-settings-fields {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 620px) {
+    .loomos-root {
+      padding-inline: 6px !important;
+    }
+    .loomos-header-sticky {
+      margin-inline: -6px;
+      padding-inline: 6px;
+    }
+    .loomos-header-actions {
+      grid-template-columns: minmax(112px, 1.65fr) repeat(3, minmax(54px, 1fr));
+    }
+    .loomos-header-actions .loomos-button {
+      min-width: 0;
+    }
+    .loomos-tabs-nav {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .loomos-settings-grid,
+    .loomos-two-column,
+    .loomos-card-grid,
+    .loomos-meter-grid {
+      grid-template-columns: 1fr;
+    }
+    .loomos-facts,
+    .loomos-appearance-facts {
+      grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
+    }
+    .loomos-root[data-view="drawer"] .loomos-facts,
+    .loomos-root[data-view="drawer"] .loomos-appearance-facts {
+      grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)) !important;
+    }
+  }
+
+  @media (max-width: 380px) {
+    .loomos-context-bar .loomos-title span {
+      max-width: 190px;
+    }
+    .loomos-header-actions {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .loomos-header-actions .loomos-action-primary {
+      grid-column: 1 / -1;
+    }
+    .loomos-tabs-nav {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .loomos-tab-btn {
+      font-size: 9px;
+      gap: 3px;
+    }
+    .loomos-settings-switches,
+    .loomos-settings-fields {
+      grid-template-columns: 1fr;
+    }
+    .loomos-overview-stats {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .loomos-cast-meta {
+      grid-template-columns: 1fr;
+    }
+    .loomos-history-entry {
+      display: grid;
+    }
+    .loomos-history-entry-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .loomos-state-pill.is-busy i {
+      animation: none;
+    }
+  }
 `;
 
 // src/frontend.ts
@@ -7665,17 +8342,19 @@ function setup(ctx) {
       selectionEnd
     };
   }
-  function restoreUiState(uiSnapshot) {
+  function restoreUiState(uiSnapshot, preserveDisclosure = true) {
     activeTab = uiSnapshot.savedTab;
-    tab.root.querySelectorAll("details[data-details], details[data-section], details[data-group]").forEach((d) => {
-      const key = d.getAttribute("data-details") || d.getAttribute("data-section") || d.getAttribute("data-group");
-      if (key) d.open = uiSnapshot.openDetails.has(key);
-    });
-    if (modal) {
-      modal.root.querySelectorAll("details[data-details], details[data-section], details[data-group]").forEach((d) => {
+    if (preserveDisclosure) {
+      tab.root.querySelectorAll("details[data-details], details[data-section], details[data-group]").forEach((d) => {
         const key = d.getAttribute("data-details") || d.getAttribute("data-section") || d.getAttribute("data-group");
-        if (key) d.open = uiSnapshot.openDetails.has("modal:" + key);
+        if (key) d.open = uiSnapshot.openDetails.has(key);
       });
+      if (modal) {
+        modal.root.querySelectorAll("details[data-details], details[data-section], details[data-group]").forEach((d) => {
+          const key = d.getAttribute("data-details") || d.getAttribute("data-section") || d.getAttribute("data-group");
+          if (key) d.open = uiSnapshot.openDetails.has("modal:" + key);
+        });
+      }
     }
     const searchInput = tab.root.querySelector("[data-module-search]");
     if (searchInput) {
@@ -8309,44 +8988,68 @@ function setup(ctx) {
   }
   function renderSettings() {
     return `
-      <details class="loomos-shell loomos-settings" data-details="settings">
-        <summary>Tracker Settings</summary>
+      <section class="loomos-settings-view loomos-settings">
+        <header class="loomos-view-heading">
+          <div>
+            <span class="loomos-kicker">Workspace setup</span>
+            <h2>Tracker controls</h2>
+          </div>
+          <span class="loomos-status">${MODULE_KEYS.filter((key) => settings.moduleSettings[key].track).length} active</span>
+        </header>
         <div class="loomos-settings-grid">
           ${renderPresetManager()}
-          <label class="loomos-field"><span>Skin</span><select class="loomos-select" data-setting="skin">
-            ${["auto", "dark_academia", "cyberpunk", "fantasy", "horror", "noir", "minimal"].map(
-      (skin) => `<option value="${skin}"${selected(skin, settings.skin)}>${skinLabel(skin)}</option>`
-    ).join("")}
-          </select></label>
-          <label class="loomos-field"><span>Generation connection</span><select class="loomos-select" data-setting="connectionId">
-            <option value="">Automatic ready connection</option>
-            ${connections.map(
+          <section class="loomos-settings-cluster">
+            <div class="loomos-settings-cluster-heading">
+              <strong>Generation</strong>
+              <span>When and where the tracker compiles</span>
+            </div>
+            <div class="loomos-settings-fields">
+              <label class="loomos-field"><span>Auto generation</span><select class="loomos-select" data-setting="autoGeneration">
+                <option value="manual"${selected("manual", settings.autoGeneration)}>Manual</option>
+                <option value="assistant"${selected("assistant", settings.autoGeneration)}>Assistant messages</option>
+                <option value="every"${selected("every", settings.autoGeneration)}>Every message</option>
+                <option value="off"${selected("off", settings.autoGeneration)}>Off</option>
+              </select></label>
+              <label class="loomos-field"><span>Generation connection</span><select class="loomos-select" data-setting="connectionId">
+                <option value="">Automatic ready connection</option>
+                ${connections.map(
       (connection) => `<option value="${escapeHtml(connection.id)}"${selected(connection.id, settings.connectionId)}${disabled(!connection.ready)}>${escapeHtml(connection.name)} | ${escapeHtml(connection.model || connection.provider)}${connection.isDefault ? " (default)" : ""}${connection.ready ? "" : " (not ready)"}</option>`
     ).join("")}
-          </select></label>
-          <label class="loomos-field"><span>Auto generation</span><select class="loomos-select" data-setting="autoGeneration">
-            <option value="manual"${selected("manual", settings.autoGeneration)}>Manual</option>
-            <option value="assistant"${selected("assistant", settings.autoGeneration)}>Assistant messages</option>
-            <option value="every"${selected("every", settings.autoGeneration)}>Every message</option>
-            <option value="off"${selected("off", settings.autoGeneration)}>Off</option>
-          </select></label>
-          <label class="loomos-check"><input type="checkbox" data-setting="injectionEnabled"${checked(settings.injectionEnabled)}><span>Inject compact state</span></label>
-          <label class="loomos-check"><input type="checkbox" data-setting="showInjectionPreview"${checked(settings.showInjectionPreview)}><span>Show injection preview</span></label>
-          <label class="loomos-field"><span>Injection token budget</span><input class="loomos-input" type="number" min="80" max="10000" step="20" data-setting="injectionTokenBudget" value="${settings.injectionTokenBudget}"></label>
-          <label class="loomos-field"><span>Recent messages</span><input class="loomos-input" type="number" min="4" max="80" data-setting="recentMessageLimit" value="${settings.recentMessageLimit}"></label>
-          <label class="loomos-field"><span>History trackers kept</span><input class="loomos-input" type="number" min="1" max="1000" data-setting="historyRetentionLimit" value="${settings.historyRetentionLimit}"></label>
-          <label class="loomos-field"><span>Seed token budget</span><input class="loomos-input" type="number" min="200" max="10000" step="50" data-setting="compilerSeedTokenBudget" value="${settings.compilerSeedTokenBudget}"></label>
-          <label class="loomos-field"><span>Generation timeout (seconds)</span><input class="loomos-input" type="number" min="30" max="300" step="10" data-setting="generationTimeoutSeconds" value="${settings.generationTimeoutSeconds}"></label>
+              </select></label>
+              <label class="loomos-field"><span>Recent messages</span><input class="loomos-input" type="number" min="4" max="80" data-setting="recentMessageLimit" value="${settings.recentMessageLimit}"></label>
+              <label class="loomos-field"><span>Timeout (seconds)</span><input class="loomos-input" type="number" min="30" max="300" step="10" data-setting="generationTimeoutSeconds" value="${settings.generationTimeoutSeconds}"></label>
+            </div>
+          </section>
+          <section class="loomos-settings-cluster">
+            <div class="loomos-settings-cluster-heading">
+              <strong>Continuity context</strong>
+              <span>Prompt injection, seed depth, and retained history</span>
+            </div>
+            <div class="loomos-settings-switches">
+              <label class="loomos-check"><input type="checkbox" data-setting="injectionEnabled"${checked(settings.injectionEnabled)}><span>Inject compact state</span></label>
+              <label class="loomos-check"><input type="checkbox" data-setting="showInjectionPreview"${checked(settings.showInjectionPreview)}><span>Show injection preview</span></label>
+            </div>
+            <div class="loomos-settings-fields">
+              <label class="loomos-field"><span>Injection budget</span><input class="loomos-input" type="number" min="80" max="10000" step="20" data-setting="injectionTokenBudget" value="${settings.injectionTokenBudget}"></label>
+              <label class="loomos-field"><span>Seed budget</span><input class="loomos-input" type="number" min="200" max="10000" step="50" data-setting="compilerSeedTokenBudget" value="${settings.compilerSeedTokenBudget}"></label>
+              <label class="loomos-field"><span>Trackers retained</span><input class="loomos-input" type="number" min="1" max="1000" data-setting="historyRetentionLimit" value="${settings.historyRetentionLimit}"></label>
+              <label class="loomos-field"><span>Appearance</span><select class="loomos-select" data-setting="skin">
+                ${["auto", "dark_academia", "cyberpunk", "fantasy", "horror", "noir", "minimal"].map(
+      (skin) => `<option value="${skin}"${selected(skin, settings.skin)}>${skinLabel(skin)}</option>`
+    ).join("")}
+              </select></label>
+            </div>
+          </section>
           
           ${renderTokenDiagnostics()}
           ${renderSchemaPromptStudio()}
           ${renderModuleMatrix()}
         </div>
-      </details>`;
+      </section>`;
   }
   function diagnosticText() {
     const lines = [
-      `version: 0.1.8`,
+      `version: 0.1.9`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -8367,85 +9070,95 @@ function setup(ctx) {
       <button class="loomos-button loomos-button-primary" data-action="generate"${disabled(!permissions.generation || !permissions.chatMutation || Boolean(activeGenerationRequestId))}>Generate State</button>
     </div>`;
   }
-  function tabsNavHtml() {
+  function tabsNavHtml(selectedTab = activeTab, includeSettings = true) {
     const tabs = [
-      { id: "overview", label: "Overview" },
-      { id: "cast", label: "Cast" },
-      { id: "world", label: "World" },
-      { id: "story", label: "Story" },
-      { id: "continuity", label: "Continuity" },
-      { id: "history", label: "History" }
+      { id: "overview", label: "Pulse", meta: state ? state.activeModules.length : 0 },
+      { id: "cast", label: "Cast", meta: state?.castMatrix.length ?? 0 },
+      { id: "world", label: "World", meta: state?.scene?.items.length ?? 0 },
+      { id: "story", label: "Story", meta: state?.storyState.threadLoom.filter((thread) => thread.status !== "resolved").length ?? 0 },
+      { id: "continuity", label: "Memory", meta: state?.continuityFirewall.risks.length ?? 0 },
+      { id: "history", label: "History", meta: historyItems.length },
+      ...includeSettings ? [{ id: "settings", label: "Setup", meta: MODULE_KEYS.filter((key) => settings.moduleSettings[key].track).length }] : []
     ];
-    return `<nav class="loomos-tabs-nav">${tabs.map(
-      (t) => `<button class="loomos-tab-btn${activeTab === t.id ? " active" : ""}" data-tab="${t.id}">${t.label}</button>`
+    return `<nav class="loomos-tabs-nav" aria-label="Tracker views" role="tablist">${tabs.map(
+      (tabItem) => `<button class="loomos-tab-btn${selectedTab === tabItem.id ? " active" : ""}" data-tab="${tabItem.id}" role="tab" aria-selected="${selectedTab === tabItem.id}">
+        <span>${tabItem.label}</span><small>${tabItem.meta}</small>
+      </button>`
     ).join("")}</nav>`;
   }
-  function stickyHeaderHtml(showTabs) {
+  function stickyHeaderHtml(showTabs, view, selectedTab = activeTab) {
     const canGenerate = permissions.generation && permissions.chatMutation;
     const busy = activeGenerationRequestId !== null;
     const missingPermission = !permissions.generation || !permissions.chatMutation || settings.injectionEnabled && !permissions.interceptor;
+    const stateLabel = busy ? "Compiling" : state ? "Synced" : "No state";
     return `
       <div class="loomos-header-sticky">
-        <div class="loomos-header">
-          <div class="loomos-title"><strong>LoomOS Command Deck</strong><span>${escapeHtml(exactLabel())}</span></div>
-          <span class="loomos-status" title="${escapeHtml(elapsedLabel())}">${escapeHtml(elapsedLabel())}</span>
+        <div class="loomos-context-bar">
+          <div class="loomos-title">
+            <strong>${escapeHtml(exactLabel())}</strong>
+            <span>${escapeHtml(status)}</span>
+          </div>
+          <span class="loomos-state-pill${busy ? " is-busy" : state ? " is-ready" : ""}" title="${escapeHtml(elapsedLabel())}">
+            <i></i>${stateLabel}
+          </span>
         </div>
         <div class="loomos-header-actions">
-          <button class="loomos-button loomos-button-primary" data-action="viewer">Open Viewer</button>
-          ${busy ? `<button class="loomos-button loomos-button-danger loomos-button-pulse" data-action="cancel">Stop Compile</button>` : `<button class="loomos-button" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh" : "Generate"}</button>`}
+          ${busy ? `<button class="loomos-button loomos-button-danger loomos-button-pulse loomos-action-primary" data-action="cancel">Stop compile</button>` : `<button class="loomos-button loomos-button-primary loomos-action-primary" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh tracker" : "Generate tracker"}</button>`}
+          ${view === "drawer" ? `<button class="loomos-button" data-action="viewer">Viewer</button>` : ""}
           <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation || busy)}>Reload</button>
-          ${state && !busy ? `<button class="loomos-button loomos-button-danger" data-action="delete">Delete</button>` : ""}
           ${missingPermission ? `<button class="loomos-button" data-action="permissions">Enable</button>` : ""}
+          ${state && !busy ? `<button class="loomos-button loomos-button-danger loomos-action-delete" data-action="delete">Delete</button>` : ""}
         </div>
-        ${showTabs ? tabsNavHtml() : ""}
+        ${showTabs ? tabsNavHtml(selectedTab, view === "drawer") : ""}
       </div>`;
   }
   function renderDrawer() {
     tab.root.dataset.skin = settings.skin;
     tab.root.dataset.view = "drawer";
     tab.root.innerHTML = `
-      ${stickyHeaderHtml(Boolean(state) || historyItems.length > 0)}
+      ${stickyHeaderHtml(true, "drawer")}
       ${compileStatusCardHtml()}
-      ${renderSettings()}
-      <div class="loomos-tab-pane">
-        ${activeTab === "history" ? renderHistoryTab(historyItems, historyFilter, activeIdentity) : activeTab === "injection" ? injectionPreview ? renderInjectionPreview(injectionPreview) : "" : state ? renderDashboard(state, settings, activeTab) : emptyStateHtml()}
-      </div>
-      <details class="loomos-shell loomos-settings" data-details="diagnostics">
-        <summary>Pipeline Diagnostics</summary>
-        <pre class="loomos-diagnostic">${escapeHtml(diagnosticText())}</pre>
-        ${pipeline?.debugReport ? `<button type="button" class="loomos-button loomos-btn-sm" data-action="copy-debug-report">Copy Debug Report</button>` : ""}
-      </details>
-      ${settings.showInjectionPreview && injectionPreview ? renderInjectionPreview(injectionPreview) : ""}`;
+      <main class="loomos-tab-pane" role="tabpanel">
+        ${activeTab === "settings" ? `${renderSettings()}
+            <details class="loomos-settings-cluster loomos-diagnostics" data-details="diagnostics">
+              <summary>Pipeline diagnostics</summary>
+              <pre class="loomos-diagnostic">${escapeHtml(diagnosticText())}</pre>
+              ${pipeline?.debugReport ? `<button type="button" class="loomos-button loomos-btn-sm" data-action="copy-debug-report">Copy debug report</button>` : ""}
+            </details>
+            ${settings.showInjectionPreview && injectionPreview ? renderInjectionPreview(injectionPreview) : ""}` : activeTab === "history" ? renderHistoryTab(historyItems, historyFilter, activeIdentity) : activeTab === "injection" ? injectionPreview ? renderInjectionPreview(injectionPreview) : "" : state ? renderDashboard(state, settings, activeTab) : emptyStateHtml()}
+      </main>`;
   }
   function renderViewer() {
     if (!modal) return;
+    const viewerTab = activeTab === "settings" ? "overview" : activeTab;
     modal.root.className = "loomos-root";
     modal.root.dataset.skin = settings.skin;
     modal.root.dataset.view = "modal";
-    modal.setTitle(`LoomOS | ${exactLabel()}`);
+    modal.setTitle("LoomOS");
     modal.root.innerHTML = `
-      ${stickyHeaderHtml(Boolean(state) || historyItems.length > 0)}
+      ${stickyHeaderHtml(Boolean(state) || historyItems.length > 0, "modal", viewerTab)}
       ${compileStatusCardHtml()}
-      <div class="loomos-tab-pane">
-        ${activeTab === "history" ? renderHistoryTab(historyItems, historyFilter, activeIdentity) : activeTab === "injection" ? injectionPreview ? renderInjectionPreview(injectionPreview) : "" : state ? renderDashboard(state, settings, activeTab) : emptyStateHtml()}
-      </div>`;
+      <main class="loomos-tab-pane" role="tabpanel">
+        ${viewerTab === "history" ? renderHistoryTab(historyItems, historyFilter, activeIdentity) : viewerTab === "injection" ? injectionPreview ? renderInjectionPreview(injectionPreview) : "" : state ? renderDashboard(state, settings, viewerTab) : emptyStateHtml()}
+      </main>`;
   }
-  function renderAll() {
+  function renderAll(preserveDisclosure = true) {
     const uiState = captureUiState();
     renderDrawer();
     renderViewer();
     refreshAllMessageWidgets();
-    restoreUiState(uiState);
+    restoreUiState(uiState, preserveDisclosure);
   }
   function openViewer() {
+    if (activeTab === "settings") activeTab = "overview";
     if (modal) {
       renderViewer();
       return;
     }
     modal = ctx.ui.showModal({
-      title: `LoomOS | ${exactLabel()}`,
-      width: Math.min(980, typeof window !== "undefined" ? window.innerWidth - 16 : 420),
-      maxHeight: typeof window !== "undefined" ? Math.min(820, window.innerHeight - 32) : 600
+      title: "LoomOS",
+      width: Math.min(1100, typeof window !== "undefined" ? window.innerWidth - 8 : 420),
+      maxHeight: typeof window !== "undefined" ? Math.min(900, window.innerHeight - 12) : 680
     });
     const root = modal.root;
     const onClick = (event) => handleActionClick(event);
@@ -9622,7 +10335,7 @@ ${draft.cssTemplate}`);
       const newTab = tabBtn.dataset.tab;
       if (newTab && newTab !== activeTab) {
         activeTab = newTab;
-        renderAll();
+        renderAll(false);
       }
       return;
     }

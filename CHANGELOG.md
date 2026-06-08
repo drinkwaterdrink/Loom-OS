@@ -2,6 +2,33 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.9] - 2026-06-08
+
+### Added
+
+- A dedicated drawer-only Setup workspace for presets, generation controls, context budgets, retention, schema tools, modules, diagnostics, and injection preview.
+- Live count badges in the navigation for active modules, cast, scene items, live threads, continuity risks, retained history, and tracked modules.
+- Responsive layout contracts covering full-width navigation, mobile safe areas, narrow-screen action reflow, flattened Cast rows, and compact History search.
+- UI regression tests for the mobile workspace structure, Scene Pulse, Cast summaries, History archive, responsive navigation, and removal of gradient styling.
+- Browser-safe preview module serving for reliable phone-sized visual QA.
+
+### Changed
+
+- Rebuilt the tracker menu as a compact mobile-first workspace with one sticky control dock instead of duplicated title, status, action, settings, and tab blocks.
+- Replaced the horizontal tab strip with a full-width responsive grid: Pulse, Cast, World, Story, Memory, History, and Setup.
+- Moved tracker settings out of the default content flow so compiled state begins directly below navigation.
+- Redesigned Overview as Scene Pulse with a delta headline, location/time context, four stable metrics, injection status, current focus, and direct Review Changes action.
+- Flattened Cast cards into dense character ledger rows with separate Location, Mood, Threat, Intent, and Status scanning zones.
+- Simplified History into a compact exact-swipe archive without a large explanatory card or nested scroll region.
+- Reduced nested card styling, large radii, padding, and decorative surfaces throughout the tracker while preserving all existing modules and controls.
+- Expanded the viewer to use nearly the entire available mobile viewport and updated the local preview to model full-screen mobile modal behavior.
+- Prevented sparse tabs from stretching across the viewport, and kept each workspace's intended default section open when switching views.
+
+### Accessibility
+
+- Important controls use 40-44px touch targets, visible focus styling, stable dimensions, semantic tab roles, and non-color status labels.
+- Safe-area padding protects controls from mobile system UI, and reduced-motion preferences disable status animation.
+
 ## [0.1.8] - 2026-06-07
 
 ### Added

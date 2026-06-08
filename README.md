@@ -1,25 +1,26 @@
 # LoomOS Command Deck
 
-Current release: **0.1.8**
+Current release: **0.1.9**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.8
+## Key Features & Upgrades in 0.1.9
 
-- **Reliable automatic tracking**: Assistant-message automation now follows Lumiverse's completed-generation lifecycle and resolves the exact saved message and active swipe before compiling.
-- **Working history discovery**: Storage listings are normalized whether Lumiverse returns full paths or paths relative to the requested prefix.
-- **Previous-message tracker controls**: Earlier chat messages with saved trackers receive an inline Tracker History control, including separate swipe buttons when multiple swipe trackers exist.
-- **Configurable retention**: Keep the newest 1-1,000 exact-swipe trackers per chat; older trackers are trimmed automatically after saves and when the limit is lowered.
-- **Clearer in-app budget guidance**: Token diagnostics explain that injection consumes future roleplay context, while the seed budget controls how much prior tracker state is supplied during compilation.
+- **Mobile workspace redesign**: The drawer and viewer now use the full available width with a compact sticky control dock, safe-area padding, and no redundant internal title block.
+- **Scan-first navigation**: A stable full-width navigation grid replaces the cramped horizontal strip. Pulse, Cast, World, Story, Memory, History, and Setup expose useful live counts.
+- **Dedicated Setup workspace**: Settings, presets, token controls, schema tools, diagnostics, and module configuration no longer push tracker content down on every view.
+- **Denser tracker views**: Scene Pulse, Cast, History, expandable sections, facts, and metrics were flattened and reorganized to reduce nested cards and wasted vertical space.
+- **Responsive polish**: Important actions use 40-44px touch targets, narrow screens receive dedicated layouts, desktop views gain denser grids, and motion respects reduced-motion preferences.
 
 ---
 
 ## Table of Contents
 
-- [Dashboard Tabs](#dashboard-tabs)
-- [Sticky Header Controls](#sticky-header-controls)
+- [Mobile Workspace](#mobile-workspace)
+- [Workspace Views](#workspace-views)
+- [Control Dock](#control-dock)
 - [State History Timeline](#state-history-timeline)
 - [Injection Preview Panel](#injection-preview-panel)
 - [What Changed Modal](#what-changed-modal)
@@ -39,12 +40,18 @@ LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat h
 
 ---
 
-## Dashboard Tabs
+## Mobile Workspace
 
-The drawer and viewer modal present compiled state through six navigation tabs. Tab state, scroll position, and collapsible section states are preserved across re-renders.
+LoomOS is designed as a compact operational workspace rather than a stack of dashboard cards. The sticky top dock contains exact-swipe context, current sync or compilation state, primary commands, and navigation. It uses the full drawer or modal width, respects mobile safe areas, and leaves scrolling to the Lumiverse host instead of creating competing nested scroll regions.
 
-### Overview
-A high-level summary block showing the current delta headline, location and timeframe, plus inline counts for active cast members, story threads, continuity risks, active module count, and injection status. Below the overview are expandable sections for:
+On narrow screens the navigation automatically becomes a four-column grid. The labels and count badges remain stable, so changing state cannot resize or shift the control surface. The drawer always exposes Setup, including when the active swipe has no tracker yet. The viewer omits Setup and stays focused on reading state.
+
+## Workspace Views
+
+The drawer presents seven workspaces. The viewer presents the six tracker-reading workspaces. Tab choice, scroll position, focused controls, and expandable section states are preserved across re-renders.
+
+### Pulse
+A scan-first scene summary showing the latest delta, location, timeframe, injection state, and stable counts for cast, threads, risks, and active modules. **Review changes** opens the focused delta modal. Kernel, Delta, Meters, Tools, and custom modules remain available as compact expandable sections below it.
 
 - **Kernel** — Scene name, current focus, summary, POV, tone, objective, risk, stop mode, and constraints.
 - **Delta** — Headline, all changes with importance badges (low/medium/high/critical), carried-forward facts, and newly-established facts.
@@ -69,7 +76,7 @@ Narrative structure:
 - **Countdowns** — Timed events with remaining turns.
 - **Autonomy Queue** — Pending NPC actions and interruption conditions.
 
-### Continuity
+### Memory
 The **Continuity Firewall** protects story coherence:
 - **Explainer** — A descriptive introduction explaining the Firewall's purpose.
 - **Metrics Bar** — Counts of established facts, anti-retcon anchors, pending consequences, and offscreen state items.
@@ -89,16 +96,27 @@ The **State History Timeline** shows every state snapshot generated for the acti
 
 Use the search bar to filter by scene, focus, location, or message ID. Click **Load** to inspect any historical snapshot. The currently active state is highlighted. Delete buttons remove unwanted snapshots from storage. Previous chat messages also receive an inline **Tracker history** control when they have stored state, with one button per saved swipe.
 
+### Setup
+The drawer-only Setup workspace contains:
+
+- Preset selection and custom preset management
+- Auto-generation, connection, transcript depth, and timeout controls
+- Injection, seed, retention, preview, and appearance controls
+- Token and performance guidance
+- Schema & Prompt Studio
+- Stock and custom module configuration
+- Pipeline diagnostics and optional injection preview
+
 ---
 
-## Sticky Header Controls
+## Control Dock
 
-A sticky command bar pins to the top of both the drawer and viewer modal:
+A compact sticky command dock pins to the top of both the drawer and viewer. It shows the exact message/swipe, current status text, and a visible `Synced`, `Compiling`, or `No state` indicator. Commands reflow without overlapping at narrow widths.
 
 | Button | Action |
 |---|---|
-| **What Changed** | Opens the delta-focused modal showing exactly what changed in this state |
-| **Generate / Stop Compile** | Single button that dynamically toggles between "Generate" (or "Refresh") and a pulsing "Stop Compile" during active compilation |
+| **Generate tracker / Refresh tracker / Stop compile** | One primary action that changes with the current state and compilation status |
+| **Viewer** | Opens the full-screen-friendly tracker viewer from the drawer |
 | **Reload** | Refresh exact-swipe state from storage |
 | **Delete** | Remove the current exact-swipe snapshot |
 | **Enable** | Request missing Lumiverse permissions when needed |
@@ -131,7 +149,7 @@ The preview is regenerated each time the state syncs or when the setting is togg
 
 ## What Changed Modal
 
-Opened via the **What Changed** button in the sticky header. Provides a focused delta breakdown:
+Opened via **Review changes** in the Pulse summary. Provides a focused delta breakdown:
 
 - **Headline** — The one-line summary of the most important change.
 - **Changes** — Each change rendered with a `+` icon, full text, module name, age (e.g., "this turn"), and importance badge.
@@ -183,7 +201,7 @@ Five continuity-critical modules are locked **Track: on** for system safety. The
 
 ## Schema & Prompt Studio
 
-Open **Tracker Settings -> Schema & Prompt Studio** to inspect every stock module contract without reading source code. Each module entry exposes:
+Open **Setup -> Schema & Prompt Studio** to inspect every stock module contract without reading source code. Each module entry exposes:
 
 - The effective generation schema sent to the compiler.
 - The effective compiler instruction.
@@ -223,7 +241,7 @@ Compiler safety rules keep this non-explicit and evidence-based. LoomOS does not
 
 ## Track / Display / Inject Controls
 
-Every module has three independent toggles configured in the **Settings** tab under the Module Groups accordion:
+Every module has three independent toggles configured in the **Setup** workspace under the Module Groups accordion:
 
 | Toggle | Effect |
 |---|---|
@@ -290,7 +308,7 @@ Each custom module has these fields:
 
 ### Module Preset Manager
 
-The Settings tab includes a preset manager for saving and loading module configurations:
+The Setup workspace includes a preset manager for saving and loading module configurations:
 
 | Action | Description |
 |---|---|
@@ -467,6 +485,7 @@ Tests use the Node.js built-in test runner with `tsx` for TypeScript support:
 | `tests/upgrades.test.ts` | Settings upgrade paths |
 | `tests/backend-runtime.test.mjs` | Full backend compile-and-store integration test |
 | `tests/render.test.ts` | Dashboard rendering functions, history tab, injection preview, what-changed modal |
+| `tests/ui-redesign.test.ts` | Mobile workspace navigation, safe-area layout, Scene Pulse, Cast, and History redesign contracts |
 
 ---
 

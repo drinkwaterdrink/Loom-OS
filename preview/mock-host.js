@@ -324,6 +324,35 @@ const ctx = {
     } else if (payload.type === "save_settings") {
       Object.assign(defaultSettings, payload.settings);
       queueMicrotask(() => backendHandler({ type: "settings", requestId: payload.requestId, settings: defaultSettings }));
+    } else if (payload.type === "get_chat_states") {
+      queueMicrotask(() => backendHandler({
+        type: "chat_states",
+        requestId: payload.requestId,
+        chatId: payload.chatId,
+        states: [{ messageId: seededState.identity.messageId, swipeId: seededState.identity.swipeId }],
+      }));
+    } else if (payload.type === "list_state_history") {
+      queueMicrotask(() => backendHandler({
+        type: "state_history",
+        requestId: payload.requestId,
+        chatId: payload.chatId,
+        items: [{
+          identity: seededState.identity,
+          generatedAt: seededState.generatedAt,
+          schemaVersion: seededState.schemaVersion,
+          kernelScene: seededState.kernel.scene,
+          kernelFocus: seededState.kernel.currentFocus,
+          kernelLocation: seededState.kernel.location,
+          kernelTime: seededState.kernel.timeframe,
+          deltaHeadline: seededState.delta.headline,
+          castCount: seededState.castMatrix.length,
+          threadCount: seededState.storyState.threadLoom.length,
+          riskCount: seededState.continuityFirewall.risks.length,
+          repaired: seededState.source.repaired,
+          seedIdentity: seededState.source.seedIdentity,
+          activeModuleCount: seededState.activeModules.length,
+        }],
+      }));
     }
   },
   onBackendMessage(handler) {
@@ -333,3 +362,16 @@ const ctx = {
 };
 
 window.loomosPreviewCleanup = setup(ctx);
+
+const previewParams = new URLSearchParams(window.location.search);
+setTimeout(() => {
+  if (previewParams.get("viewer") === "1") {
+    document.getElementById("input-actions")?.click();
+  }
+  setTimeout(() => {
+    const tabName = previewParams.get("tab");
+    if (tabName) {
+      document.querySelector(`[data-tab="${CSS.escape(tabName)}"]`)?.click();
+    }
+  }, 80);
+}, 80);

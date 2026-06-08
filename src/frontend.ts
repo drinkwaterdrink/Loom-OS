@@ -274,18 +274,23 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     };
   }
 
-  function restoreUiState(uiSnapshot: ReturnType<typeof captureUiState>) {
+  function restoreUiState(
+    uiSnapshot: ReturnType<typeof captureUiState>,
+    preserveDisclosure = true,
+  ) {
     activeTab = uiSnapshot.savedTab;
 
-    tab.root.querySelectorAll<HTMLDetailsElement>("details[data-details], details[data-section], details[data-group]").forEach((d) => {
-      const key = d.getAttribute("data-details") || d.getAttribute("data-section") || d.getAttribute("data-group");
-      if (key) d.open = uiSnapshot.openDetails.has(key);
-    });
-    if (modal) {
-      modal.root.querySelectorAll<HTMLDetailsElement>("details[data-details], details[data-section], details[data-group]").forEach((d) => {
+    if (preserveDisclosure) {
+      tab.root.querySelectorAll<HTMLDetailsElement>("details[data-details], details[data-section], details[data-group]").forEach((d) => {
         const key = d.getAttribute("data-details") || d.getAttribute("data-section") || d.getAttribute("data-group");
-        if (key) d.open = uiSnapshot.openDetails.has("modal:" + key);
+        if (key) d.open = uiSnapshot.openDetails.has(key);
       });
+      if (modal) {
+        modal.root.querySelectorAll<HTMLDetailsElement>("details[data-details], details[data-section], details[data-group]").forEach((d) => {
+          const key = d.getAttribute("data-details") || d.getAttribute("data-section") || d.getAttribute("data-group");
+          if (key) d.open = uiSnapshot.openDetails.has("modal:" + key);
+        });
+      }
     }
 
     const searchInput = tab.root.querySelector<HTMLInputElement>("[data-module-search]");
@@ -968,45 +973,69 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function renderSettings(): string {
     return `
-      <details class="loomos-shell loomos-settings" data-details="settings">
-        <summary>Tracker Settings</summary>
+      <section class="loomos-settings-view loomos-settings">
+        <header class="loomos-view-heading">
+          <div>
+            <span class="loomos-kicker">Workspace setup</span>
+            <h2>Tracker controls</h2>
+          </div>
+          <span class="loomos-status">${MODULE_KEYS.filter((key) => settings.moduleSettings[key].track).length} active</span>
+        </header>
         <div class="loomos-settings-grid">
           ${renderPresetManager()}
-          <label class="loomos-field"><span>Skin</span><select class="loomos-select" data-setting="skin">
-            ${(["auto", "dark_academia", "cyberpunk", "fantasy", "horror", "noir", "minimal"] as const).map((skin) =>
-              `<option value="${skin}"${selected(skin, settings.skin)}>${skinLabel(skin)}</option>`
-            ).join("")}
-          </select></label>
-          <label class="loomos-field"><span>Generation connection</span><select class="loomos-select" data-setting="connectionId">
-            <option value="">Automatic ready connection</option>
-            ${connections.map((connection) =>
-              `<option value="${escapeHtml(connection.id)}"${selected(connection.id, settings.connectionId)}${disabled(!connection.ready)}>${escapeHtml(connection.name)} | ${escapeHtml(connection.model || connection.provider)}${connection.isDefault ? " (default)" : ""}${connection.ready ? "" : " (not ready)"}</option>`
-            ).join("")}
-          </select></label>
-          <label class="loomos-field"><span>Auto generation</span><select class="loomos-select" data-setting="autoGeneration">
-            <option value="manual"${selected("manual", settings.autoGeneration)}>Manual</option>
-            <option value="assistant"${selected("assistant", settings.autoGeneration)}>Assistant messages</option>
-            <option value="every"${selected("every", settings.autoGeneration)}>Every message</option>
-            <option value="off"${selected("off", settings.autoGeneration)}>Off</option>
-          </select></label>
-          <label class="loomos-check"><input type="checkbox" data-setting="injectionEnabled"${checked(settings.injectionEnabled)}><span>Inject compact state</span></label>
-          <label class="loomos-check"><input type="checkbox" data-setting="showInjectionPreview"${checked(settings.showInjectionPreview)}><span>Show injection preview</span></label>
-          <label class="loomos-field"><span>Injection token budget</span><input class="loomos-input" type="number" min="80" max="10000" step="20" data-setting="injectionTokenBudget" value="${settings.injectionTokenBudget}"></label>
-          <label class="loomos-field"><span>Recent messages</span><input class="loomos-input" type="number" min="4" max="80" data-setting="recentMessageLimit" value="${settings.recentMessageLimit}"></label>
-          <label class="loomos-field"><span>History trackers kept</span><input class="loomos-input" type="number" min="1" max="1000" data-setting="historyRetentionLimit" value="${settings.historyRetentionLimit}"></label>
-          <label class="loomos-field"><span>Seed token budget</span><input class="loomos-input" type="number" min="200" max="10000" step="50" data-setting="compilerSeedTokenBudget" value="${settings.compilerSeedTokenBudget}"></label>
-          <label class="loomos-field"><span>Generation timeout (seconds)</span><input class="loomos-input" type="number" min="30" max="300" step="10" data-setting="generationTimeoutSeconds" value="${settings.generationTimeoutSeconds}"></label>
+          <section class="loomos-settings-cluster">
+            <div class="loomos-settings-cluster-heading">
+              <strong>Generation</strong>
+              <span>When and where the tracker compiles</span>
+            </div>
+            <div class="loomos-settings-fields">
+              <label class="loomos-field"><span>Auto generation</span><select class="loomos-select" data-setting="autoGeneration">
+                <option value="manual"${selected("manual", settings.autoGeneration)}>Manual</option>
+                <option value="assistant"${selected("assistant", settings.autoGeneration)}>Assistant messages</option>
+                <option value="every"${selected("every", settings.autoGeneration)}>Every message</option>
+                <option value="off"${selected("off", settings.autoGeneration)}>Off</option>
+              </select></label>
+              <label class="loomos-field"><span>Generation connection</span><select class="loomos-select" data-setting="connectionId">
+                <option value="">Automatic ready connection</option>
+                ${connections.map((connection) =>
+                  `<option value="${escapeHtml(connection.id)}"${selected(connection.id, settings.connectionId)}${disabled(!connection.ready)}>${escapeHtml(connection.name)} | ${escapeHtml(connection.model || connection.provider)}${connection.isDefault ? " (default)" : ""}${connection.ready ? "" : " (not ready)"}</option>`
+                ).join("")}
+              </select></label>
+              <label class="loomos-field"><span>Recent messages</span><input class="loomos-input" type="number" min="4" max="80" data-setting="recentMessageLimit" value="${settings.recentMessageLimit}"></label>
+              <label class="loomos-field"><span>Timeout (seconds)</span><input class="loomos-input" type="number" min="30" max="300" step="10" data-setting="generationTimeoutSeconds" value="${settings.generationTimeoutSeconds}"></label>
+            </div>
+          </section>
+          <section class="loomos-settings-cluster">
+            <div class="loomos-settings-cluster-heading">
+              <strong>Continuity context</strong>
+              <span>Prompt injection, seed depth, and retained history</span>
+            </div>
+            <div class="loomos-settings-switches">
+              <label class="loomos-check"><input type="checkbox" data-setting="injectionEnabled"${checked(settings.injectionEnabled)}><span>Inject compact state</span></label>
+              <label class="loomos-check"><input type="checkbox" data-setting="showInjectionPreview"${checked(settings.showInjectionPreview)}><span>Show injection preview</span></label>
+            </div>
+            <div class="loomos-settings-fields">
+              <label class="loomos-field"><span>Injection budget</span><input class="loomos-input" type="number" min="80" max="10000" step="20" data-setting="injectionTokenBudget" value="${settings.injectionTokenBudget}"></label>
+              <label class="loomos-field"><span>Seed budget</span><input class="loomos-input" type="number" min="200" max="10000" step="50" data-setting="compilerSeedTokenBudget" value="${settings.compilerSeedTokenBudget}"></label>
+              <label class="loomos-field"><span>Trackers retained</span><input class="loomos-input" type="number" min="1" max="1000" data-setting="historyRetentionLimit" value="${settings.historyRetentionLimit}"></label>
+              <label class="loomos-field"><span>Appearance</span><select class="loomos-select" data-setting="skin">
+                ${(["auto", "dark_academia", "cyberpunk", "fantasy", "horror", "noir", "minimal"] as const).map((skin) =>
+                  `<option value="${skin}"${selected(skin, settings.skin)}>${skinLabel(skin)}</option>`
+                ).join("")}
+              </select></label>
+            </div>
+          </section>
           
           ${renderTokenDiagnostics()}
           ${renderSchemaPromptStudio()}
           ${renderModuleMatrix()}
         </div>
-      </details>`;
+      </section>`;
   }
 
   function diagnosticText(): string {
     const lines = [
-      `version: 0.1.8`,
+      `version: 0.1.9`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -1031,43 +1060,56 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     </div>`;
   }
 
-  function tabsNavHtml(): string {
+  function tabsNavHtml(selectedTab = activeTab, includeSettings = true): string {
     const tabs = [
-      { id: "overview", label: "Overview" },
-      { id: "cast", label: "Cast" },
-      { id: "world", label: "World" },
-      { id: "story", label: "Story" },
-      { id: "continuity", label: "Continuity" },
-      { id: "history", label: "History" },
+      { id: "overview", label: "Pulse", meta: state ? state.activeModules.length : 0 },
+      { id: "cast", label: "Cast", meta: state?.castMatrix.length ?? 0 },
+      { id: "world", label: "World", meta: state?.scene?.items.length ?? 0 },
+      { id: "story", label: "Story", meta: state?.storyState.threadLoom.filter((thread) => thread.status !== "resolved").length ?? 0 },
+      { id: "continuity", label: "Memory", meta: state?.continuityFirewall.risks.length ?? 0 },
+      { id: "history", label: "History", meta: historyItems.length },
+      ...(includeSettings ? [{ id: "settings", label: "Setup", meta: MODULE_KEYS.filter((key) => settings.moduleSettings[key].track).length }] : []),
     ];
-    return `<nav class="loomos-tabs-nav">${tabs.map(t =>
-      `<button class="loomos-tab-btn${activeTab === t.id ? " active" : ""}" data-tab="${t.id}">${t.label}</button>`
+    return `<nav class="loomos-tabs-nav" aria-label="Tracker views" role="tablist">${tabs.map((tabItem) =>
+      `<button class="loomos-tab-btn${selectedTab === tabItem.id ? " active" : ""}" data-tab="${tabItem.id}" role="tab" aria-selected="${selectedTab === tabItem.id}">
+        <span>${tabItem.label}</span><small>${tabItem.meta}</small>
+      </button>`
     ).join("")}</nav>`;
   }
 
-  function stickyHeaderHtml(showTabs: boolean): string {
+  function stickyHeaderHtml(
+    showTabs: boolean,
+    view: "drawer" | "modal",
+    selectedTab = activeTab,
+  ): string {
     const canGenerate = permissions.generation && permissions.chatMutation;
     const busy = activeGenerationRequestId !== null;
     const missingPermission = !permissions.generation
       || !permissions.chatMutation
       || (settings.injectionEnabled && !permissions.interceptor);
+    const stateLabel = busy ? "Compiling" : state ? "Synced" : "No state";
     return `
       <div class="loomos-header-sticky">
-        <div class="loomos-header">
-          <div class="loomos-title"><strong>LoomOS Command Deck</strong><span>${escapeHtml(exactLabel())}</span></div>
-          <span class="loomos-status" title="${escapeHtml(elapsedLabel())}">${escapeHtml(elapsedLabel())}</span>
+        <div class="loomos-context-bar">
+          <div class="loomos-title">
+            <strong>${escapeHtml(exactLabel())}</strong>
+            <span>${escapeHtml(status)}</span>
+          </div>
+          <span class="loomos-state-pill${busy ? " is-busy" : state ? " is-ready" : ""}" title="${escapeHtml(elapsedLabel())}">
+            <i></i>${stateLabel}
+          </span>
         </div>
         <div class="loomos-header-actions">
-          <button class="loomos-button loomos-button-primary" data-action="viewer">Open Viewer</button>
           ${busy
-            ? `<button class="loomos-button loomos-button-danger loomos-button-pulse" data-action="cancel">Stop Compile</button>`
-            : `<button class="loomos-button" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh" : "Generate"}</button>`
+            ? `<button class="loomos-button loomos-button-danger loomos-button-pulse loomos-action-primary" data-action="cancel">Stop compile</button>`
+            : `<button class="loomos-button loomos-button-primary loomos-action-primary" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh tracker" : "Generate tracker"}</button>`
           }
+          ${view === "drawer" ? `<button class="loomos-button" data-action="viewer">Viewer</button>` : ""}
           <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation || busy)}>Reload</button>
-          ${state && !busy ? `<button class="loomos-button loomos-button-danger" data-action="delete">Delete</button>` : ""}
           ${missingPermission ? `<button class="loomos-button" data-action="permissions">Enable</button>` : ""}
+          ${state && !busy ? `<button class="loomos-button loomos-button-danger loomos-action-delete" data-action="delete">Delete</button>` : ""}
         </div>
-        ${showTabs ? tabsNavHtml() : ""}
+        ${showTabs ? tabsNavHtml(selectedTab, view === "drawer") : ""}
       </div>`;
   }
 
@@ -1075,11 +1117,18 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     tab.root.dataset.skin = settings.skin;
     tab.root.dataset.view = "drawer";
     tab.root.innerHTML = `
-      ${stickyHeaderHtml(Boolean(state) || historyItems.length > 0)}
+      ${stickyHeaderHtml(true, "drawer")}
       ${compileStatusCardHtml()}
-      ${renderSettings()}
-      <div class="loomos-tab-pane">
-        ${activeTab === "history"
+      <main class="loomos-tab-pane" role="tabpanel">
+        ${activeTab === "settings"
+          ? `${renderSettings()}
+            <details class="loomos-settings-cluster loomos-diagnostics" data-details="diagnostics">
+              <summary>Pipeline diagnostics</summary>
+              <pre class="loomos-diagnostic">${escapeHtml(diagnosticText())}</pre>
+              ${pipeline?.debugReport ? `<button type="button" class="loomos-button loomos-btn-sm" data-action="copy-debug-report">Copy debug report</button>` : ""}
+            </details>
+            ${settings.showInjectionPreview && injectionPreview ? renderInjectionPreview(injectionPreview) : ""}`
+          : activeTab === "history"
           ? renderHistoryTab(historyItems, historyFilter, activeIdentity)
           : activeTab === "injection"
           ? injectionPreview ? renderInjectionPreview(injectionPreview) : ""
@@ -1087,53 +1136,49 @@ export function setup(ctx: SpindleFrontendContext): () => void {
             ? renderDashboard(state, settings, activeTab)
             : emptyStateHtml()
         }
-      </div>
-      <details class="loomos-shell loomos-settings" data-details="diagnostics">
-        <summary>Pipeline Diagnostics</summary>
-        <pre class="loomos-diagnostic">${escapeHtml(diagnosticText())}</pre>
-        ${pipeline?.debugReport ? `<button type="button" class="loomos-button loomos-btn-sm" data-action="copy-debug-report">Copy Debug Report</button>` : ""}
-      </details>
-      ${settings.showInjectionPreview && injectionPreview ? renderInjectionPreview(injectionPreview) : ""}`;
+      </main>`;
   }
 
   function renderViewer(): void {
     if (!modal) return;
+    const viewerTab = activeTab === "settings" ? "overview" : activeTab;
     modal.root.className = "loomos-root";
     modal.root.dataset.skin = settings.skin;
     modal.root.dataset.view = "modal";
-    modal.setTitle(`LoomOS | ${exactLabel()}`);
+    modal.setTitle("LoomOS");
     modal.root.innerHTML = `
-      ${stickyHeaderHtml(Boolean(state) || historyItems.length > 0)}
+      ${stickyHeaderHtml(Boolean(state) || historyItems.length > 0, "modal", viewerTab)}
       ${compileStatusCardHtml()}
-      <div class="loomos-tab-pane">
-        ${activeTab === "history"
+      <main class="loomos-tab-pane" role="tabpanel">
+        ${viewerTab === "history"
           ? renderHistoryTab(historyItems, historyFilter, activeIdentity)
-          : activeTab === "injection"
+          : viewerTab === "injection"
           ? injectionPreview ? renderInjectionPreview(injectionPreview) : ""
           : state
-            ? renderDashboard(state, settings, activeTab)
+            ? renderDashboard(state, settings, viewerTab)
             : emptyStateHtml()
         }
-      </div>`;
+      </main>`;
   }
 
-  function renderAll(): void {
+  function renderAll(preserveDisclosure = true): void {
     const uiState = captureUiState();
     renderDrawer();
     renderViewer();
     refreshAllMessageWidgets();
-    restoreUiState(uiState);
+    restoreUiState(uiState, preserveDisclosure);
   }
 
   function openViewer(): void {
+    if (activeTab === "settings") activeTab = "overview";
     if (modal) {
       renderViewer();
       return;
     }
     modal = ctx.ui.showModal({
-      title: `LoomOS | ${exactLabel()}`,
-      width: Math.min(980, typeof window !== "undefined" ? window.innerWidth - 16 : 420),
-      maxHeight: typeof window !== "undefined" ? Math.min(820, window.innerHeight - 32) : 600,
+      title: "LoomOS",
+      width: Math.min(1100, typeof window !== "undefined" ? window.innerWidth - 8 : 420),
+      maxHeight: typeof window !== "undefined" ? Math.min(900, window.innerHeight - 12) : 680,
     });
     const root = modal.root;
     const onClick = (event: Event) => handleActionClick(event);
@@ -2384,7 +2429,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       const newTab = tabBtn.dataset.tab;
       if (newTab && newTab !== activeTab) {
         activeTab = newTab;
-        renderAll();
+        renderAll(false);
       }
       return;
     }

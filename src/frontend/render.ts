@@ -121,8 +121,8 @@ function section(
   return `
     <details class="loomos-section" data-section="${escapeHtml(key)}"${open ? " open" : ""}>
       <summary>
-        <span>${escapeHtml(title)}</span>
-        <small>${escapeHtml(summary)}</small>
+        <span class="loomos-section-title">${escapeHtml(title)}</span>
+        <span class="loomos-section-summary">${escapeHtml(summary)}</span>
       </summary>
       <div class="loomos-section-body">${body}</div>
     </details>`;
@@ -148,7 +148,7 @@ function renderKernel(state: LoomOSState): string {
     </dl>
     <div class="loomos-subhead">Constraints</div>
     ${chips(kernel.constraints)}
-  `, true);
+  `);
 }
 
 function renderDelta(state: LoomOSState): string {
@@ -172,7 +172,7 @@ function renderDelta(state: LoomOSState): string {
       <div><div class="loomos-subhead">Newly established</div>${chips(delta.newlyEstablished)}</div>
       <div><div class="loomos-subhead">Carried forward</div>${chips(delta.carriedForward)}</div>
     </div>
-  `, true);
+  `);
 }
 
 function renderMeters(state: LoomOSState): string {
@@ -227,13 +227,15 @@ function renderCast(state: LoomOSState, settings: LoomOSSettings): string {
                   </div>
                   <span class="loomos-badge">${escapeHtml(member.awareness)}</span>
                 </div>
-                <div class="loomos-chip-row" style="margin: 4px 0 8px;">
-                  <span class="loomos-chip">📍 ${escapeHtml(member.location)}</span>
-                  <span class="loomos-chip">🎭 ${escapeHtml(member.emotionalState)}</span>
-                  <span class="loomos-chip">⚠️ Threat: ${escapeHtml(member.threat.pct)}</span>
+                <div class="loomos-cast-meta">
+                  <span><b>Location</b>${escapeHtml(member.location)}</span>
+                  <span><b>Mood</b>${escapeHtml(member.emotionalState)}</span>
+                  <span><b>Threat</b>${escapeHtml(member.threat.pct)}</span>
                 </div>
-                <p><strong>Intent:</strong> ${clampProse(member.intent, 100)}</p>
-                <p><strong>Status:</strong> ${clampProse(member.status, 100)}</p>
+                <dl class="loomos-cast-summary">
+                  <div><dt>Intent</dt><dd>${clampProse(member.intent, 100)}</dd></div>
+                  <div><dt>Status</dt><dd>${clampProse(member.status, 100)}</dd></div>
+                </dl>
                 ${appearanceHtml}
                 
                 ${hasExtra ? `
@@ -373,7 +375,7 @@ function renderContinuity(state: LoomOSState): string {
   `;
 
   const riskCards = firewall.risks.length === 0
-    ? `<div class="loomos-continuity-safe"><strong>✅ No continuity conflicts detected.</strong> The current state is consistent with all established facts and anchors.</div>`
+    ? `<div class="loomos-continuity-safe"><strong>No continuity conflicts detected.</strong> The current state is consistent with all established facts and anchors.</div>`
     : `<div class="loomos-continuity-risks">${firewall.risks.map((risk) => `
         <div class="loomos-continuity-risk-card loomos-severity-${risk.severity}">
           <div class="loomos-continuity-risk-header">
@@ -500,20 +502,24 @@ function renderOverviewCard(state: LoomOSState, settings: LoomOSSettings): strin
   const injectionStatus = settings.injectionEnabled ? "Enabled" : "Disabled";
 
   return `
-    <div class="loomos-shell loomos-overview-card">
-      <div class="loomos-kicker">Overview</div>
-      <div class="loomos-overview-headline">${clampProse(deltaHeadline, 140)}</div>
-      <div class="loomos-overview-details">
-        <div><strong>Location:</strong> <span>${escapeHtml(location)} · ${escapeHtml(time)}</span></div>
-        <div class="loomos-overview-stats">
-          <span>👥 ${activeCastCount} Cast</span>
-          <span>🧵 ${threadCount} Threads</span>
-          <span>⚠️ ${riskCount} Risks</span>
-          <span>📦 ${state.activeModules.length} Modules</span>
-          <span class="loomos-overview-inject-${settings.injectionEnabled ? "active" : "inactive"}">💉 Inject: ${injectionStatus}</span>
-        </div>
+    <section class="loomos-overview-card">
+      <div class="loomos-overview-topline">
+        <span class="loomos-kicker">Scene pulse</span>
+        <span class="loomos-overview-inject-${settings.injectionEnabled ? "active" : "inactive"}">Injection ${injectionStatus}</span>
       </div>
-    </div>
+      <h2 class="loomos-overview-headline">${clampProse(deltaHeadline, 180)}</h2>
+      <p class="loomos-overview-location"><strong>${escapeHtml(location)}</strong><span>${escapeHtml(time)}</span></p>
+      <div class="loomos-overview-stats">
+        <span><b>${activeCastCount}</b>Cast</span>
+        <span><b>${threadCount}</b>Threads</span>
+        <span><b>${riskCount}</b>Risks</span>
+        <span><b>${state.activeModules.length}</b>Modules</span>
+      </div>
+      <div class="loomos-overview-actions">
+        <button type="button" class="loomos-button loomos-btn-sm" data-action="what-changed">Review changes</button>
+        <span>${escapeHtml(state.kernel.currentFocus || state.kernel.objective)}</span>
+      </div>
+    </section>
   `;
 }
 
@@ -644,7 +650,7 @@ export function renderDashboard(
     ].filter(Boolean);
     return sections.length > 0
       ? `<div class="loomos-dashboard">${overview}${sections.join("")}</div>`
-      : `<div class="loomos-dashboard">${overview}<div class="loomos-empty"><h3>All overview display modules are hidden</h3><p>Enable display for Kernel, Deltas, Meters, or Tools in the Settings tab.</p></div></div>`;
+      : `<div class="loomos-dashboard">${overview}<div class="loomos-empty"><h3>All overview display modules are hidden</h3><p>Enable display for Kernel, Deltas, Meters, or Tools in Setup.</p></div></div>`;
   }
   
   if (activeTab === "cast") {
@@ -705,12 +711,12 @@ export function renderHistoryTab(
 
   return `
     <div class="loomos-history-tab">
-      <div class="loomos-history-explainer">
-        <p>The <strong>State History Timeline</strong> shows every state snapshot generated for this chat.
-        Click any entry to load that state for inspection. Use the search bar to filter by scene, focus, or location.</p>
-      </div>
+      <header class="loomos-view-heading">
+        <div><span class="loomos-kicker">Exact-swipe archive</span><h2>Tracker history</h2></div>
+        <span class="loomos-status">${items.length} retained</span>
+      </header>
       <div class="loomos-search-bar">
-        <input class="loomos-input" type="text" placeholder="Filter history..." 
+        <input class="loomos-input" type="search" placeholder="Search scene, focus, or location"
           data-loomos-action="filter-history" value="${escapeHtml(filter)}" />
         ${filter ? `<button class="loomos-button-clear" data-loomos-action="clear-history-filter">&times;</button>` : ""}
         <span class="loomos-search-count">${filtered.length} / ${items.length}</span>
@@ -722,22 +728,21 @@ export function renderHistoryTab(
               activeIdentity?.chatId === item.identity.chatId &&
               activeIdentity?.messageId === item.identity.messageId &&
               activeIdentity?.swipeId === item.identity.swipeId;
-            const repaired = item.repaired ? "🛠️" : "";
             return `
               <article class="loomos-history-entry${isActive ? " loomos-history-active" : ""}">
                 <div class="loomos-history-entry-main">
                   <div class="loomos-history-entry-header">
                     <strong>${escapeHtml(item.kernelScene || "N/A")}</strong>
-                    <span class="loomos-badge">${escapeHtml(item.generatedAt)}</span>
-                    ${repaired ? `<span class="loomos-badge" style="border-color:#d58a42;color:#d58a42;">repaired</span>` : ""}
+                    <span class="loomos-history-time">${escapeHtml(item.generatedAt)}</span>
+                    ${item.repaired ? `<span class="loomos-badge loomos-badge-warning">repaired</span>` : ""}
                   </div>
                   <p class="loomos-history-entry-focus">${clampProse(item.kernelFocus, 100)}</p>
                   <div class="loomos-history-entry-meta">
-                    <span>📍 ${escapeHtml(item.kernelLocation)}</span>
-                    <span>🕐 ${escapeHtml(item.kernelTime)}</span>
-                    <span>👥 ${item.castCount}</span>
-                    <span>🧵 ${item.threadCount}</span>
-                    <span>⚠️ ${item.riskCount}</span>
+                    <span>${escapeHtml(item.kernelLocation)}</span>
+                    <span>${escapeHtml(item.kernelTime)}</span>
+                    <span>${item.castCount} cast</span>
+                    <span>${item.threadCount} threads</span>
+                    <span>${item.riskCount} risks</span>
                   </div>
                   <p class="loomos-history-entry-delta">${clampProse(item.deltaHeadline, 120)}</p>
                 </div>
