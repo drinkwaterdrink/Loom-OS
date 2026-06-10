@@ -26,6 +26,13 @@ var MODULE_KEYS = [
   "imagePrompt",
   "auditLog"
 ];
+var TOOL_MODULE_KEYS = [
+  "actionResolver",
+  "dialogueState",
+  "directorStyle",
+  "closenessState",
+  "imagePrompt"
+];
 var CORE_TRACKING_MODULES = /* @__PURE__ */ new Set([
   "sceneKernel",
   "deltas",
@@ -6037,51 +6044,159 @@ function renderContinuity(state, settings) {
     </details>
   `, true, settings, "continuity");
 }
-function renderTools(state, settings) {
+function toolStateCard(state, settings, key, label) {
+  const control2 = settings.moduleSettings[key];
+  const generatedWithModule = state.activeModules.includes(key);
+  let message = "This tool is off.";
+  let stateLabel = "Off";
+  let action = "";
+  if (!control2.display && control2.track) {
+    stateLabel = "Hidden";
+    message = "Tracking is on, but Display is off. Enable Display in Setup to show its output.";
+  } else if (control2.display && !control2.track) {
+    stateLabel = "Track off";
+    message = "Display is on, but Track is off. Enable Track, then refresh this tracker.";
+  } else if (control2.track && control2.display && !generatedWithModule) {
+    stateLabel = "Refresh needed";
+    message = "This exact-swipe tracker was generated before the tool was enabled.";
+    action = `<button class="loomos-button loomos-btn-sm" data-action="generate">Refresh tracker</button>`;
+  } else if (control2.track && control2.display) {
+    stateLabel = "No output";
+    message = key === "imagePrompt" ? "The compiler returned no image prompt for this snapshot. Refresh after a visually distinct scene, or adjust the module guidance in Setup." : "The compiler returned no value for this tool on the current snapshot.";
+    action = `<button class="loomos-button loomos-btn-sm" data-action="generate">Refresh tracker</button>`;
+  }
+  return `<article class="loomos-card loomos-tool-card is-empty">
+    <div class="loomos-tool-card-heading">
+      <div><span class="loomos-kicker">Tool</span><strong>${escapeHtml(label)}</strong></div>
+      <span class="loomos-tool-state">${escapeHtml(stateLabel)}</span>
+    </div>
+    <p>${escapeHtml(message)}</p>
+    ${action}
+  </article>`;
+}
+function renderTools(state, settings, standalone = false) {
   const tools = state.tools;
-  const blocks = [];
-  if (visible(settings, "actionResolver") && tools.actionResolver) {
-    blocks.push(`<article class="loomos-card">
-      <span class="loomos-kicker">Action Resolver</span>
-      <strong>${clampProse(tools.actionResolver.userAction, 100)}</strong>
+  const readyBlocks = [];
+  const emptyBlocks = [];
+  const include = (key) => standalone || visible(settings, key);
+  const renderEmpty = (key, label) => {
+    if (include(key)) emptyBlocks.push(toolStateCard(state, settings, key, label));
+  };
+  if (include("actionResolver") && visible(settings, "actionResolver") && tools.actionResolver) {
+    readyBlocks.push(`<article class="loomos-card loomos-tool-card">
+      <div class="loomos-tool-card-heading">
+        <div><span class="loomos-kicker">Tool</span><strong>Action Resolver</strong></div>
+        <span class="loomos-tool-state is-ready">Ready</span>
+      </div>
+      <p class="loomos-tool-lead">${clampProse(tools.actionResolver.userAction, 160)}</p>
       <p>${clampProse(tools.actionResolver.worldResponse, 120)}</p>
       <small>Risk: ${clampProse(tools.actionResolver.risk, 100)}</small>
       ${chips(tools.actionResolver.blockers)}
     </article>`);
+  } else {
+    renderEmpty("actionResolver", "Action Resolver");
   }
-  if (visible(settings, "dialogueState") && tools.dialogueState) {
-    blocks.push(`<article class="loomos-card">
-      <span class="loomos-kicker">Dialogue</span>
-      <strong>${clampProse(tools.dialogueState.openThread, 100)}</strong>
+  if (include("dialogueState") && visible(settings, "dialogueState") && tools.dialogueState) {
+    readyBlocks.push(`<article class="loomos-card loomos-tool-card">
+      <div class="loomos-tool-card-heading">
+        <div><span class="loomos-kicker">Tool</span><strong>Dialogue State</strong></div>
+        <span class="loomos-tool-state is-ready">Ready</span>
+      </div>
+      <p class="loomos-tool-lead">${clampProse(tools.dialogueState.openThread, 140)}</p>
       <p>${clampProse(tools.dialogueState.socialMask, 120)}</p>
       ${chips(tools.dialogueState.levers)}
     </article>`);
+  } else {
+    renderEmpty("dialogueState", "Dialogue State");
   }
-  if (visible(settings, "directorStyle") && tools.directorStyle) {
-    blocks.push(`<article class="loomos-card">
-      <span class="loomos-kicker">Director Style</span>
-      <strong>${clampProse(tools.directorStyle.primary, 100)}</strong>
+  if (include("directorStyle") && visible(settings, "directorStyle") && tools.directorStyle) {
+    readyBlocks.push(`<article class="loomos-card loomos-tool-card">
+      <div class="loomos-tool-card-heading">
+        <div><span class="loomos-kicker">Tool</span><strong>Director Style</strong></div>
+        <span class="loomos-tool-state is-ready">Ready</span>
+      </div>
+      <p class="loomos-tool-lead">${clampProse(tools.directorStyle.primary, 140)}</p>
       <p>${clampProse(tools.directorStyle.push, 120)}</p>
       ${chips(tools.directorStyle.voiceCues)}
     </article>`);
+  } else {
+    renderEmpty("directorStyle", "Director Style");
   }
-  if (visible(settings, "closenessState") && tools.closenessState) {
-    blocks.push(`<article class="loomos-card">
-      <span class="loomos-kicker">Closeness</span>
-      <strong>${clampProse(tools.closenessState.emotional, 100)}</strong>
+  if (include("closenessState") && visible(settings, "closenessState") && tools.closenessState) {
+    readyBlocks.push(`<article class="loomos-card loomos-tool-card">
+      <div class="loomos-tool-card-heading">
+        <div><span class="loomos-kicker">Tool</span><strong>Closeness State</strong></div>
+        <span class="loomos-tool-state is-ready">Ready</span>
+      </div>
+      <p class="loomos-tool-lead">${clampProse(tools.closenessState.emotional, 140)}</p>
       <p>${clampProse(tools.closenessState.physical, 120)}</p>
       ${chips(tools.closenessState.boundaries)}
     </article>`);
+  } else {
+    renderEmpty("closenessState", "Closeness State");
   }
-  if (visible(settings, "imagePrompt") && tools.imagePrompt) {
-    blocks.push(`<article class="loomos-card">
-      <span class="loomos-kicker">Image Prompt</span>
-      <strong>${escapeHtml(tools.imagePrompt.shot)} | ${escapeHtml(tools.imagePrompt.medium)}</strong>
-      <p>${clampProse(tools.imagePrompt.subject, 120)}</p>
-      <small>${clampProse(tools.imagePrompt.hint, 100)}</small>
+  if (include("imagePrompt") && visible(settings, "imagePrompt") && tools.imagePrompt) {
+    const fullPrompt = tools.imagePrompt.full || [tools.imagePrompt.subject, tools.imagePrompt.positive].filter(Boolean).join(", ");
+    readyBlocks.unshift(`<article class="loomos-card loomos-tool-card loomos-image-prompt-card">
+      <div class="loomos-tool-card-heading">
+        <div><span class="loomos-kicker">Visual generator</span><strong>Image Prompt</strong></div>
+        <span class="loomos-tool-state is-ready">Ready</span>
+      </div>
+      <div class="loomos-tool-meta">
+        <span><b>Aspect</b>${escapeHtml(tools.imagePrompt.aspect || "Not set")}</span>
+        <span><b>Shot</b>${escapeHtml(tools.imagePrompt.shot || "Not set")}</span>
+        <span><b>Medium</b>${escapeHtml(tools.imagePrompt.medium || "Not set")}</span>
+      </div>
+      <p class="loomos-tool-lead">${clampProse(tools.imagePrompt.subject, 260)}</p>
+      <div class="loomos-prompt-output">
+        <div class="loomos-prompt-output-heading">
+          <span>Full prompt</span>
+          <button class="loomos-button loomos-btn-sm" data-action="copy-image-prompt">Copy prompt</button>
+        </div>
+        <pre>${escapeHtml(fullPrompt)}</pre>
+      </div>
+      <div class="loomos-prompt-details">
+        <details>
+          <summary>Positive guidance</summary>
+          <p>${escapeHtml(tools.imagePrompt.positive || "None generated.")}</p>
+        </details>
+        <details>
+          <summary>Negative guidance</summary>
+          <p>${escapeHtml(tools.imagePrompt.negative || "None generated.")}</p>
+        </details>
+      </div>
+      ${tools.imagePrompt.hint ? `<small>${clampProse(tools.imagePrompt.hint, 240)}</small>` : ""}
     </article>`);
+  } else {
+    renderEmpty("imagePrompt", "Image Prompt");
   }
-  return blocks.length === 0 ? "" : section("tools", "Tools", `${blocks.length} active`, `<div class="loomos-card-grid">${blocks.join("")}</div>`);
+  const blocks = [...readyBlocks, ...emptyBlocks];
+  if (standalone) {
+    const configured = TOOL_MODULE_KEYS.filter(
+      (key) => settings.moduleSettings[key].track || settings.moduleSettings[key].display
+    ).length;
+    const ready = TOOL_MODULE_KEYS.filter(
+      (key) => settings.moduleSettings[key].display && Boolean(tools[key])
+    ).length;
+    return `<div class="loomos-tools-workspace">
+      <header class="loomos-view-heading">
+        <div><span class="loomos-kicker">Creative utilities</span><h2>Tools</h2></div>
+        <span class="loomos-status">${ready} ready | ${configured} configured</span>
+      </header>
+      <div class="loomos-tools-intro">
+        <strong>Generated helpers for this exact swipe</strong>
+        <p>Every tool stays visible here with its current state, including modules that need Display enabled or a refreshed tracker.</p>
+      </div>
+      <div class="loomos-tools-grid">${blocks.join("")}</div>
+    </div>`;
+  }
+  const displayed = TOOL_MODULE_KEYS.filter((key) => visible(settings, key));
+  return displayed.length === 0 ? "" : section(
+    "tools",
+    "Tools",
+    `${displayed.length} displayed`,
+    `<div class="loomos-tools-grid">${blocks.join("")}</div>`
+  );
 }
 function renderAudit(state, settings) {
   return section("audit", "Audit", `${state.auditLog.length} entries`, `
@@ -6264,7 +6379,51 @@ function renderDashboard(state, settings, activeTab = "overview") {
     ].filter(Boolean);
     return sections.length > 0 ? `<div class="loomos-dashboard">${sections.join("")}</div>` : `<div class="loomos-empty"><h3>Continuity and Audit display are hidden</h3><p>Enable Continuity Firewall or Audit Log display in settings.</p></div>`;
   }
+  if (activeTab === "tools") {
+    return `<div class="loomos-dashboard">${renderTools(state, settings, true)}</div>`;
+  }
   return "";
+}
+function renderHistoryResults(items, filter, activeIdentity) {
+  const filtered = filter ? items.filter(
+    (item) => [item.kernelScene, item.kernelFocus, item.kernelLocation, item.deltaHeadline, item.identity.messageId].some((v) => v.toLowerCase().includes(filter.toLowerCase()))
+  ) : items;
+  return filtered.length === 0 ? `<div class="loomos-empty"><h3>No matching history entries</h3><p>Try a different search term.</p></div>` : `<div class="loomos-history-list">${filtered.map((item) => {
+    const isActive = activeIdentity?.chatId === item.identity.chatId && activeIdentity?.messageId === item.identity.messageId && activeIdentity?.swipeId === item.identity.swipeId;
+    return `
+          <article class="loomos-history-entry${isActive ? " loomos-history-active" : ""}">
+            <div class="loomos-history-entry-main">
+              <div class="loomos-history-entry-header">
+                <strong>${escapeHtml(item.kernelScene || "N/A")}</strong>
+                <span class="loomos-history-time">${escapeHtml(item.generatedAt)}</span>
+                ${item.repaired ? `<span class="loomos-badge loomos-badge-warning">repaired</span>` : ""}
+              </div>
+              <p class="loomos-history-entry-focus">${clampProse(item.kernelFocus, 100)}</p>
+              <div class="loomos-history-entry-meta">
+                <span>${escapeHtml(item.kernelLocation)}</span>
+                <span>${escapeHtml(item.kernelTime)}</span>
+                <span>${item.castCount} cast</span>
+                <span>${item.threadCount} threads</span>
+                <span>${item.riskCount} risks</span>
+              </div>
+              <p class="loomos-history-entry-delta">${clampProse(item.deltaHeadline, 120)}</p>
+            </div>
+            <div class="loomos-history-entry-actions">
+              <button class="loomos-button loomos-btn-sm" data-action="load-history-state"
+                data-chat-id="${escapeHtml(item.identity.chatId)}"
+                data-message-id="${escapeHtml(item.identity.messageId)}" data-swipe-id="${item.identity.swipeId}"
+                ${isActive ? "disabled" : ""}>
+                ${isActive ? "Current" : "Load"}
+              </button>
+              <button class="loomos-button loomos-button-danger loomos-btn-sm" data-action="delete-history-state"
+                  data-chat-id="${escapeHtml(item.identity.chatId)}"
+                  data-message-id="${escapeHtml(item.identity.messageId)}" data-swipe-id="${item.identity.swipeId}">
+                  Delete
+                </button>
+            </div>
+          </article>
+        `;
+  }).join("")}</div>`;
 }
 function renderHistoryTab(items, filter, activeIdentity) {
   const filtered = filter ? items.filter(
@@ -6279,45 +6438,11 @@ function renderHistoryTab(items, filter, activeIdentity) {
       <div class="loomos-search-bar">
         <input class="loomos-input" type="search" placeholder="Search scene, focus, or location"
           data-history-filter value="${escapeHtml(filter)}" aria-label="Filter tracker history" />
-        ${filter ? `<button class="loomos-button-clear" data-action="clear-history-filter" title="Clear history search" aria-label="Clear history search">&times;</button>` : ""}
-        <span class="loomos-search-count">${filtered.length} / ${items.length}</span>
+        <button class="loomos-button-clear" data-action="clear-history-filter" title="Clear history search"
+          aria-label="Clear history search"${filter ? "" : " hidden"}>&times;</button>
+        <span class="loomos-search-count" data-history-count>${filtered.length} / ${items.length}</span>
       </div>
-      ${filtered.length === 0 ? `<div class="loomos-empty"><h3>No matching history entries</h3><p>Try a different search term.</p></div>` : `<div class="loomos-history-list">${filtered.map((item) => {
-    const isActive = activeIdentity?.chatId === item.identity.chatId && activeIdentity?.messageId === item.identity.messageId && activeIdentity?.swipeId === item.identity.swipeId;
-    return `
-              <article class="loomos-history-entry${isActive ? " loomos-history-active" : ""}">
-                <div class="loomos-history-entry-main">
-                  <div class="loomos-history-entry-header">
-                    <strong>${escapeHtml(item.kernelScene || "N/A")}</strong>
-                    <span class="loomos-history-time">${escapeHtml(item.generatedAt)}</span>
-                    ${item.repaired ? `<span class="loomos-badge loomos-badge-warning">repaired</span>` : ""}
-                  </div>
-                  <p class="loomos-history-entry-focus">${clampProse(item.kernelFocus, 100)}</p>
-                  <div class="loomos-history-entry-meta">
-                    <span>${escapeHtml(item.kernelLocation)}</span>
-                    <span>${escapeHtml(item.kernelTime)}</span>
-                    <span>${item.castCount} cast</span>
-                    <span>${item.threadCount} threads</span>
-                    <span>${item.riskCount} risks</span>
-                  </div>
-                  <p class="loomos-history-entry-delta">${clampProse(item.deltaHeadline, 120)}</p>
-                </div>
-                <div class="loomos-history-entry-actions">
-                  <button class="loomos-button loomos-btn-sm" data-action="load-history-state"
-                    data-chat-id="${escapeHtml(item.identity.chatId)}"
-                    data-message-id="${escapeHtml(item.identity.messageId)}" data-swipe-id="${item.identity.swipeId}"
-                    ${isActive ? "disabled" : ""}>
-                    ${isActive ? "Current" : "Load"}
-                  </button>
-                  <button class="loomos-button loomos-button-danger loomos-btn-sm" data-action="delete-history-state"
-                      data-chat-id="${escapeHtml(item.identity.chatId)}"
-                      data-message-id="${escapeHtml(item.identity.messageId)}" data-swipe-id="${item.identity.swipeId}">
-                      Delete
-                    </button>
-                </div>
-              </article>
-            `;
-  }).join("")}</div>`}
+      <div data-history-results>${renderHistoryResults(items, filter, activeIdentity)}</div>
     </div>
   `;
 }
@@ -7676,8 +7801,7 @@ var LOOMOS_STYLES = `
   }
   .loomos-header-sticky {
     align-self: start;
-    backdrop-filter: blur(16px) saturate(1.15);
-    background: color-mix(in srgb, var(--loomos-canvas) 92%, transparent);
+    background: var(--loomos-canvas);
     border: 1px solid var(--loomos-soft-border);
     border-top: 0;
     border-radius: 0 0 8px 8px;
@@ -8006,6 +8130,144 @@ var LOOMOS_STYLES = `
     border-radius: 7px;
     padding: 9px;
   }
+  .loomos-tools-workspace {
+    display: grid;
+    gap: 7px;
+  }
+  .loomos-tools-intro {
+    background: var(--loomos-surface-1);
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 8px;
+    display: grid;
+    gap: 3px;
+    padding: 10px;
+  }
+  .loomos-tools-intro strong {
+    font-size: 13px;
+  }
+  .loomos-tools-intro p {
+    color: var(--loomos-muted);
+    font-size: 11px;
+    margin: 0;
+  }
+  .loomos-tools-grid {
+    display: grid;
+    gap: 7px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .loomos-tool-card {
+    align-content: start;
+    display: grid;
+    gap: 7px;
+    min-height: 132px;
+  }
+  .loomos-tool-card.is-empty {
+    border-style: dashed;
+  }
+  .loomos-tool-card-heading {
+    align-items: start;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+  }
+  .loomos-tool-card-heading strong {
+    display: block;
+    font-size: 13px;
+    line-height: 1.25;
+  }
+  .loomos-tool-state {
+    align-items: center;
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 999px;
+    color: var(--loomos-muted);
+    display: inline-flex;
+    flex: none;
+    font-size: 9px;
+    font-weight: 800;
+    min-height: 22px;
+    padding: 2px 7px;
+  }
+  .loomos-tool-state.is-ready {
+    color: #65d98b;
+  }
+  .loomos-tool-lead {
+    color: var(--loomos-ink);
+    font-size: 12px;
+    font-weight: 750;
+    line-height: 1.35;
+    margin: 0;
+  }
+  .loomos-image-prompt-card {
+    background: color-mix(in srgb, var(--loomos-accent) 5%, var(--loomos-surface-3));
+    grid-column: 1 / -1;
+  }
+  .loomos-tool-meta {
+    display: grid;
+    gap: 5px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .loomos-tool-meta span {
+    background: var(--loomos-surface-1);
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 7px;
+    color: var(--loomos-muted);
+    display: grid;
+    font-size: 10px;
+    gap: 1px;
+    padding: 6px;
+  }
+  .loomos-tool-meta b {
+    color: var(--loomos-ink);
+    font-size: 8px;
+    text-transform: uppercase;
+  }
+  .loomos-prompt-output {
+    background: var(--loomos-canvas);
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 8px;
+    display: grid;
+    gap: 6px;
+    padding: 8px;
+  }
+  .loomos-prompt-output-heading {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+  }
+  .loomos-prompt-output-heading span {
+    color: var(--loomos-muted);
+    font-size: 9px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+  .loomos-prompt-output pre {
+    color: var(--loomos-ink);
+    font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+    margin: 0;
+    max-height: 220px;
+    overflow: auto;
+    white-space: pre-wrap;
+  }
+  .loomos-prompt-details {
+    display: grid;
+    gap: 6px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .loomos-prompt-details details {
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 7px;
+    padding: 7px;
+  }
+  .loomos-prompt-details summary {
+    color: var(--loomos-muted);
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 800;
+  }
+  .loomos-prompt-details p {
+    margin: 6px 0 0;
+  }
   .loomos-section[data-section="cast"] .loomos-section-body {
     padding: 0;
   }
@@ -8263,7 +8525,9 @@ var LOOMOS_STYLES = `
     .loomos-settings-grid,
     .loomos-two-column,
     .loomos-card-grid,
-    .loomos-meter-grid {
+    .loomos-meter-grid,
+    .loomos-tools-grid,
+    .loomos-prompt-details {
       grid-template-columns: 1fr;
     }
     .loomos-facts,
@@ -8318,7 +8582,7 @@ var LOOMOS_STYLES = `
     }
   }
 
-  /* 0.1.10 chat tracker viewer */
+  /* 0.1.11 chat tracker viewer */
   .loomos-root[data-view="modal"] {
     container-name: loomos-viewer;
     container-type: inline-size;
@@ -8335,8 +8599,7 @@ var LOOMOS_STYLES = `
     min-width: 0;
   }
   .loomos-viewer-command {
-    backdrop-filter: blur(18px) saturate(1.12);
-    background: color-mix(in srgb, var(--loomos-canvas) 94%, transparent);
+    background: var(--loomos-canvas);
     border: 1px solid var(--loomos-soft-border);
     border-top: 0;
     border-radius: 0 0 8px 8px;
@@ -8398,7 +8661,7 @@ var LOOMOS_STYLES = `
     border-radius: 8px;
     display: grid;
     gap: 3px;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     margin: 0;
     padding: 4px;
     position: sticky;
@@ -8437,17 +8700,11 @@ var LOOMOS_STYLES = `
   .loomos-root[data-view="modal"] .loomos-cast-meta {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .loomos-root[data-view="modal"] .loomos-card {
-    content-visibility: auto;
-    contain-intrinsic-size: 210px;
-  }
   .loomos-root[data-view="modal"] .loomos-history-list {
     max-height: none;
     overflow: visible;
   }
   .loomos-root[data-view="modal"] .loomos-history-entry {
-    content-visibility: auto;
-    contain-intrinsic-size: 190px;
     display: grid;
     gap: 8px;
     grid-template-columns: minmax(0, 1fr) 92px;
@@ -8611,8 +8868,12 @@ var LOOMOS_STYLES = `
       grid-column: 1 / -1;
     }
     .loomos-root[data-view="modal"] .loomos-viewer-tabs {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       position: static;
+    }
+    .loomos-tools-grid,
+    .loomos-prompt-details {
+      grid-template-columns: 1fr;
     }
     .loomos-root[data-view="modal"] .loomos-overview-stats {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -8758,7 +9019,7 @@ function setup(ctx) {
         stopElapsedTimer();
         return;
       }
-      renderAll();
+      updateLiveStatusDom();
     }, 1e3);
   }
   function elapsedLabel() {
@@ -9129,14 +9390,14 @@ function setup(ctx) {
     const elapsed = generationStartedAt ? Math.floor((Date.now() - generationStartedAt) / 1e3) : 0;
     const phaseLabel = pipeline ? pipeline.phase.replace("_", " ") : "resolving";
     return `
-      <div class="loomos-shell loomos-compile-status loomos-pulse" style="margin-top: 8px;">
+      <div class="loomos-shell loomos-compile-status loomos-pulse" data-live-compile style="margin-top: 8px;">
         <div class="loomos-row-title">
           <strong>Compiling Story State...</strong>
-          <span class="loomos-badge loomos-badge-compiling">${elapsed}s</span>
+          <span class="loomos-badge loomos-badge-compiling" data-live-elapsed>${elapsed}s</span>
         </div>
-        <p>${escapeHtml(status)}</p>
+        <p data-live-status>${escapeHtml(status)}</p>
         <div class="loomos-meter-track"><i style="width: 100%; animation: loomos-bar-pulse 2s infinite;"></i></div>
-        <small>Phase: ${escapeHtml(phaseLabel)} | Attempt: ${pipeline ? pipeline.attempt : 1}/2</small>
+        <small>Phase: <span data-live-phase>${escapeHtml(phaseLabel)}</span> | Attempt: <span data-live-attempt>${pipeline ? pipeline.attempt : 1}</span>/2</small>
       </div>
     `;
   }
@@ -9564,7 +9825,7 @@ function setup(ctx) {
   }
   function diagnosticText() {
     const lines = [
-      `version: 0.1.10`,
+      `version: 0.1.11`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -9592,6 +9853,7 @@ function setup(ctx) {
       { id: "world", label: "World", meta: state?.scene?.items.length ?? 0 },
       { id: "story", label: "Story", meta: state?.storyState.threadLoom.filter((thread) => thread.status !== "resolved").length ?? 0 },
       { id: "continuity", label: "Memory", meta: state?.continuityFirewall.risks.length ?? 0 },
+      { id: "tools", label: "Tools", meta: TOOL_MODULE_KEYS.filter((key) => settings.moduleSettings[key].track || settings.moduleSettings[key].display).length },
       { id: "history", label: "History", meta: historyItems.length },
       ...includeSettings ? [{ id: "settings", label: "Setup", meta: MODULE_KEYS.filter((key) => settings.moduleSettings[key].track).length }] : []
     ];
@@ -9611,10 +9873,10 @@ function setup(ctx) {
         <div class="loomos-context-bar">
           <div class="loomos-title">
             <strong>${escapeHtml(exactLabel())}</strong>
-            <span>${escapeHtml(status)}</span>
+            <span data-live-status>${escapeHtml(status)}</span>
           </div>
-          <span class="loomos-state-pill${busy ? " is-busy" : state ? " is-ready" : ""}" title="${escapeHtml(elapsedLabel())}">
-            <i></i>${stateLabel}
+          <span class="loomos-state-pill${busy ? " is-busy" : state ? " is-ready" : ""}" data-live-pill title="${escapeHtml(elapsedLabel())}">
+            <i></i><span data-live-state-label>${stateLabel}</span>
           </span>
         </div>
         <div class="loomos-header-actions">
@@ -9655,12 +9917,12 @@ function setup(ctx) {
           <span class="loomos-kicker">LoomOS tracker</span>
           <div class="loomos-viewer-title-row">
             <h1>${escapeHtml(sceneTitle)}</h1>
-            <span class="loomos-state-pill${busy ? " is-busy" : state ? " is-ready" : ""}" title="${escapeHtml(elapsedLabel())}">
-              <i></i>${stateLabel}
+            <span class="loomos-state-pill${busy ? " is-busy" : state ? " is-ready" : ""}" data-live-pill title="${escapeHtml(elapsedLabel())}">
+              <i></i><span data-live-state-label>${stateLabel}</span>
             </span>
           </div>
           <p>${escapeHtml(sceneMeta || exactLabel())}</p>
-          <small>${escapeHtml(exactLabel())}</small>
+          <small data-live-status>${escapeHtml(exactLabel())} | ${escapeHtml(status)}</small>
         </div>
         <div class="loomos-viewer-actions">
           ${busy ? `<button class="loomos-button loomos-button-danger loomos-button-pulse loomos-viewer-primary" data-action="cancel">Stop compile</button>` : `<button class="loomos-button loomos-button-primary loomos-viewer-primary" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh tracker" : "Generate tracker"}</button>`}
@@ -9695,12 +9957,61 @@ function setup(ctx) {
       ${shell.css ? `<style>${shell.css}</style>` : ""}
       <div class="loomos-viewer-shell ${shell.wrapperClass}">${shell.html}</div>`;
   }
-  function renderAll(preserveDisclosure = true) {
+  function renderSurfaces(preserveDisclosure = true) {
     const uiState = captureUiState();
     renderDrawer();
     renderViewer();
-    refreshAllMessageWidgets();
     restoreUiState(uiState, preserveDisclosure);
+  }
+  function renderAll(preserveDisclosure = true) {
+    renderSurfaces(preserveDisclosure);
+    refreshAllMessageWidgets();
+  }
+  function updateLiveStatusDom() {
+    const busy = activeGenerationRequestId !== null;
+    const stateLabel = busy ? "Compiling" : state ? "Synced" : "No state";
+    const phaseLabel = pipeline ? pipeline.phase.replaceAll("_", " ") : "resolving";
+    const elapsed = generationStartedAt && busy ? Math.floor((Date.now() - generationStartedAt) / 1e3) : 0;
+    const roots = [tab.root, modal?.root].filter((root) => Boolean(root));
+    for (const root of roots) {
+      root.querySelectorAll("[data-live-status]").forEach((element) => {
+        if (element.closest(".loomos-viewer-context") && element.tagName === "SMALL") {
+          element.textContent = `${exactLabel()} | ${status}`;
+        } else {
+          element.textContent = status;
+        }
+      });
+      root.querySelectorAll("[data-live-pill]").forEach((pill) => {
+        pill.classList.toggle("is-busy", busy);
+        pill.classList.toggle("is-ready", !busy && Boolean(state));
+        pill.title = elapsedLabel();
+      });
+      root.querySelectorAll("[data-live-state-label]").forEach((element) => {
+        element.textContent = stateLabel;
+      });
+      root.querySelectorAll("[data-live-elapsed]").forEach((element) => {
+        element.textContent = `${elapsed}s`;
+      });
+      root.querySelectorAll("[data-live-phase]").forEach((element) => {
+        element.textContent = phaseLabel;
+      });
+      root.querySelectorAll("[data-live-attempt]").forEach((element) => {
+        element.textContent = String(pipeline?.attempt ?? 1);
+      });
+    }
+  }
+  function updateHistorySurface(root) {
+    const results = root.querySelector("[data-history-results]");
+    if (!results) return;
+    results.innerHTML = renderHistoryResults(historyItems, historyFilter, activeIdentity);
+    const filterLower = historyFilter.toLowerCase();
+    const matchCount = historyFilter ? historyItems.filter(
+      (item) => [item.kernelScene, item.kernelFocus, item.kernelLocation, item.deltaHeadline, item.identity.messageId].some((value) => value.toLowerCase().includes(filterLower))
+    ).length : historyItems.length;
+    const count = root.querySelector("[data-history-count]");
+    if (count) count.textContent = `${matchCount} / ${historyItems.length}`;
+    const clear = root.querySelector('[data-action="clear-history-filter"]');
+    if (clear) clear.hidden = historyFilter.length === 0;
   }
   function openViewer() {
     viewerTab = activeTab === "settings" ? "overview" : activeTab;
@@ -11096,6 +11407,7 @@ ${draft.cssTemplate}`);
   function handleBackendMessage(payload) {
     if (!isRecord(payload) || typeof payload.type !== "string") return;
     const response = payload;
+    let renderMode = "all";
     switch (response.type) {
       case "bootstrap":
         settings = response.settings;
@@ -11115,6 +11427,7 @@ ${draft.cssTemplate}`);
       case "settings":
         settings = response.settings;
         status = "Settings saved";
+        renderMode = "surfaces";
         if (activeIdentity?.chatId) {
           send({ type: "get_chat_states", requestId: requestId("chat-states-settings"), chatId: activeIdentity.chatId });
           send({ type: "list_state_history", requestId: requestId("history-settings"), chatId: activeIdentity.chatId });
@@ -11123,6 +11436,7 @@ ${draft.cssTemplate}`);
       case "connections":
         connections = response.connections;
         status = connections.length > 0 ? "Connections refreshed" : "No ready connections found";
+        renderMode = "surfaces";
         break;
       case "state":
         activeIdentity = response.identity;
@@ -11139,6 +11453,7 @@ ${draft.cssTemplate}`);
       case "permissions":
         permissions = response.permissions;
         status = "Permissions updated";
+        renderMode = "surfaces";
         break;
       case "generation_status":
         if (response.report) pipeline = response.report;
@@ -11146,10 +11461,12 @@ ${draft.cssTemplate}`);
           activeGenerationRequestId = response.requestId;
           if (response.identity) activeIdentity = response.identity;
           status = response.message ?? "Compiling story state";
+          renderMode = response.status === "progress" ? "live" : "surfaces";
         } else {
           if (activeGenerationRequestId === response.requestId) activeGenerationRequestId = null;
           stopElapsedTimer();
           status = response.message ?? (response.status === "completed" ? "State compiled" : response.status);
+          renderMode = "surfaces";
           if (activeIdentity?.chatId) {
             send({ type: "get_chat_states", requestId: requestId("chat-states"), chatId: activeIdentity.chatId });
             send({ type: "list_state_history", requestId: requestId("history-generation"), chatId: activeIdentity.chatId });
@@ -11159,23 +11476,21 @@ ${draft.cssTemplate}`);
       case "chat_states":
         if (response.chatId === ctx.getActiveChat().chatId) {
           chatStates = response.states;
-          refreshAllMessageWidgets();
         }
         break;
       case "state_history":
         historyItems = response.items;
-        refreshAllMessageWidgets();
         break;
       case "history_state_deleted": {
         historyItems = response.items;
         const deletedActive = activeIdentity?.chatId === response.identity.chatId && activeIdentity.messageId === response.identity.messageId && activeIdentity.swipeId === response.identity.swipeId;
         if (deletedActive) state = null;
         status = "History tracker deleted";
-        refreshAllMessageWidgets();
         break;
       }
       case "injection_preview":
         injectionPreview = response.preview;
+        renderMode = "surfaces";
         break;
       case "error":
         if (response.requestId === activeGenerationRequestId) {
@@ -11183,9 +11498,16 @@ ${draft.cssTemplate}`);
           stopElapsedTimer();
         }
         status = response.message;
+        renderMode = "surfaces";
         break;
     }
-    renderAll();
+    if (renderMode === "live") {
+      updateLiveStatusDom();
+    } else if (renderMode === "surfaces") {
+      renderSurfaces();
+    } else {
+      renderAll();
+    }
   }
   function handleActionClick(event) {
     const target = event.target;
@@ -11219,7 +11541,21 @@ ${draft.cssTemplate}`);
       if (action === "delete-history-state") void deleteHistoryState(actionBtn);
       if (action === "clear-history-filter") {
         historyFilter = "";
-        renderAll();
+        const root = modal?.root.contains(actionBtn) ? modal.root : tab.root;
+        const input = root.querySelector("[data-history-filter]");
+        if (input) input.value = "";
+        updateHistorySurface(root);
+        input?.focus();
+      }
+      if (action === "copy-image-prompt" && state?.tools.imagePrompt) {
+        const prompt = state.tools.imagePrompt.full || [state.tools.imagePrompt.subject, state.tools.imagePrompt.positive].filter(Boolean).join(", ");
+        void navigator.clipboard.writeText(prompt).then(() => {
+          status = "Image prompt copied";
+          updateLiveStatusDom();
+        }).catch(() => {
+          status = "Could not copy image prompt";
+          updateLiveStatusDom();
+        });
       }
       if (action === "copy-injection-preview" && injectionPreview) {
         void navigator.clipboard.writeText(injectionPreview.text).then(() => {
@@ -11322,7 +11658,8 @@ ${draft.cssTemplate}`);
     const target = event.target;
     if (target?.matches("[data-history-filter]")) {
       historyFilter = target.value;
-      renderAll();
+      const root = modal?.root.contains(target) ? modal.root : tab.root;
+      updateHistorySurface(root);
       return;
     }
     if (!target?.matches("[data-module-search]")) return;

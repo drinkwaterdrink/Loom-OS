@@ -9,6 +9,7 @@ test("mobile workspace uses compact navigation and a dedicated setup view", asyn
   const source = await readFile("src/frontend.ts", "utf8");
   assert.match(source, /label: "Pulse"/);
   assert.match(source, /label: "Memory"/);
+  assert.match(source, /label: "Tools"/);
   assert.match(source, /label: "Setup"/);
   assert.match(source, /activeTab === "settings"/);
   assert.match(source, /stickyHeaderHtml\(true, "drawer"\)/);
@@ -17,6 +18,8 @@ test("mobile workspace uses compact navigation and a dedicated setup view", asyn
   assert.match(source, /delete_history_state/);
   assert.match(source, /data-tab-scope/);
   assert.match(source, /viewerCommandHtml/);
+  assert.match(source, /updateLiveStatusDom/);
+  assert.match(source, /updateHistorySurface/);
   assert.doesNotMatch(source, /<details class="loomos-shell loomos-settings"/);
 });
 
@@ -28,9 +31,13 @@ test("responsive design layer uses full-width grid navigation and safe areas", a
   assert.match(styles, /grid-auto-rows:\s*max-content/);
   assert.match(styles, /@container loomos-viewer/);
   assert.match(styles, /\.loomos-viewer-command/);
+  assert.match(styles, /\.loomos-tools-grid/);
+  assert.match(styles, /\.loomos-image-prompt-card/);
   assert.match(styles, /\.loomos-section\[data-section="cast"\] \.loomos-card/);
   assert.match(styles, /@media \(max-width: 380px\)/);
   assert.doesNotMatch(styles, /linear-gradient/);
+  assert.doesNotMatch(styles, /content-visibility/);
+  assert.doesNotMatch(styles, /backdrop-filter/);
 });
 
 test("preview server serves browser modules with a JavaScript MIME type", async () => {
@@ -57,6 +64,7 @@ test("history uses a compact archive heading and search surface", () => {
   assert.match(html, /Exact-swipe archive/);
   assert.match(html, /Tracker history/);
   assert.match(html, /Search scene, focus, or location/);
+  assert.match(html, /data-history-results/);
 });
 
 test("schema studio exposes viewer editing and per-module portability", async () => {

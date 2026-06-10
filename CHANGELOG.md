@@ -2,6 +2,29 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.11] - 2026-06-08
+
+### Added
+
+- A dedicated Tools workspace in both the drawer and chat tracker viewer, with explicit status cards for Action Resolver, Dialogue State, Director Style, Closeness State, and Image Prompt.
+- A full Image Prompt presentation with aspect, shot, medium, subject, positive guidance, negative guidance, full prompt, generation hint, and one-tap copy action.
+- Tool diagnostics for disabled, Display-hidden, Track-disabled, refresh-needed, null-output, and ready states.
+- Regression coverage for Image Prompt visibility, full prompt rendering, Tools navigation, targeted History updates, and mobile-safe rendering rules.
+
+### Changed
+
+- Replaced timer-driven full application rerenders with in-place compiler status updates.
+- History search now updates only the active results container instead of rebuilding the drawer, viewer, and every message widget on each keystroke.
+- Expanded mobile viewer navigation to include Tools in a stable four-column grid.
+- Replaced translucent blur-heavy sticky surfaces with crisp opaque surfaces and removed `content-visibility` from modal cards and history entries for embedded-webview stability.
+- Updated the local preview with a complete generated Image Prompt fixture.
+
+### Fixed
+
+- Prevented the tracker viewer from appearing frozen during long compiler runs or rapid History filtering.
+- Prevented the Tools section from disappearing when displayed tools returned `null`.
+- Made newly enabled Image Prompt modules explain that the current exact-swipe tracker must be refreshed before generated output can appear.
+
 ## [0.1.10] - 2026-06-08
 
 ### Added

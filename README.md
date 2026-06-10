@@ -1,18 +1,18 @@
 # LoomOS Command Deck
 
-Current release: **0.1.10**
+Current release: **0.1.11**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.10
+## Key Features & Upgrades in 0.1.11
 
-- **Completely rebuilt chat tracker viewer**: The pop-up tracker opened from chat now has its own scene-first command header, independent viewer tabs, dense mobile layout, compact status chips, and full-width reading panes.
-- **History actions fixed**: History rows now use exact archived `chatId + messageId + swipeId` identities for Load and Delete, so old trackers can be inspected or removed even when they are not the currently active message.
-- **Schema & Presentation Studio**: Setup now includes a creation workspace for generation contracts, viewer HTML/CSS, stock module HTML/CSS, and portable module import/export.
-- **Per-module portability**: Stock and custom modules can be exported as `loomos-module` JSON bundles and imported later without hand-editing settings files.
-- **Safe theming controls**: The viewer and modules support sanitized, scoped HTML/CSS templates with known slots, so layout experiments stay local to LoomOS instead of leaking into Lumiverse.
+- **Viewer freeze fix**: The tracker no longer rebuilds the entire drawer, modal, and message widgets every second while compiling. Live status updates now patch visible status text in place.
+- **Stable History search**: Typing in History updates only the result list, preserving mobile input focus and scroll position.
+- **Dedicated Tools workspace**: Pulse, Cast, World, Story, Memory, Tools, and History are now available in the chat tracker viewer. Tools stays discoverable even when a tool has no generated payload.
+- **Image Prompt visibility**: Image Prompt now shows clear off, hidden, refresh-needed, no-output, and ready states. Ready prompts expose aspect, shot, medium, subject, full prompt, positive guidance, negative guidance, hint, and a copy button.
+- **Mobile-safe polish pass**: The viewer uses crisp opaque sticky surfaces and avoids embedded-webview-expensive blur and `content-visibility` behavior.
 
 ---
 
@@ -44,13 +44,13 @@ LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat h
 
 The chat tracker viewer is the modal opened from the input action or message widget. It is separate from the LoomOS drawer and is optimized for reading the active tracker inside the chat screen. The viewer uses a sticky scene command header, exact-swipe identity text, current sync or compilation status, and primary actions without repeating the drawer's Setup controls.
 
-The viewer navigation is independent from the drawer. Switching the modal between Pulse, Cast, World, Story, Memory, and History does not move the drawer's tab. On narrow screens the navigation becomes a stable three-by-two grid with large touch targets and no horizontal scroll. The layout uses container queries, safe-area padding, content visibility, and compact module sections to keep the tracker readable on phone screens.
+The viewer navigation is independent from the drawer. Switching the modal between Pulse, Cast, World, Story, Memory, Tools, and History does not move the drawer's tab. On narrow screens the navigation becomes a stable four-column touch grid with no horizontal scroll. The layout uses container queries, safe-area padding, opaque sticky surfaces, and compact module sections to keep the tracker readable inside mobile chat screens.
 
-The drawer still owns Setup. The pop-up viewer stays focused on tracker reading, history inspection, and direct tracker actions: generate/refresh, reload, delete, and review changes.
+The drawer still owns Setup. The pop-up viewer stays focused on tracker reading, generated tools, history inspection, and direct tracker actions: generate/refresh, reload, delete, copy prompt outputs, and review changes.
 
 ## Workspace Views
 
-The drawer presents seven workspaces. The viewer presents the six tracker-reading workspaces. Tab choice, scroll position, focused controls, and expandable section states are preserved across re-renders.
+The drawer presents eight workspaces. The viewer presents the seven tracker-reading workspaces. Tab choice, scroll position, focused controls, and expandable section states are preserved across re-renders.
 
 ### Pulse
 A scan-first scene summary showing the latest delta, location, timeframe, injection state, and stable counts for cast, threads, risks, and active modules. **Review changes** opens the focused delta modal. Kernel, Delta, Meters, Tools, and custom modules remain available as compact expandable sections below it.
@@ -58,7 +58,7 @@ A scan-first scene summary showing the latest delta, location, timeframe, inject
 - **Kernel** — Scene name, current focus, summary, POV, tone, objective, risk, stop mode, and constraints.
 - **Delta** — Headline, all changes with importance badges (low/medium/high/critical), carried-forward facts, and newly-established facts.
 - **Meters** — Diagnostic gauges (tension, danger, coherence, etc.) with trend indicators, bar visualization, and band labels.
-- **Tools** — Action Resolver, Dialogue State, Director Style, Closeness State, and Image Prompt cards (visibility controlled by settings).
+- **Tools** — Compact Action Resolver, Dialogue State, Director Style, Closeness State, and Image Prompt cards. The full Tools workspace gives every tool an explicit status.
 - **Custom Modules** — User-defined module cards rendered in their configured output mode (cards, bullets, chips, gauge, or sanitized template).
 
 ### Cast
@@ -88,6 +88,17 @@ The **Continuity Firewall** protects story coherence:
 - **Banned / Impossible Next** — Moves the story should avoid, with persistence flags.
 - **Audit Log** — Compiler steps, validation results, and repair history.
 
+### Tools
+Generated utility modules for the exact swipe:
+
+- **Action Resolver** — Current user action, expected world response, risk, and blockers.
+- **Dialogue State** — Open conversational thread, social mask, levers, and taboos.
+- **Director Style** — Optional scene-framing pressure, narrative mask, push, and voice cues.
+- **Closeness State** — Non-explicit emotional/physical closeness, consent signals, and boundaries.
+- **Image Prompt** — Visual generation payload with aspect, shot, medium, subject, positive prompt, negative prompt, full prompt, hint, and copy control.
+
+The Tools workspace intentionally shows diagnostic cards when a module is configured but has no output. If Image Prompt was toggled on after the current tracker was generated, LoomOS shows **Refresh needed** because Track changes affect future compilations. If the module was active but the compiler returned `null`, LoomOS shows **No output** and explains that the current snapshot did not produce an image prompt.
+
 ### History
 The **State History Timeline** shows every state snapshot generated for the active chat, sorted newest-first. Each entry displays:
 - Scene name and generation timestamp
@@ -96,7 +107,7 @@ The **State History Timeline** shows every state snapshot generated for the acti
 - Cast, thread, and risk counts
 - Delta headline
 
-Use the search bar to filter by scene, focus, location, or message ID. Click **Load** to inspect any historical snapshot. The currently active state is highlighted. Delete buttons remove unwanted snapshots from storage. Previous chat messages also receive an inline **Tracker history** control when they have stored state, with one button per saved swipe.
+Use the search bar to filter by scene, focus, location, or message ID. Search updates only the history results list so mobile input focus and scroll position stay stable. Click **Load** to inspect any historical snapshot. The currently active state is highlighted. Delete buttons remove unwanted snapshots from storage. Previous chat messages also receive an inline **Tracker history** control when they have stored state, with one button per saved swipe.
 
 ### Setup
 The drawer-only Setup workspace contains:
@@ -113,7 +124,7 @@ The drawer-only Setup workspace contains:
 
 ## Control Dock
 
-A compact sticky command dock pins to the top of both the drawer and viewer. It shows the exact message/swipe, current status text, and a visible `Synced`, `Compiling`, or `No state` indicator. Commands reflow without overlapping at narrow widths.
+A compact sticky command dock pins to the top of both the drawer and viewer. It shows the exact message/swipe, current status text, and a visible `Synced`, `Compiling`, or `No state` indicator. During compilation, elapsed time and phase status update in place instead of rebuilding the full tracker. Commands reflow without overlapping at narrow widths.
 
 | Button | Action |
 |---|---|
@@ -214,7 +225,7 @@ Open **Setup -> Schema & Presentation Studio** to edit both sides of LoomOS: wha
 | Slot | Contents |
 |---|---|
 | `{{command}}` | Exact-swipe scene header, status, and tracker commands |
-| `{{navigation}}` | Pulse, Cast, World, Story, Memory, and History tabs |
+| `{{navigation}}` | Pulse, Cast, World, Story, Memory, Tools, and History tabs |
 | `{{content}}` | The active viewer workspace |
 
 The template must include `{{content}}`; otherwise LoomOS falls back to the starter layout. User HTML is sanitized and CSS is scoped to the viewer shell. Scripts, event handlers, forms, embedded frames, external URLs, and global selectors are removed. The editor can restore the starter HTML/CSS and disable the custom presentation without deleting the saved draft.
@@ -295,7 +306,7 @@ All settings are stored per user in `settings.json` inside `spindle.userStorage`
 | `viewerHtmlTemplate` | `""` | string, max 16,000 | Stores the sanitized viewer layout using `{{command}}`, `{{navigation}}`, and `{{content}}` slots. A missing content slot causes the starter layout to be used. |
 | `viewerCssTemplate` | `""` | string, max 16,000 | Stores CSS scoped to the custom viewer shell. External resources, unsafe constructs, and selectors that could style the host application are removed. |
 | `modulePreset` | `"balanced"` | built-in or custom preset ID | Selects a saved Track/Display/Inject configuration. Changing it updates module controls together; it does not delete previously stored state fields. Manual module changes switch the active configuration to custom. |
-| `moduleSettings` | balanced defaults | per-module Track/Display/Inject controls | Determines which stock data the compiler requests, which sections the dashboard shows, and which compiled fragments may enter future prompt injection. Track affects future compiled snapshots; Display affects UI only; Inject affects prompt context only. |
+| `moduleSettings` | balanced defaults | per-module Track/Display/Inject controls | Determines which stock data the compiler requests, which sections the dashboard shows, and which compiled fragments may enter future prompt injection. Track affects future compiled snapshots; Display affects UI panels; Inject affects prompt context. The Tools workspace also explains hidden, disabled, stale, or null tool outputs so configured tools do not appear to vanish. |
 | `stockModuleOverrides` | `{}` | per-module object | Stores stock module label, description, group, ordering, visibility, default preferences, prompt-facing schema replacement, compiler instruction replacement, additional guidance, and optional scoped HTML/CSS presentation. The strict State V2 storage validator remains unchanged. |
 | `customModulePresets` | `[]` | array | Stores named snapshots of stock module Track/Display/Inject controls for quick switching. Presets do not contain compiled story state. |
 | `customModules` | `[]` | array | Defines user-created trackers, their compiler instructions, editable field schemas, output modes, templates, ordering, and Track/Display/Inject behavior. Enabled custom modules increase compiler prompt size and may increase generated state size. |

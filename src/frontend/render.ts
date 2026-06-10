@@ -6,6 +6,7 @@ import type {
   StateIdentity,
   InjectionPreview,
 } from "../shared/types";
+import { TOOL_MODULE_KEYS } from "../shared/modules";
 import { renderCustomTemplate } from "../shared/customTemplates";
 import { renderStockModulePresentation } from "../shared/presentation";
 
@@ -451,53 +452,183 @@ function renderContinuity(state: LoomOSState, settings: LoomOSSettings): string 
   `, true, settings, "continuity");
 }
 
-function renderTools(state: LoomOSState, settings: LoomOSSettings): string {
+function toolStateCard(
+  state: LoomOSState,
+  settings: LoomOSSettings,
+  key: typeof TOOL_MODULE_KEYS[number],
+  label: string,
+): string {
+  const control = settings.moduleSettings[key];
+  const generatedWithModule = state.activeModules.includes(key);
+  let message = "This tool is off.";
+  let stateLabel = "Off";
+  let action = "";
+
+  if (!control.display && control.track) {
+    stateLabel = "Hidden";
+    message = "Tracking is on, but Display is off. Enable Display in Setup to show its output.";
+  } else if (control.display && !control.track) {
+    stateLabel = "Track off";
+    message = "Display is on, but Track is off. Enable Track, then refresh this tracker.";
+  } else if (control.track && control.display && !generatedWithModule) {
+    stateLabel = "Refresh needed";
+    message = "This exact-swipe tracker was generated before the tool was enabled.";
+    action = `<button class="loomos-button loomos-btn-sm" data-action="generate">Refresh tracker</button>`;
+  } else if (control.track && control.display) {
+    stateLabel = "No output";
+    message = key === "imagePrompt"
+      ? "The compiler returned no image prompt for this snapshot. Refresh after a visually distinct scene, or adjust the module guidance in Setup."
+      : "The compiler returned no value for this tool on the current snapshot.";
+    action = `<button class="loomos-button loomos-btn-sm" data-action="generate">Refresh tracker</button>`;
+  }
+
+  return `<article class="loomos-card loomos-tool-card is-empty">
+    <div class="loomos-tool-card-heading">
+      <div><span class="loomos-kicker">Tool</span><strong>${escapeHtml(label)}</strong></div>
+      <span class="loomos-tool-state">${escapeHtml(stateLabel)}</span>
+    </div>
+    <p>${escapeHtml(message)}</p>
+    ${action}
+  </article>`;
+}
+
+function renderTools(
+  state: LoomOSState,
+  settings: LoomOSSettings,
+  standalone = false,
+): string {
   const tools = state.tools;
-  const blocks: string[] = [];
-  if (visible(settings, "actionResolver") && tools.actionResolver) {
-    blocks.push(`<article class="loomos-card">
-      <span class="loomos-kicker">Action Resolver</span>
-      <strong>${clampProse(tools.actionResolver.userAction, 100)}</strong>
+  const readyBlocks: string[] = [];
+  const emptyBlocks: string[] = [];
+  const include = (key: typeof TOOL_MODULE_KEYS[number]) =>
+    standalone || visible(settings, key);
+  const renderEmpty = (
+    key: typeof TOOL_MODULE_KEYS[number],
+    label: string,
+  ) => {
+    if (include(key)) emptyBlocks.push(toolStateCard(state, settings, key, label));
+  };
+
+  if (include("actionResolver") && visible(settings, "actionResolver") && tools.actionResolver) {
+    readyBlocks.push(`<article class="loomos-card loomos-tool-card">
+      <div class="loomos-tool-card-heading">
+        <div><span class="loomos-kicker">Tool</span><strong>Action Resolver</strong></div>
+        <span class="loomos-tool-state is-ready">Ready</span>
+      </div>
+      <p class="loomos-tool-lead">${clampProse(tools.actionResolver.userAction, 160)}</p>
       <p>${clampProse(tools.actionResolver.worldResponse, 120)}</p>
       <small>Risk: ${clampProse(tools.actionResolver.risk, 100)}</small>
       ${chips(tools.actionResolver.blockers)}
     </article>`);
+  } else {
+    renderEmpty("actionResolver", "Action Resolver");
   }
-  if (visible(settings, "dialogueState") && tools.dialogueState) {
-    blocks.push(`<article class="loomos-card">
-      <span class="loomos-kicker">Dialogue</span>
-      <strong>${clampProse(tools.dialogueState.openThread, 100)}</strong>
+  if (include("dialogueState") && visible(settings, "dialogueState") && tools.dialogueState) {
+    readyBlocks.push(`<article class="loomos-card loomos-tool-card">
+      <div class="loomos-tool-card-heading">
+        <div><span class="loomos-kicker">Tool</span><strong>Dialogue State</strong></div>
+        <span class="loomos-tool-state is-ready">Ready</span>
+      </div>
+      <p class="loomos-tool-lead">${clampProse(tools.dialogueState.openThread, 140)}</p>
       <p>${clampProse(tools.dialogueState.socialMask, 120)}</p>
       ${chips(tools.dialogueState.levers)}
     </article>`);
+  } else {
+    renderEmpty("dialogueState", "Dialogue State");
   }
-  if (visible(settings, "directorStyle") && tools.directorStyle) {
-    blocks.push(`<article class="loomos-card">
-      <span class="loomos-kicker">Director Style</span>
-      <strong>${clampProse(tools.directorStyle.primary, 100)}</strong>
+  if (include("directorStyle") && visible(settings, "directorStyle") && tools.directorStyle) {
+    readyBlocks.push(`<article class="loomos-card loomos-tool-card">
+      <div class="loomos-tool-card-heading">
+        <div><span class="loomos-kicker">Tool</span><strong>Director Style</strong></div>
+        <span class="loomos-tool-state is-ready">Ready</span>
+      </div>
+      <p class="loomos-tool-lead">${clampProse(tools.directorStyle.primary, 140)}</p>
       <p>${clampProse(tools.directorStyle.push, 120)}</p>
       ${chips(tools.directorStyle.voiceCues)}
     </article>`);
+  } else {
+    renderEmpty("directorStyle", "Director Style");
   }
-  if (visible(settings, "closenessState") && tools.closenessState) {
-    blocks.push(`<article class="loomos-card">
-      <span class="loomos-kicker">Closeness</span>
-      <strong>${clampProse(tools.closenessState.emotional, 100)}</strong>
+  if (include("closenessState") && visible(settings, "closenessState") && tools.closenessState) {
+    readyBlocks.push(`<article class="loomos-card loomos-tool-card">
+      <div class="loomos-tool-card-heading">
+        <div><span class="loomos-kicker">Tool</span><strong>Closeness State</strong></div>
+        <span class="loomos-tool-state is-ready">Ready</span>
+      </div>
+      <p class="loomos-tool-lead">${clampProse(tools.closenessState.emotional, 140)}</p>
       <p>${clampProse(tools.closenessState.physical, 120)}</p>
       ${chips(tools.closenessState.boundaries)}
     </article>`);
+  } else {
+    renderEmpty("closenessState", "Closeness State");
   }
-  if (visible(settings, "imagePrompt") && tools.imagePrompt) {
-    blocks.push(`<article class="loomos-card">
-      <span class="loomos-kicker">Image Prompt</span>
-      <strong>${escapeHtml(tools.imagePrompt.shot)} | ${escapeHtml(tools.imagePrompt.medium)}</strong>
-      <p>${clampProse(tools.imagePrompt.subject, 120)}</p>
-      <small>${clampProse(tools.imagePrompt.hint, 100)}</small>
+  if (include("imagePrompt") && visible(settings, "imagePrompt") && tools.imagePrompt) {
+    const fullPrompt = tools.imagePrompt.full
+      || [tools.imagePrompt.subject, tools.imagePrompt.positive].filter(Boolean).join(", ");
+    readyBlocks.unshift(`<article class="loomos-card loomos-tool-card loomos-image-prompt-card">
+      <div class="loomos-tool-card-heading">
+        <div><span class="loomos-kicker">Visual generator</span><strong>Image Prompt</strong></div>
+        <span class="loomos-tool-state is-ready">Ready</span>
+      </div>
+      <div class="loomos-tool-meta">
+        <span><b>Aspect</b>${escapeHtml(tools.imagePrompt.aspect || "Not set")}</span>
+        <span><b>Shot</b>${escapeHtml(tools.imagePrompt.shot || "Not set")}</span>
+        <span><b>Medium</b>${escapeHtml(tools.imagePrompt.medium || "Not set")}</span>
+      </div>
+      <p class="loomos-tool-lead">${clampProse(tools.imagePrompt.subject, 260)}</p>
+      <div class="loomos-prompt-output">
+        <div class="loomos-prompt-output-heading">
+          <span>Full prompt</span>
+          <button class="loomos-button loomos-btn-sm" data-action="copy-image-prompt">Copy prompt</button>
+        </div>
+        <pre>${escapeHtml(fullPrompt)}</pre>
+      </div>
+      <div class="loomos-prompt-details">
+        <details>
+          <summary>Positive guidance</summary>
+          <p>${escapeHtml(tools.imagePrompt.positive || "None generated.")}</p>
+        </details>
+        <details>
+          <summary>Negative guidance</summary>
+          <p>${escapeHtml(tools.imagePrompt.negative || "None generated.")}</p>
+        </details>
+      </div>
+      ${tools.imagePrompt.hint ? `<small>${clampProse(tools.imagePrompt.hint, 240)}</small>` : ""}
     </article>`);
+  } else {
+    renderEmpty("imagePrompt", "Image Prompt");
   }
-  return blocks.length === 0
+  const blocks = [...readyBlocks, ...emptyBlocks];
+
+  if (standalone) {
+    const configured = TOOL_MODULE_KEYS.filter((key) =>
+      settings.moduleSettings[key].track || settings.moduleSettings[key].display
+    ).length;
+    const ready = TOOL_MODULE_KEYS.filter((key) =>
+      settings.moduleSettings[key].display && Boolean(tools[key])
+    ).length;
+    return `<div class="loomos-tools-workspace">
+      <header class="loomos-view-heading">
+        <div><span class="loomos-kicker">Creative utilities</span><h2>Tools</h2></div>
+        <span class="loomos-status">${ready} ready | ${configured} configured</span>
+      </header>
+      <div class="loomos-tools-intro">
+        <strong>Generated helpers for this exact swipe</strong>
+        <p>Every tool stays visible here with its current state, including modules that need Display enabled or a refreshed tracker.</p>
+      </div>
+      <div class="loomos-tools-grid">${blocks.join("")}</div>
+    </div>`;
+  }
+
+  const displayed = TOOL_MODULE_KEYS.filter((key) => visible(settings, key));
+  return displayed.length === 0
     ? ""
-    : section("tools", "Tools", `${blocks.length} active`, `<div class="loomos-card-grid">${blocks.join("")}</div>`);
+    : section(
+        "tools",
+        "Tools",
+        `${displayed.length} displayed`,
+        `<div class="loomos-tools-grid">${blocks.join("")}</div>`,
+      );
 }
 
 function renderAudit(state: LoomOSState, settings: LoomOSSettings): string {
@@ -719,7 +850,66 @@ export function renderDashboard(
       : `<div class="loomos-empty"><h3>Continuity and Audit display are hidden</h3><p>Enable Continuity Firewall or Audit Log display in settings.</p></div>`;
   }
 
+  if (activeTab === "tools") {
+    return `<div class="loomos-dashboard">${renderTools(state, settings, true)}</div>`;
+  }
+
   return "";
+}
+
+export function renderHistoryResults(
+  items: StateHistoryItem[],
+  filter: string,
+  activeIdentity: StateIdentity | null,
+): string {
+  const filtered = filter
+    ? items.filter((item) =>
+        [item.kernelScene, item.kernelFocus, item.kernelLocation, item.deltaHeadline, item.identity.messageId]
+          .some((v) => v.toLowerCase().includes(filter.toLowerCase())),
+      )
+    : items;
+
+  return filtered.length === 0
+    ? `<div class="loomos-empty"><h3>No matching history entries</h3><p>Try a different search term.</p></div>`
+    : `<div class="loomos-history-list">${filtered.map((item) => {
+        const isActive =
+          activeIdentity?.chatId === item.identity.chatId &&
+          activeIdentity?.messageId === item.identity.messageId &&
+          activeIdentity?.swipeId === item.identity.swipeId;
+        return `
+          <article class="loomos-history-entry${isActive ? " loomos-history-active" : ""}">
+            <div class="loomos-history-entry-main">
+              <div class="loomos-history-entry-header">
+                <strong>${escapeHtml(item.kernelScene || "N/A")}</strong>
+                <span class="loomos-history-time">${escapeHtml(item.generatedAt)}</span>
+                ${item.repaired ? `<span class="loomos-badge loomos-badge-warning">repaired</span>` : ""}
+              </div>
+              <p class="loomos-history-entry-focus">${clampProse(item.kernelFocus, 100)}</p>
+              <div class="loomos-history-entry-meta">
+                <span>${escapeHtml(item.kernelLocation)}</span>
+                <span>${escapeHtml(item.kernelTime)}</span>
+                <span>${item.castCount} cast</span>
+                <span>${item.threadCount} threads</span>
+                <span>${item.riskCount} risks</span>
+              </div>
+              <p class="loomos-history-entry-delta">${clampProse(item.deltaHeadline, 120)}</p>
+            </div>
+            <div class="loomos-history-entry-actions">
+              <button class="loomos-button loomos-btn-sm" data-action="load-history-state"
+                data-chat-id="${escapeHtml(item.identity.chatId)}"
+                data-message-id="${escapeHtml(item.identity.messageId)}" data-swipe-id="${item.identity.swipeId}"
+                ${isActive ? "disabled" : ""}>
+                ${isActive ? "Current" : "Load"}
+              </button>
+              <button class="loomos-button loomos-button-danger loomos-btn-sm" data-action="delete-history-state"
+                  data-chat-id="${escapeHtml(item.identity.chatId)}"
+                  data-message-id="${escapeHtml(item.identity.messageId)}" data-swipe-id="${item.identity.swipeId}">
+                  Delete
+                </button>
+            </div>
+          </article>
+        `;
+      }).join("")}</div>`;
 }
 
 export function renderHistoryTab(
@@ -743,50 +933,11 @@ export function renderHistoryTab(
       <div class="loomos-search-bar">
         <input class="loomos-input" type="search" placeholder="Search scene, focus, or location"
           data-history-filter value="${escapeHtml(filter)}" aria-label="Filter tracker history" />
-        ${filter ? `<button class="loomos-button-clear" data-action="clear-history-filter" title="Clear history search" aria-label="Clear history search">&times;</button>` : ""}
-        <span class="loomos-search-count">${filtered.length} / ${items.length}</span>
+        <button class="loomos-button-clear" data-action="clear-history-filter" title="Clear history search"
+          aria-label="Clear history search"${filter ? "" : " hidden"}>&times;</button>
+        <span class="loomos-search-count" data-history-count>${filtered.length} / ${items.length}</span>
       </div>
-      ${filtered.length === 0
-        ? `<div class="loomos-empty"><h3>No matching history entries</h3><p>Try a different search term.</p></div>`
-        : `<div class="loomos-history-list">${filtered.map((item) => {
-            const isActive =
-              activeIdentity?.chatId === item.identity.chatId &&
-              activeIdentity?.messageId === item.identity.messageId &&
-              activeIdentity?.swipeId === item.identity.swipeId;
-            return `
-              <article class="loomos-history-entry${isActive ? " loomos-history-active" : ""}">
-                <div class="loomos-history-entry-main">
-                  <div class="loomos-history-entry-header">
-                    <strong>${escapeHtml(item.kernelScene || "N/A")}</strong>
-                    <span class="loomos-history-time">${escapeHtml(item.generatedAt)}</span>
-                    ${item.repaired ? `<span class="loomos-badge loomos-badge-warning">repaired</span>` : ""}
-                  </div>
-                  <p class="loomos-history-entry-focus">${clampProse(item.kernelFocus, 100)}</p>
-                  <div class="loomos-history-entry-meta">
-                    <span>${escapeHtml(item.kernelLocation)}</span>
-                    <span>${escapeHtml(item.kernelTime)}</span>
-                    <span>${item.castCount} cast</span>
-                    <span>${item.threadCount} threads</span>
-                    <span>${item.riskCount} risks</span>
-                  </div>
-                  <p class="loomos-history-entry-delta">${clampProse(item.deltaHeadline, 120)}</p>
-                </div>
-                <div class="loomos-history-entry-actions">
-                  <button class="loomos-button loomos-btn-sm" data-action="load-history-state"
-                    data-chat-id="${escapeHtml(item.identity.chatId)}"
-                    data-message-id="${escapeHtml(item.identity.messageId)}" data-swipe-id="${item.identity.swipeId}"
-                    ${isActive ? "disabled" : ""}>
-                    ${isActive ? "Current" : "Load"}
-                  </button>
-                  <button class="loomos-button loomos-button-danger loomos-btn-sm" data-action="delete-history-state"
-                      data-chat-id="${escapeHtml(item.identity.chatId)}"
-                      data-message-id="${escapeHtml(item.identity.messageId)}" data-swipe-id="${item.identity.swipeId}">
-                      Delete
-                    </button>
-                </div>
-              </article>
-            `;
-          }).join("")}</div>`}
+      <div data-history-results>${renderHistoryResults(items, filter, activeIdentity)}</div>
     </div>
   `;
 }

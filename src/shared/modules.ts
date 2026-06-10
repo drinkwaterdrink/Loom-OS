@@ -23,6 +23,14 @@ export const MODULE_KEYS = [
 export type ModuleKey = typeof MODULE_KEYS[number];
 export type ModulePreset = "lite" | "balanced" | "full" | "experimental" | "custom" | string;
 
+export const TOOL_MODULE_KEYS = [
+  "actionResolver",
+  "dialogueState",
+  "directorStyle",
+  "closenessState",
+  "imagePrompt",
+] as const satisfies ReadonlyArray<ModuleKey>;
+
 export interface ModuleControl {
   track: boolean;
   display: boolean;

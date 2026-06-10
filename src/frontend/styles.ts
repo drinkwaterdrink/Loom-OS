@@ -1261,8 +1261,7 @@ export const LOOMOS_STYLES = `
   }
   .loomos-header-sticky {
     align-self: start;
-    backdrop-filter: blur(16px) saturate(1.15);
-    background: color-mix(in srgb, var(--loomos-canvas) 92%, transparent);
+    background: var(--loomos-canvas);
     border: 1px solid var(--loomos-soft-border);
     border-top: 0;
     border-radius: 0 0 8px 8px;
@@ -1591,6 +1590,144 @@ export const LOOMOS_STYLES = `
     border-radius: 7px;
     padding: 9px;
   }
+  .loomos-tools-workspace {
+    display: grid;
+    gap: 7px;
+  }
+  .loomos-tools-intro {
+    background: var(--loomos-surface-1);
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 8px;
+    display: grid;
+    gap: 3px;
+    padding: 10px;
+  }
+  .loomos-tools-intro strong {
+    font-size: 13px;
+  }
+  .loomos-tools-intro p {
+    color: var(--loomos-muted);
+    font-size: 11px;
+    margin: 0;
+  }
+  .loomos-tools-grid {
+    display: grid;
+    gap: 7px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .loomos-tool-card {
+    align-content: start;
+    display: grid;
+    gap: 7px;
+    min-height: 132px;
+  }
+  .loomos-tool-card.is-empty {
+    border-style: dashed;
+  }
+  .loomos-tool-card-heading {
+    align-items: start;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+  }
+  .loomos-tool-card-heading strong {
+    display: block;
+    font-size: 13px;
+    line-height: 1.25;
+  }
+  .loomos-tool-state {
+    align-items: center;
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 999px;
+    color: var(--loomos-muted);
+    display: inline-flex;
+    flex: none;
+    font-size: 9px;
+    font-weight: 800;
+    min-height: 22px;
+    padding: 2px 7px;
+  }
+  .loomos-tool-state.is-ready {
+    color: #65d98b;
+  }
+  .loomos-tool-lead {
+    color: var(--loomos-ink);
+    font-size: 12px;
+    font-weight: 750;
+    line-height: 1.35;
+    margin: 0;
+  }
+  .loomos-image-prompt-card {
+    background: color-mix(in srgb, var(--loomos-accent) 5%, var(--loomos-surface-3));
+    grid-column: 1 / -1;
+  }
+  .loomos-tool-meta {
+    display: grid;
+    gap: 5px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .loomos-tool-meta span {
+    background: var(--loomos-surface-1);
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 7px;
+    color: var(--loomos-muted);
+    display: grid;
+    font-size: 10px;
+    gap: 1px;
+    padding: 6px;
+  }
+  .loomos-tool-meta b {
+    color: var(--loomos-ink);
+    font-size: 8px;
+    text-transform: uppercase;
+  }
+  .loomos-prompt-output {
+    background: var(--loomos-canvas);
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 8px;
+    display: grid;
+    gap: 6px;
+    padding: 8px;
+  }
+  .loomos-prompt-output-heading {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+  }
+  .loomos-prompt-output-heading span {
+    color: var(--loomos-muted);
+    font-size: 9px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+  .loomos-prompt-output pre {
+    color: var(--loomos-ink);
+    font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+    margin: 0;
+    max-height: 220px;
+    overflow: auto;
+    white-space: pre-wrap;
+  }
+  .loomos-prompt-details {
+    display: grid;
+    gap: 6px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .loomos-prompt-details details {
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 7px;
+    padding: 7px;
+  }
+  .loomos-prompt-details summary {
+    color: var(--loomos-muted);
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 800;
+  }
+  .loomos-prompt-details p {
+    margin: 6px 0 0;
+  }
   .loomos-section[data-section="cast"] .loomos-section-body {
     padding: 0;
   }
@@ -1848,7 +1985,9 @@ export const LOOMOS_STYLES = `
     .loomos-settings-grid,
     .loomos-two-column,
     .loomos-card-grid,
-    .loomos-meter-grid {
+    .loomos-meter-grid,
+    .loomos-tools-grid,
+    .loomos-prompt-details {
       grid-template-columns: 1fr;
     }
     .loomos-facts,
@@ -1903,7 +2042,7 @@ export const LOOMOS_STYLES = `
     }
   }
 
-  /* 0.1.10 chat tracker viewer */
+  /* 0.1.11 chat tracker viewer */
   .loomos-root[data-view="modal"] {
     container-name: loomos-viewer;
     container-type: inline-size;
@@ -1920,8 +2059,7 @@ export const LOOMOS_STYLES = `
     min-width: 0;
   }
   .loomos-viewer-command {
-    backdrop-filter: blur(18px) saturate(1.12);
-    background: color-mix(in srgb, var(--loomos-canvas) 94%, transparent);
+    background: var(--loomos-canvas);
     border: 1px solid var(--loomos-soft-border);
     border-top: 0;
     border-radius: 0 0 8px 8px;
@@ -1983,7 +2121,7 @@ export const LOOMOS_STYLES = `
     border-radius: 8px;
     display: grid;
     gap: 3px;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     margin: 0;
     padding: 4px;
     position: sticky;
@@ -2022,17 +2160,11 @@ export const LOOMOS_STYLES = `
   .loomos-root[data-view="modal"] .loomos-cast-meta {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .loomos-root[data-view="modal"] .loomos-card {
-    content-visibility: auto;
-    contain-intrinsic-size: 210px;
-  }
   .loomos-root[data-view="modal"] .loomos-history-list {
     max-height: none;
     overflow: visible;
   }
   .loomos-root[data-view="modal"] .loomos-history-entry {
-    content-visibility: auto;
-    contain-intrinsic-size: 190px;
     display: grid;
     gap: 8px;
     grid-template-columns: minmax(0, 1fr) 92px;
@@ -2196,8 +2328,12 @@ export const LOOMOS_STYLES = `
       grid-column: 1 / -1;
     }
     .loomos-root[data-view="modal"] .loomos-viewer-tabs {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       position: static;
+    }
+    .loomos-tools-grid,
+    .loomos-prompt-details {
+      grid-template-columns: 1fr;
     }
     .loomos-root[data-view="modal"] .loomos-overview-stats {
       grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -150,6 +150,49 @@ test("cast dashboard renders the dedicated immutable appearance profile", async 
   assert.match(html, /Dark tied-back hair/);
 });
 
+test("tools workspace explains when image prompt needs a refreshed tracker", () => {
+  const settings = LoomOSSettingsSchema.parse({
+    ...DEFAULT_SETTINGS,
+    moduleSettings: {
+      ...DEFAULT_SETTINGS.moduleSettings,
+      imagePrompt: { track: true, display: true, inject: false },
+    },
+  });
+  const html = renderDashboard(makeState(), settings, "tools");
+  assert.match(html, /Creative utilities/);
+  assert.match(html, /Image Prompt/);
+  assert.match(html, /Refresh needed/);
+  assert.match(html, /data-action="generate"/);
+});
+
+test("image prompt renders its complete generator payload and copy action", () => {
+  const settings = LoomOSSettingsSchema.parse({
+    ...DEFAULT_SETTINGS,
+    moduleSettings: {
+      ...DEFAULT_SETTINGS.moduleSettings,
+      imagePrompt: { track: true, display: true, inject: false },
+    },
+  });
+  const state = makeState();
+  state.activeModules.push("imagePrompt");
+  state.tools.imagePrompt = {
+    aspect: "16:9",
+    shot: "Wide establishing shot",
+    medium: "Cinematic digital painting",
+    subject: "Mara and Iven in the rain-lit observatory.",
+    positive: "Copper dome, moonlight, wet wool, tense expressions.",
+    negative: "Text, watermark, extra fingers.",
+    full: "Wide cinematic view of Mara and Iven in a rain-lit observatory.",
+    hint: "Keep both characters readable.",
+  };
+  const html = renderDashboard(state, settings, "tools");
+  assert.match(html, /Wide cinematic view/);
+  assert.match(html, /Positive guidance/);
+  assert.match(html, /Negative guidance/);
+  assert.match(html, /data-action="copy-image-prompt"/);
+  assert.match(html, /16:9/);
+});
+
 test("stock presentation can use the safe starter HTML with custom CSS only", () => {
   const settings = LoomOSSettingsSchema.parse({
     ...DEFAULT_SETTINGS,

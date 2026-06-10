@@ -7,6 +7,7 @@ import {
   MODULE_CATALOG,
   MODULE_KEYS,
   MODULE_SCHEMA_STRUCTURES,
+  TOOL_MODULE_KEYS,
   getEffectiveModuleCatalog,
   moduleSettingsForPreset,
   BALANCED_MODULE_SETTINGS,
@@ -66,6 +67,7 @@ import {
 import {
   escapeHtml,
   renderDashboard,
+  renderHistoryResults,
   renderHistoryTab,
   renderInjectionPreview,
   renderWhatChangedModal,
@@ -207,7 +209,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         stopElapsedTimer();
         return;
       }
-      renderAll();
+      updateLiveStatusDom();
     }, 1000);
   }
 
@@ -610,14 +612,14 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     const elapsed = generationStartedAt ? Math.floor((Date.now() - generationStartedAt) / 1000) : 0;
     const phaseLabel = pipeline ? pipeline.phase.replace("_", " ") : "resolving";
     return `
-      <div class="loomos-shell loomos-compile-status loomos-pulse" style="margin-top: 8px;">
+      <div class="loomos-shell loomos-compile-status loomos-pulse" data-live-compile style="margin-top: 8px;">
         <div class="loomos-row-title">
           <strong>Compiling Story State...</strong>
-          <span class="loomos-badge loomos-badge-compiling">${elapsed}s</span>
+          <span class="loomos-badge loomos-badge-compiling" data-live-elapsed>${elapsed}s</span>
         </div>
-        <p>${escapeHtml(status)}</p>
+        <p data-live-status>${escapeHtml(status)}</p>
         <div class="loomos-meter-track"><i style="width: 100%; animation: loomos-bar-pulse 2s infinite;"></i></div>
-        <small>Phase: ${escapeHtml(phaseLabel)} | Attempt: ${pipeline ? pipeline.attempt : 1}/2</small>
+        <small>Phase: <span data-live-phase>${escapeHtml(phaseLabel)}</span> | Attempt: <span data-live-attempt>${pipeline ? pipeline.attempt : 1}</span>/2</small>
       </div>
     `;
   }
@@ -1077,7 +1079,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function diagnosticText(): string {
     const lines = [
-      `version: 0.1.10`,
+      `version: 0.1.11`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -1113,6 +1115,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       { id: "world", label: "World", meta: state?.scene?.items.length ?? 0 },
       { id: "story", label: "Story", meta: state?.storyState.threadLoom.filter((thread) => thread.status !== "resolved").length ?? 0 },
       { id: "continuity", label: "Memory", meta: state?.continuityFirewall.risks.length ?? 0 },
+      { id: "tools", label: "Tools", meta: TOOL_MODULE_KEYS.filter((key) => settings.moduleSettings[key].track || settings.moduleSettings[key].display).length },
       { id: "history", label: "History", meta: historyItems.length },
       ...(includeSettings ? [{ id: "settings", label: "Setup", meta: MODULE_KEYS.filter((key) => settings.moduleSettings[key].track).length }] : []),
     ];
@@ -1139,10 +1142,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         <div class="loomos-context-bar">
           <div class="loomos-title">
             <strong>${escapeHtml(exactLabel())}</strong>
-            <span>${escapeHtml(status)}</span>
+            <span data-live-status>${escapeHtml(status)}</span>
           </div>
-          <span class="loomos-state-pill${busy ? " is-busy" : state ? " is-ready" : ""}" title="${escapeHtml(elapsedLabel())}">
-            <i></i>${stateLabel}
+          <span class="loomos-state-pill${busy ? " is-busy" : state ? " is-ready" : ""}" data-live-pill title="${escapeHtml(elapsedLabel())}">
+            <i></i><span data-live-state-label>${stateLabel}</span>
           </span>
         </div>
         <div class="loomos-header-actions">
@@ -1199,12 +1202,12 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           <span class="loomos-kicker">LoomOS tracker</span>
           <div class="loomos-viewer-title-row">
             <h1>${escapeHtml(sceneTitle)}</h1>
-            <span class="loomos-state-pill${busy ? " is-busy" : state ? " is-ready" : ""}" title="${escapeHtml(elapsedLabel())}">
-              <i></i>${stateLabel}
+            <span class="loomos-state-pill${busy ? " is-busy" : state ? " is-ready" : ""}" data-live-pill title="${escapeHtml(elapsedLabel())}">
+              <i></i><span data-live-state-label>${stateLabel}</span>
             </span>
           </div>
           <p>${escapeHtml(sceneMeta || exactLabel())}</p>
-          <small>${escapeHtml(exactLabel())}</small>
+          <small data-live-status>${escapeHtml(exactLabel())} | ${escapeHtml(status)}</small>
         </div>
         <div class="loomos-viewer-actions">
           ${busy
@@ -1253,12 +1256,70 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       <div class="loomos-viewer-shell ${shell.wrapperClass}">${shell.html}</div>`;
   }
 
-  function renderAll(preserveDisclosure = true): void {
+  function renderSurfaces(preserveDisclosure = true): void {
     const uiState = captureUiState();
     renderDrawer();
     renderViewer();
-    refreshAllMessageWidgets();
     restoreUiState(uiState, preserveDisclosure);
+  }
+
+  function renderAll(preserveDisclosure = true): void {
+    renderSurfaces(preserveDisclosure);
+    refreshAllMessageWidgets();
+  }
+
+  function updateLiveStatusDom(): void {
+    const busy = activeGenerationRequestId !== null;
+    const stateLabel = busy ? "Compiling" : state ? "Synced" : "No state";
+    const phaseLabel = pipeline ? pipeline.phase.replaceAll("_", " ") : "resolving";
+    const elapsed = generationStartedAt && busy
+      ? Math.floor((Date.now() - generationStartedAt) / 1000)
+      : 0;
+    const roots = [tab.root, modal?.root].filter((root): root is HTMLElement => Boolean(root));
+
+    for (const root of roots) {
+      root.querySelectorAll<HTMLElement>("[data-live-status]").forEach((element) => {
+        if (element.closest(".loomos-viewer-context") && element.tagName === "SMALL") {
+          element.textContent = `${exactLabel()} | ${status}`;
+        } else {
+          element.textContent = status;
+        }
+      });
+      root.querySelectorAll<HTMLElement>("[data-live-pill]").forEach((pill) => {
+        pill.classList.toggle("is-busy", busy);
+        pill.classList.toggle("is-ready", !busy && Boolean(state));
+        pill.title = elapsedLabel();
+      });
+      root.querySelectorAll<HTMLElement>("[data-live-state-label]").forEach((element) => {
+        element.textContent = stateLabel;
+      });
+      root.querySelectorAll<HTMLElement>("[data-live-elapsed]").forEach((element) => {
+        element.textContent = `${elapsed}s`;
+      });
+      root.querySelectorAll<HTMLElement>("[data-live-phase]").forEach((element) => {
+        element.textContent = phaseLabel;
+      });
+      root.querySelectorAll<HTMLElement>("[data-live-attempt]").forEach((element) => {
+        element.textContent = String(pipeline?.attempt ?? 1);
+      });
+    }
+  }
+
+  function updateHistorySurface(root: HTMLElement): void {
+    const results = root.querySelector<HTMLElement>("[data-history-results]");
+    if (!results) return;
+    results.innerHTML = renderHistoryResults(historyItems, historyFilter, activeIdentity);
+    const filterLower = historyFilter.toLowerCase();
+    const matchCount = historyFilter
+      ? historyItems.filter((item) =>
+          [item.kernelScene, item.kernelFocus, item.kernelLocation, item.deltaHeadline, item.identity.messageId]
+            .some((value) => value.toLowerCase().includes(filterLower)),
+        ).length
+      : historyItems.length;
+    const count = root.querySelector<HTMLElement>("[data-history-count]");
+    if (count) count.textContent = `${matchCount} / ${historyItems.length}`;
+    const clear = root.querySelector<HTMLElement>('[data-action="clear-history-filter"]');
+    if (clear) clear.hidden = historyFilter.length === 0;
   }
 
   function openViewer(): void {
@@ -2733,6 +2794,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   function handleBackendMessage(payload: unknown): void {
     if (!isRecord(payload) || typeof payload.type !== "string") return;
     const response = payload as unknown as BackendResponse;
+    let renderMode: "all" | "surfaces" | "live" = "all";
     switch (response.type) {
       case "bootstrap":
         settings = response.settings;
@@ -2755,6 +2817,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       case "settings":
         settings = response.settings;
         status = "Settings saved";
+        renderMode = "surfaces";
         if (activeIdentity?.chatId) {
           send({ type: "get_chat_states", requestId: requestId("chat-states-settings"), chatId: activeIdentity.chatId });
           send({ type: "list_state_history", requestId: requestId("history-settings"), chatId: activeIdentity.chatId });
@@ -2763,6 +2826,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       case "connections":
         connections = response.connections;
         status = connections.length > 0 ? "Connections refreshed" : "No ready connections found";
+        renderMode = "surfaces";
         break;
       case "state":
         activeIdentity = response.identity;
@@ -2780,6 +2844,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       case "permissions":
         permissions = response.permissions;
         status = "Permissions updated";
+        renderMode = "surfaces";
         break;
       case "generation_status":
         if (response.report) pipeline = response.report;
@@ -2787,10 +2852,12 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           activeGenerationRequestId = response.requestId;
           if (response.identity) activeIdentity = response.identity;
           status = response.message ?? "Compiling story state";
+          renderMode = response.status === "progress" ? "live" : "surfaces";
         } else {
           if (activeGenerationRequestId === response.requestId) activeGenerationRequestId = null;
           stopElapsedTimer();
           status = response.message ?? (response.status === "completed" ? "State compiled" : response.status);
+          renderMode = "surfaces";
           
           if (activeIdentity?.chatId) {
             send({ type: "get_chat_states", requestId: requestId("chat-states"), chatId: activeIdentity.chatId });
@@ -2801,12 +2868,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       case "chat_states":
         if (response.chatId === ctx.getActiveChat().chatId) {
           chatStates = response.states;
-          refreshAllMessageWidgets();
         }
         break;
       case "state_history":
         historyItems = response.items;
-        refreshAllMessageWidgets();
         break;
       case "history_state_deleted": {
         historyItems = response.items;
@@ -2815,11 +2880,11 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           && activeIdentity.swipeId === response.identity.swipeId;
         if (deletedActive) state = null;
         status = "History tracker deleted";
-        refreshAllMessageWidgets();
         break;
       }
       case "injection_preview":
         injectionPreview = response.preview;
+        renderMode = "surfaces";
         break;
       case "error":
         if (response.requestId === activeGenerationRequestId) {
@@ -2827,9 +2892,16 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           stopElapsedTimer();
         }
         status = response.message;
+        renderMode = "surfaces";
         break;
     }
-    renderAll();
+    if (renderMode === "live") {
+      updateLiveStatusDom();
+    } else if (renderMode === "surfaces") {
+      renderSurfaces();
+    } else {
+      renderAll();
+    }
   }
 
   function handleActionClick(event: Event): void {
@@ -2867,7 +2939,22 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       if (action === "delete-history-state") void deleteHistoryState(actionBtn);
       if (action === "clear-history-filter") {
         historyFilter = "";
-        renderAll();
+        const root = modal?.root.contains(actionBtn) ? modal.root : tab.root;
+        const input = root.querySelector<HTMLInputElement>("[data-history-filter]");
+        if (input) input.value = "";
+        updateHistorySurface(root);
+        input?.focus();
+      }
+      if (action === "copy-image-prompt" && state?.tools.imagePrompt) {
+        const prompt = state.tools.imagePrompt.full
+          || [state.tools.imagePrompt.subject, state.tools.imagePrompt.positive].filter(Boolean).join(", ");
+        void navigator.clipboard.writeText(prompt).then(() => {
+          status = "Image prompt copied";
+          updateLiveStatusDom();
+        }).catch(() => {
+          status = "Could not copy image prompt";
+          updateLiveStatusDom();
+        });
       }
       if (action === "copy-injection-preview" && injectionPreview) {
         void navigator.clipboard.writeText(injectionPreview.text).then(() => {
@@ -2983,7 +3070,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     const target = event.target as HTMLInputElement | null;
     if (target?.matches("[data-history-filter]")) {
       historyFilter = target.value;
-      renderAll();
+      const root = modal?.root.contains(target) ? modal.root : tab.root;
+      updateHistorySurface(root);
       return;
     }
     if (!target?.matches("[data-module-search]")) return;

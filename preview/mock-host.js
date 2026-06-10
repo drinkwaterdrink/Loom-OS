@@ -22,7 +22,7 @@ const seededState = {
   activeModules: [
     "sceneKernel", "deltas", "meters", "castCore", "castVisuals", "clothing",
     "relationships", "inventory", "worldSpace", "storyThreads", "continuity",
-    "secretsRumors", "actionResolver", "auditLog",
+    "secretsRumors", "actionResolver", "imagePrompt", "auditLog",
   ],
   kernel: {
     scene: "The locked observatory",
@@ -178,7 +178,16 @@ const seededState = {
     dialogueState: null,
     directorStyle: null,
     closenessState: null,
-    imagePrompt: null,
+    imagePrompt: {
+      aspect: "16:9",
+      shot: "Wide cinematic two-shot",
+      medium: "Painterly cinematic realism",
+      subject: "Mara and Iven face each other across the telescope dais while rain and moonlight cut through the observatory dome.",
+      positive: "Copper observatory, rain-streaked glass, cold moonlight, single amber lantern, wet wool coats, visible soot, tense expressions, readable hands.",
+      negative: "Text, watermark, extra limbs, malformed hands, modern objects, flat lighting, cropped faces.",
+      full: "Wide cinematic two-shot of Mara and Iven facing each other across a brass telescope dais in a rain-lashed observatory, cold moonlight and one amber lantern, wet dark wool coats, soot on Iven's glove, tense expressions, painterly cinematic realism, 16:9.",
+      hint: "Keep both faces, Iven's soot-marked glove, and the splintering lower door readable.",
+    },
   },
   auditLog: [{ system: "compiler", marker: "message-preview / swipe 1", result: "Valid State V2", repaired: false, notes: "Balanced preset compiled." }],
 };
