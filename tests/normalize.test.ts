@@ -195,7 +195,9 @@ test("appearance normalization preserves deep immutable traits and repairs short
     eyes: "Amber",
     bodyType: "Curvy",
     bust: "Full",
+    glutes: "Full and rounded",
     uniqueFeatures: { text: "Star-shaped birthmark at the collarbone" },
+    attractiveFeatures: "Expressive eyes and balanced curves",
     immutableTraits: [
       { text: "Amber eyes" },
       "Silver curls",
@@ -208,7 +210,55 @@ test("appearance normalization preserves deep immutable traits and repairs short
   assert.equal(appearance.hair, "Silver curls");
   assert.equal(appearance.bodyType, "Curvy");
   assert.equal(appearance.bust, "Full");
+  assert.equal(appearance.glutes, "Full and rounded");
   assert.equal(appearance.uniqueFeatures, "Star-shaped birthmark at the collarbone");
+  assert.equal(appearance.attractiveFeatures, "Expressive eyes and balanced curves");
   assert.deepEqual(appearance.immutableTraits, ["Amber eyes", "Silver curls"]);
   assert.equal(LoomOSCompiledStateSchema.safeParse(state).success, true);
+});
+
+test("normalization preserves expanded clothing and GPT Image production fields", () => {
+  const input = malformedState();
+  input.castMatrix[0].clothing = {
+    summary: "A detailed tailored outfit.",
+    styling: "Collar raised and belt knotted.",
+    coverage: "Full sleeves and trousers.",
+    footwear: "Weathered leather boots.",
+    accessories: "Gloves and a document satchel.",
+    layerCount: 8,
+    layers: Array.from({ length: 8 }, (_, index) => ({
+      slot: "other",
+      text: `Layer ${index + 1}`,
+    })),
+  };
+  input.tools.imagePrompt = {
+    aspect: "16:9",
+    shot: "Wide",
+    medium: "Photorealistic",
+    subject: "Two adults in an observatory.",
+    positive: "Grounded detail.",
+    negative: "No text.",
+    intent: "A production-ready scene image.",
+    composition: "Balanced two-shot.",
+    camera: "35mm eye level.",
+    lighting: "Moonlight and lantern light.",
+    colorPalette: "Copper and charcoal.",
+    environment: "Rain-lashed observatory.",
+    characterContinuity: "Preserve established faces and clothing.",
+    action: "They confront one another.",
+    materials: "Wet wool and aged brass.",
+    mood: "Tense.",
+    textRendering: "No visible text.",
+    constraints: ["Exactly two adults", "Readable hands"],
+    full: "X".repeat(7000),
+    hint: "Keep continuity exact.",
+  };
+  const { state } = normalizeCompiledState(input, {
+    enabledModules: trackedModuleKeys(DEFAULT_SETTINGS),
+  });
+  assert.equal(state.castMatrix[0]!.clothing.layers.length, 8);
+  assert.equal(state.castMatrix[0]!.clothing.styling, "Collar raised and belt knotted.");
+  assert.equal(state.tools.imagePrompt?.characterContinuity, "Preserve established faces and clothing.");
+  assert.equal(state.tools.imagePrompt?.constraints.length, 2);
+  assert.equal(state.tools.imagePrompt?.full.length, 7000);
 });

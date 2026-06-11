@@ -43,7 +43,7 @@ var CORE_TRACKING_MODULES = /* @__PURE__ */ new Set([
 var MODULE_CATALOG = [
   {
     key: "sceneKernel",
-    label: "Scene Kernel",
+    label: "Scene Context",
     group: "Core",
     core: true,
     intensity: "medium",
@@ -55,7 +55,7 @@ var MODULE_CATALOG = [
   },
   {
     key: "deltas",
-    label: "Turn Deltas",
+    label: "Recent Changes",
     group: "Core",
     core: true,
     intensity: "medium",
@@ -95,9 +95,9 @@ var MODULE_CATALOG = [
     group: "Cast",
     core: false,
     intensity: "medium",
-    description: "Persistent physical identity: hair, eyes, height, weight, build, body shape, proportions, marks, and unique features.",
-    schemaSummary: "castMatrix[].appearance{species, ageBand, apparentAge, genderPresentation, height, weight, build, bodyType, frame, proportions, silhouette, bodyComposition, shoulders, chest, bust, waist, hips, arms, legs, hands, skin, complexion, face, facialStructure, hair, eyes, eyebrows, nose, lips, ears, facialHair, posture, movement, voice, distinguishingMarks, scars, tattoos, piercings, birthmarks, uniqueFeatures, immutableTraits[], presence, fullDescription, anchor}",
-    compilerInstruction: "Track grounded, persistent physical traits for adult named characters. Preserve established hair, eyes, height, weight description, build, body type, proportions, bust/waist/hips description, skin, face, marks, scars, tattoos, piercings, posture, movement, and unique features until transcript evidence changes them. Use neutral non-explicit language. Never infer exact measurements, cup sizes, weight numbers, or hidden anatomy when the transcript does not provide them. Use empty fields rather than inventing details.",
+    description: "Persistent adult physical identity: face, hair, eyes, height, weight, build, body shape, proportions, marks, attractive features, and unique traits.",
+    schemaSummary: "castMatrix[].appearance{species, ageBand, apparentAge, genderPresentation, height, weight, build, bodyType, frame, proportions, silhouette, bodyComposition, shoulders, chest, bust, waist, hips, glutes, arms, legs, hands, skin, complexion, face, facialStructure, hair, eyes, eyebrows, nose, lips, ears, facialHair, posture, movement, voice, distinguishingMarks, scars, tattoos, piercings, birthmarks, uniqueFeatures, attractiveFeatures, immutableTraits[], presence, fullDescription, anchor}",
+    compilerInstruction: "Create a rich persistent visual profile for every important named adult character using transcript and seed evidence. Describe hair color, length, texture and styling; eye color, shape and expression; facial shape and features; complexion and skin details; height and weight impression; frame, build, musculature or softness; shoulders, chest or bust, waist, hips, glute or seat shape, limbs, hands, posture, movement, voice, marks, scars, tattoos, piercings, attractive features, and unique identifiers when known. fullDescription should read as a coherent 3-6 sentence visual portrait, while anchor is a concise continuity lock. Preserve established traits until evidence changes them. Never invent exact measurements, cup sizes, numeric weight, hidden anatomy, or sexual details unsupported by the transcript. Only use body-shape and attractive-feature fields for confirmed or assumed adults; keep any minor or age-ambiguous description neutral and leave sexualized proportional fields empty.",
     injectionBehavior: "When enabled, injects a compact immutable appearance anchor for important cast members. Budget-aware.",
     renderBehavior: "Cast tab - dedicated expandable appearance profile with physical traits, proportions, identifying marks, and immutable anchors."
   },
@@ -119,9 +119,9 @@ var MODULE_CATALOG = [
     group: "Cast",
     core: false,
     intensity: "light",
-    description: "Compact grounded clothing continuity with layers and condition.",
-    schemaSummary: "summary, silhouette, palette, fabric, fit, condition, notable, layerCount, layers[{slot, text, state, color}]",
-    compilerInstruction: "Track clothing state per character. Persist until changed by transcript evidence. Include silhouette, palette, notable items. Mark changed when clothing updates.",
+    description: "Detailed wardrobe continuity with layers, fabrics, fit, coverage, footwear, accessories, styling, and condition.",
+    schemaSummary: "summary, silhouette, palette, fabric, fit, condition, notable, styling, coverage, footwear, accessories, layerCount, layers[{slot, text, state, color}]",
+    compilerInstruction: "Track each character's complete visible outfit in grounded detail and persist it until the transcript changes it. Describe every visible layer from outerwear through upper body, lower body, footwear, jewelry and accessories; include garment type, cut, color, pattern, material, texture, fit, coverage, closures, condition, wear, wetness, damage, stains, and how the outfit sits on or moves with the body. summary should be a coherent 2-4 sentence wardrobe description, while layers should preserve item-level continuity. Mark changed when any garment is added, removed, opened, shifted, damaged, wet, stained, or transferred.",
     injectionBehavior: "Included only if changed or currently plot-relevant. Budget-aware.",
     renderBehavior: "Cast tab \u2014 Clothing section in expandable details. Shows layers with slot labels."
   },
@@ -251,9 +251,9 @@ var MODULE_CATALOG = [
     group: "Tools",
     core: false,
     intensity: "experimental",
-    description: "Optional compact visual prompt assembly.",
-    schemaSummary: "aspect, shot, medium, subject, positive, negative, full, hint",
-    compilerInstruction: "Assemble a compact text-to-image prompt from the current scene if visually distinctive. Aspect, shot type, medium, subject, and style cues.",
+    description: "A structured, production-ready GPT Image brief grounded in the exact scene, cast continuity, composition, and constraints.",
+    schemaSummary: "aspect, shot, medium, subject, positive, negative, intent, composition, camera, lighting, colorPalette, environment, characterContinuity, action, materials, mood, textRendering, constraints[], full, hint",
+    compilerInstruction: "Write a production-ready prompt optimized for OpenAI GPT Image. Use a consistent labeled order: intended use and visual goal; background and environment; subjects; exact adult character appearance and wardrobe continuity; pose, gaze, hands and object interactions; composition and placement; camera framing, viewpoint and perspective; lighting, atmosphere and color palette; materials and textures; medium and finish; then explicit constraints. Use concrete natural language rather than keyword stuffing. If photorealism is intended, say photorealistic or real photograph directly. Preserve transcript-grounded identities, clothing, geometry, spatial relationships, visible props and scene facts; never invent conflicting appearance details. State no watermark, no unintended text, no logos, no extra people or limbs, no cropped required body parts, and no continuity drift unless the scene requires otherwise. If text is requested, quote the exact text and placement; otherwise specify no text. full should normally be 350-800 words when sufficient scene evidence exists, organized with short labeled sections or line breaks. Keep it specific, coherent, and free of filler.",
     injectionBehavior: "Not injected by default. Consumes significant budget if enabled.",
     renderBehavior: "Pulse view \u2014 image prompt card with shot, medium, subject, and hint."
   },
@@ -370,9 +370,9 @@ var MODULE_SCHEMA_STRUCTURES = {
   deltas: "delta.headline, delta.changedModules[], delta.changes[{text, age, module, importance}], delta.carriedForward[], delta.newlyEstablished[]",
   meters: "meters[{id(tension|danger|socialHeat|coherence|hiddenInfo|omen), label, value 0-100, pct, band, color, trend(down|steady|up|unknown), note}]",
   castCore: "castMatrix[{id, name, kind(pov|main|npc|crowd|background), qty, role, location, status, awareness(none|ambient|watching|alerted|hostile), threat{value 0-10, pct, band, color, note}, spotlight{value 0-100, pct, band, color, trend, note}, emotionalState, intent, goals[], stableFacts[], changed, changeNote, continuity{}}]",
-  appearance: "castMatrix[].appearance{species, ageBand, apparentAge, genderPresentation, height, weight, build, bodyType, frame, proportions, silhouette, bodyComposition, shoulders, chest, bust, waist, hips, arms, legs, hands, skin, complexion, face, facialStructure, hair, eyes, eyebrows, nose, lips, ears, facialHair, posture, movement, voice, distinguishingMarks, scars, tattoos, piercings, birthmarks, uniqueFeatures, immutableTraits[], presence, fullDescription, anchor}",
+  appearance: "castMatrix[].appearance{species, ageBand, apparentAge, genderPresentation, height, weight, build, bodyType, frame, proportions, silhouette, bodyComposition, shoulders, chest, bust, waist, hips, glutes, arms, legs, hands, skin, complexion, face, facialStructure, hair, eyes, eyebrows, nose, lips, ears, facialHair, posture, movement, voice, distinguishingMarks, scars, tattoos, piercings, birthmarks, uniqueFeatures, attractiveFeatures, immutableTraits[], presence, fullDescription, anchor}",
   castVisuals: "castMatrix[].currentState{pose, proximity, leftHand, rightHand, emotion, intent, physicalTell, injury}, castMatrix[].spotlight, castMatrix[].visualAnchor",
-  clothing: "castMatrix[].clothing{summary, silhouette, palette, fabric, fit, condition, notable, layerCount, layers[{slot(outer|upper|lower|feet|accessory|other), text, state, color}]}",
+  clothing: "castMatrix[].clothing{summary, silhouette, palette, fabric, fit, condition, notable, styling, coverage, footwear, accessories, layerCount, layers[{slot(outer|upper|lower|feet|accessory|other), text, state, color}]}",
   relationships: "castMatrix[].relSummary, castMatrix[].relationships[{target, axis, value -100..100, pct, label, color, trend, evidence}]",
   inventory: "castMatrix[].pockets[{name, type(consumable|concealed|tool|key|evidence|misc), qty, condition, known, color, changed, changeNote}]",
   worldSpace: "scene{privacy, observerCount, observerPressure{}, crowdNoise, crowdFlow, light{primary, secondary, quality, color}, spatial[], access{exit, lineOfSight, noiseMask, items[], people[]}, carryover{body[], room[], social[]}, items[{name, owner, location, condition, lastTouch, importance}]}",
@@ -383,7 +383,7 @@ var MODULE_SCHEMA_STRUCTURES = {
   dialogueState: "tools.dialogueState{openThread, socialMask, levers[], taboos[]}",
   directorStyle: "tools.directorStyle{primary, mask, push, voiceCues[]}",
   closenessState: "tools.closenessState{emotional, physical, consentSignals[], boundaries[]}",
-  imagePrompt: "tools.imagePrompt{aspect, shot, medium, subject, positive, negative, full, hint}",
+  imagePrompt: "tools.imagePrompt{aspect, shot, medium, subject, positive, negative, intent, composition, camera, lighting, colorPalette, environment, characterContinuity, action, materials, mood, textRendering, constraints[], full, hint}",
   auditLog: "auditLog[{system, marker, result, repaired, notes}]"
 };
 
@@ -4770,6 +4770,7 @@ var AppearanceSchema = external_exports.object({
   bust: ShortText.optional(),
   waist: ShortText.optional(),
   hips: ShortText.optional(),
+  glutes: ShortText.optional(),
   arms: ShortText.optional(),
   legs: ShortText.optional(),
   hands: ShortText.optional(),
@@ -4793,21 +4794,26 @@ var AppearanceSchema = external_exports.object({
   piercings: MediumText.optional(),
   birthmarks: MediumText.optional(),
   uniqueFeatures: MediumText.optional(),
+  attractiveFeatures: MediumText.optional(),
   immutableTraits: external_exports.array(ShortText).max(16).optional().default([]),
   presence: ShortText.optional(),
   fullDescription: MediumText.optional(),
   anchor: MediumText.optional()
 }).strict();
 var ClothingSchema = external_exports.object({
-  summary: ShortText.optional(),
+  summary: MediumText.optional(),
   silhouette: ShortText.optional(),
   palette: ShortText.optional(),
-  fabric: ShortText.optional(),
-  fit: ShortText.optional(),
-  condition: ShortText.optional(),
-  notable: ShortText.optional(),
-  layerCount: external_exports.number().int().min(0).max(5).optional().default(0),
-  layers: external_exports.array(LayerSchema).max(5).optional().default([])
+  fabric: MediumText.optional(),
+  fit: MediumText.optional(),
+  condition: MediumText.optional(),
+  notable: MediumText.optional(),
+  styling: MediumText.optional(),
+  coverage: MediumText.optional(),
+  footwear: MediumText.optional(),
+  accessories: MediumText.optional(),
+  layerCount: external_exports.number().int().min(0).max(8).optional().default(0),
+  layers: external_exports.array(LayerSchema).max(8).optional().default([])
 }).strict();
 var CurrentStateSchema = external_exports.object({
   injury: ShortText.optional(),
@@ -5016,7 +5022,19 @@ var ToolsSchema = external_exports.object({
     subject: MediumText,
     positive: MediumText,
     negative: MediumText,
-    full: external_exports.string().trim().max(3e3),
+    intent: MediumText.optional().default(""),
+    composition: MediumText.optional().default(""),
+    camera: MediumText.optional().default(""),
+    lighting: MediumText.optional().default(""),
+    colorPalette: MediumText.optional().default(""),
+    environment: MediumText.optional().default(""),
+    characterContinuity: external_exports.string().trim().max(4e3).optional().default(""),
+    action: MediumText.optional().default(""),
+    materials: MediumText.optional().default(""),
+    mood: MediumText.optional().default(""),
+    textRendering: MediumText.optional().default(""),
+    constraints: external_exports.array(MediumText).max(16).optional().default([]),
+    full: external_exports.string().trim().max(8e3),
     hint: MediumText
   }).strict().nullable()
 }).strict();
@@ -5206,15 +5224,20 @@ Exact JSON field contract (values below are type examples, not story facts):
       "species":"","ageBand":"","apparentAge":"","genderPresentation":"",
       "height":"","weight":"","build":"","bodyType":"","frame":"",
       "proportions":"","silhouette":"","bodyComposition":"",
-      "shoulders":"","chest":"","bust":"","waist":"","hips":"",
+      "shoulders":"","chest":"","bust":"","waist":"","hips":"","glutes":"",
       "arms":"","legs":"","hands":"","skin":"","complexion":"",
       "face":"","facialStructure":"","hair":"","eyes":"","eyebrows":"",
       "nose":"","lips":"","ears":"","facialHair":"","voice":"",
       "movement":"","posture":"","distinguishingMarks":"","scars":"",
       "tattoos":"","piercings":"","birthmarks":"","uniqueFeatures":"",
+      "attractiveFeatures":"",
       "immutableTraits":[],"presence":"","fullDescription":"","anchor":""
     },
-    "clothing":{"summary":"","layerCount":0,"layers":[]},
+    "clothing":{
+      "summary":"","silhouette":"","palette":"","fabric":"","fit":"",
+      "condition":"","notable":"","styling":"","coverage":"",
+      "footwear":"","accessories":"","layerCount":0,"layers":[]
+    },
     "currentState":{"pose":"","proximity":"","leftHand":"","rightHand":"","emotion":"","intent":"","injury":""},
     "emotionalState":"","intent":"","pose":"","proximity":"","hands":"",
     "visualAnchor":"","identitySummary":"","clothingSummary":"",
@@ -5262,7 +5285,10 @@ Exact JSON field contract (values below are type examples, not story facts):
     },
     "imagePrompt": {
       "aspect":"","shot":"","medium":"","subject":"","positive":"",
-      "negative":"","full":"","hint":""
+      "negative":"","intent":"","composition":"","camera":"",
+      "lighting":"","colorPalette":"","environment":"",
+      "characterContinuity":"","action":"","materials":"","mood":"",
+      "textRendering":"","constraints":[],"full":"","hint":""
     }
   },
   "auditLog": [{
@@ -5350,8 +5376,9 @@ function buildStateCompilerPrompt(enabledModules, customModules = [], overrides 
   const appearanceRules = enabledModules.includes("appearance") ? `
 - For each named adult character, populate grounded appearance fields when transcript or seed evidence exists.
 - Treat appearance as persistent identity state. Carry it forward unchanged unless the transcript explicitly changes it.
-- Track hair, eyes, height, weight description, build, bodyType, frame, proportions, silhouette, shoulders, chest, bust, waist, hips, limbs, hands, skin, face, marks, scars, tattoos, piercings, posture, movement, voice, unique features, and immutableTraits when known.
-- Use neutral, non-explicit physical language. Never infer exact measurements, cup sizes, weight numbers, hidden anatomy, or other unsupported details.
+- Write fullDescription as a coherent 3-6 sentence visual portrait, not a terse keyword list. Write anchor as a concise identity lock for future turns.
+- Describe hair color, length, texture and styling; eye color, shape and expression; facial structure and features; complexion and skin details; height and weight impression; frame, build, musculature or softness; shoulders, chest or bust, waist, hips, glute or seat shape, limbs, hands, posture, movement, voice, marks, scars, tattoos, piercings, attractive features, and unique identifiers when evidence supports them.
+- Never infer exact measurements, cup sizes, numeric weight, hidden anatomy, or unsupported sexual details. Only populate bust, glutes, and attractiveFeatures for confirmed or assumed adults. Keep any minor or age-ambiguous description neutral.
 - Use empty strings and arrays for unknown appearance fields. Never reset established appearance each turn.` : `
 - Appearance tracking is disabled. Preserve an empty appearance object and do not invent new physical traits.`;
   const closingBraceIdx = STATE_SHAPE_GUIDE.lastIndexOf("}");
@@ -5389,7 +5416,9 @@ Rules:
 
 Character depth rules:
 ${appearanceRules}
-- Clothing persists until transcript explicitly shows change. Track layers (outer/upper/lower/feet/accessory). Mark clothing.changed=true when clothing updates.
+- Clothing persists until transcript explicitly shows change. Write clothing.summary as a coherent 2-4 sentence outfit description and separately track up to 8 visible layers (outer/upper/lower/feet/accessory/other).
+- For clothing, include garment type, cut, color, pattern, material, texture, fit, coverage, closures, condition, wear, wetness, damage, stains, accessories, footwear, and how the outfit sits on or moves with the body when evidence supports it.
+- Mark clothing.changed=true when clothing updates, including when a garment is added, removed, opened, shifted, damaged, wet, stained, or transferred.
 - Update currentState (pose, proximity, leftHand, rightHand, emotion, intent, physicalTell, injury) from latest transcript actions and descriptions.
 - Relationships: use axis labels (Trust, Fear, Attraction, Rivalry, Loyalty, Debt). Value -100 (hostile) to 100 (devoted). Include evidence for changes.
 - Spot trends (up/down/steady) on relationship values.
@@ -5400,6 +5429,17 @@ ${appearanceRules}
 - When age is unspecified, assume adult. Never output minors.
 - Spotlight queue: track turnsSince each named character last had narrative focus. Use need: active/soon/okay/quiet/background.
 - Character-level castMatrix[].goals are always compact strings. Structured goals with who/goal/status/note fields belong only in storyState.goals.
+
+GPT Image prompt rules:
+- When imagePrompt is enabled, build a production-ready visual brief from the exact tracker state rather than a short tag list.
+- Follow this order inside tools.imagePrompt.full: INTENT; SCENE AND ENVIRONMENT; SUBJECTS AND CONTINUITY; ACTION AND POSE; COMPOSITION; CAMERA; LIGHTING AND COLOR; MATERIALS AND TEXTURE; MEDIUM AND FINISH; TEXT; CONSTRAINTS.
+- Use short labeled sections or line breaks. Use concrete natural language and avoid repetitive quality buzzwords or keyword stuffing.
+- Preserve each character's established appearance, clothing, body proportions, marks, visible accessories, pose, gaze, hands, and object interactions. Do not contradict appearance or clothing modules.
+- Specify subject scale and body framing, whether feet must be visible, gaze direction, hand placement, foreground/midground/background placement, camera angle, viewpoint, perspective, atmosphere, and negative space when relevant.
+- For photorealistic output, say photorealistic, real photograph, professional photography, or an equivalent direct cue. Treat lens and camera details as high-level visual guidance rather than exact physical simulation.
+- State explicit invariants and exclusions: no watermark, no unintended text, no logos or trademarks, no extra people or limbs, no malformed hands, no cropped required body parts, and no continuity drift unless requested.
+- If text should appear, put the exact text and placement in textRendering. Otherwise use "No text in the image."
+- Use a detailed 350-800 word full prompt when the tracker contains enough visual evidence. Prefer specificity over filler; do not invent missing scene or character facts.
 `;
 }
 
@@ -5692,6 +5732,8 @@ function clampProse(text, maxLength = 140) {
   `;
 }
 function renderAppearanceProfile(appearance) {
+  const fullDescription = appearance.fullDescription;
+  const anchor = appearance.anchor;
   const allFields = [
     ["Species", appearance.species],
     ["Age band", appearance.ageBand],
@@ -5710,6 +5752,7 @@ function renderAppearanceProfile(appearance) {
     ["Bust", appearance.bust],
     ["Waist", appearance.waist],
     ["Hips", appearance.hips],
+    ["Glute / seat shape", appearance.glutes],
     ["Arms", appearance.arms],
     ["Legs", appearance.legs],
     ["Hands", appearance.hands],
@@ -5733,23 +5776,67 @@ function renderAppearanceProfile(appearance) {
     ["Piercings", appearance.piercings],
     ["Birthmarks", appearance.birthmarks],
     ["Unique features", appearance.uniqueFeatures],
-    ["Presence", appearance.presence],
-    ["Full description", appearance.fullDescription],
-    ["Immutable anchor", appearance.anchor]
+    ["Attractive features", appearance.attractiveFeatures],
+    ["Presence", appearance.presence]
   ];
   const fields = allFields.filter(([, value]) => Boolean(value));
   const immutableTraits = appearance.immutableTraits ?? [];
-  if (fields.length === 0 && immutableTraits.length === 0) return "";
+  if (fields.length === 0 && immutableTraits.length === 0 && !fullDescription && !anchor) return "";
   return `
     <details class="loomos-cast-extra">
-      <summary>Immutable Appearance</summary>
+      <summary>Detailed Appearance</summary>
       <div class="loomos-cast-extra-body">
+        ${fullDescription ? `<p class="loomos-appearance-description">${clampProse(fullDescription, 560)}</p>` : ""}
         ${fields.length > 0 ? `<dl class="loomos-facts loomos-appearance-facts">
           ${fields.map(([label, value]) => `
             <div><dt>${escapeHtml(label)}</dt><dd>${clampProse(String(value), 180)}</dd></div>
           `).join("")}
         </dl>` : ""}
         ${immutableTraits.length > 0 ? `<div class="loomos-subhead">Immutable traits</div>${chips(immutableTraits)}` : ""}
+        ${anchor ? `<div class="loomos-appearance-anchor"><b>Continuity anchor</b>${clampProse(anchor, 360)}</div>` : ""}
+      </div>
+    </details>
+  `;
+}
+function renderClothingProfile(clothing, fallbackSummary) {
+  const summary = clothing.summary || fallbackSummary;
+  const fields = [
+    ["Silhouette", clothing.silhouette],
+    ["Palette", clothing.palette],
+    ["Materials & texture", clothing.fabric],
+    ["Fit & drape", clothing.fit],
+    ["Coverage", clothing.coverage],
+    ["Styling", clothing.styling],
+    ["Condition", clothing.condition],
+    ["Footwear", clothing.footwear],
+    ["Accessories", clothing.accessories],
+    ["Notable details", clothing.notable]
+  ];
+  const populated = fields.filter(([, value]) => Boolean(value));
+  const layers = clothing.layers ?? [];
+  if (!summary && populated.length === 0 && layers.length === 0) return "";
+  return `
+    <details class="loomos-cast-extra">
+      <summary>Detailed Clothing</summary>
+      <div class="loomos-cast-extra-body">
+        ${summary ? `<p class="loomos-clothing-description">${clampProse(summary, 560)}</p>` : ""}
+        ${populated.length > 0 ? `<dl class="loomos-facts loomos-clothing-facts">
+          ${populated.map(([label, value]) => `
+            <div><dt>${escapeHtml(label)}</dt><dd>${clampProse(String(value), 200)}</dd></div>
+          `).join("")}
+        </dl>` : ""}
+        ${layers.length > 0 ? `
+          <div class="loomos-subhead">Garment layers</div>
+          <div class="loomos-clothing-layers">
+            ${layers.map((layer) => `
+              <div>
+                <b>${escapeHtml(layer.slot)}</b>
+                <span>${clampProse(layer.text, 240)}</span>
+                ${layer.state ? `<small>${clampProse(layer.state, 180)}</small>` : ""}
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
       </div>
     </details>
   `;
@@ -5783,7 +5870,7 @@ function section(key, title, summary, body, open = false, settings, moduleKey) {
 }
 function renderKernel(state, settings) {
   const kernel = state.kernel;
-  return section("kernel", "Kernel", kernel.scene || "Current scene", `
+  return section("kernel", "Scene Context", kernel.scene || "Current scene", `
     <div class="loomos-hero">
       <span class="loomos-kicker">Current focus</span>
       <strong>${clampProse(kernel.currentFocus || kernel.objective, 120)}</strong>
@@ -5805,7 +5892,7 @@ function renderKernel(state, settings) {
 }
 function renderDelta(state, settings) {
   const delta = state.delta;
-  return section("delta", "Delta", delta.headline || "No major change", `
+  return section("delta", "Recent Changes", delta.headline || "No major change", `
     <div class="loomos-callout">${clampProse(delta.headline, 140)}</div>
     <div class="loomos-list">
       ${delta.changes.length === 0 ? `<p class="loomos-muted">No meaningful changes recorded.</p>` : delta.changes.map((change) => `
@@ -5854,7 +5941,9 @@ function renderCast(state, settings) {
     <div class="loomos-list">
       ${state.castMatrix.length === 0 ? `<p class="loomos-muted">No cast evidence in this state.</p>` : state.castMatrix.map((member) => {
     const appearanceHtml = visible(settings, "appearance") ? renderAppearanceProfile(member.appearance) : "";
-    const hasExtra = member.pose || member.proximity || member.hands || member.visualAnchor || visible(settings, "clothing") && member.clothingSummary || member.goals.length > 0 || visible(settings, "relationships") && member.relationships.length > 0 || visible(settings, "inventory") && member.pockets.length > 0 || member.stableFacts.length > 0;
+    const clothingHtml = visible(settings, "clothing") ? renderClothingProfile(member.clothing, member.clothingSummary) : "";
+    const characterDescription = member.appearance.fullDescription || member.identitySummary || member.visualAnchor;
+    const hasExtra = member.pose || member.proximity || member.hands || member.visualAnchor || member.goals.length > 0 || visible(settings, "relationships") && member.relationships.length > 0 || visible(settings, "inventory") && member.pockets.length > 0 || member.stableFacts.length > 0;
     return `
               <article class="loomos-card">
                 <div class="loomos-card-heading">
@@ -5869,21 +5958,22 @@ function renderCast(state, settings) {
                   <span><b>Mood</b>${escapeHtml(member.emotionalState)}</span>
                   <span><b>Threat</b>${escapeHtml(member.threat.pct)}</span>
                 </div>
+                ${characterDescription ? `<p class="loomos-cast-description">${clampProse(characterDescription, 420)}</p>` : ""}
                 <dl class="loomos-cast-summary">
-                  <div><dt>Intent</dt><dd>${clampProse(member.intent, 100)}</dd></div>
-                  <div><dt>Status</dt><dd>${clampProse(member.status, 100)}</dd></div>
+                  <div><dt>Intent</dt><dd>${clampProse(member.intent, 180)}</dd></div>
+                  <div><dt>Status</dt><dd>${clampProse(member.status, 180)}</dd></div>
                 </dl>
                 ${appearanceHtml}
+                ${clothingHtml}
                 
                 ${hasExtra ? `
                   <details class="loomos-cast-extra">
-                    <summary>Visuals & Pockets</summary>
+                    <summary>Current State & Inventory</summary>
                     <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
-                      ${member.pose ? `<p><strong>Pose:</strong> ${clampProse(member.pose, 100)}</p>` : ""}
-                      ${member.proximity ? `<p><strong>Proximity:</strong> ${clampProse(member.proximity, 100)}</p>` : ""}
-                      ${member.hands ? `<p><strong>Hands:</strong> ${clampProse(member.hands, 100)}</p>` : ""}
-                      ${member.visualAnchor ? `<p><strong>Visual Anchor:</strong> ${clampProse(member.visualAnchor, 100)}</p>` : ""}
-                      ${visible(settings, "clothing") && member.clothingSummary ? `<p><strong>Clothing:</strong> ${clampProse(member.clothingSummary, 100)}</p>` : ""}
+                      ${member.pose ? `<p><strong>Pose:</strong> ${clampProse(member.pose, 180)}</p>` : ""}
+                      ${member.proximity ? `<p><strong>Proximity:</strong> ${clampProse(member.proximity, 180)}</p>` : ""}
+                      ${member.hands ? `<p><strong>Hands:</strong> ${clampProse(member.hands, 180)}</p>` : ""}
+                      ${member.visualAnchor ? `<p><strong>Visual anchor:</strong> ${clampProse(member.visualAnchor, 240)}</p>` : ""}
                       ${member.goals.length > 0 ? `<div class="loomos-subhead">Goals</div>${chips(member.goals)}` : ""}
                       ${visible(settings, "relationships") && member.relationships.length > 0 ? `<div class="loomos-subhead">Relationships</div>${chips(member.relationships.map((r) => `${r.target}: ${r.axis}=${r.value}${r.evidence ? ` (${r.evidence.slice(0, 60)})` : ""}`))}` : ""}
                       ${visible(settings, "inventory") && member.pockets.length > 0 ? `<div class="loomos-subhead">Pockets</div>${chips(member.pockets.map((item) => `${item.name} x${item.qty}${item.known ? "" : " (unknown)"}`))}` : ""}
@@ -6137,9 +6227,22 @@ function renderTools(state, settings, standalone = false) {
   }
   if (include("imagePrompt") && visible(settings, "imagePrompt") && tools.imagePrompt) {
     const fullPrompt = tools.imagePrompt.full || [tools.imagePrompt.subject, tools.imagePrompt.positive].filter(Boolean).join(", ");
+    const blueprintFields = [
+      ["Intent", tools.imagePrompt.intent],
+      ["Composition", tools.imagePrompt.composition],
+      ["Camera", tools.imagePrompt.camera],
+      ["Lighting", tools.imagePrompt.lighting],
+      ["Color palette", tools.imagePrompt.colorPalette],
+      ["Environment", tools.imagePrompt.environment],
+      ["Character continuity", tools.imagePrompt.characterContinuity],
+      ["Action", tools.imagePrompt.action],
+      ["Materials", tools.imagePrompt.materials],
+      ["Mood", tools.imagePrompt.mood],
+      ["Text rendering", tools.imagePrompt.textRendering]
+    ].filter((entry) => Boolean(entry[1]));
     readyBlocks.unshift(`<article class="loomos-card loomos-tool-card loomos-image-prompt-card">
       <div class="loomos-tool-card-heading">
-        <div><span class="loomos-kicker">Visual generator</span><strong>Image Prompt</strong></div>
+        <div><span class="loomos-kicker">GPT Image production brief</span><strong>Image Prompt</strong></div>
         <span class="loomos-tool-state is-ready">Ready</span>
       </div>
       <div class="loomos-tool-meta">
@@ -6148,6 +6251,16 @@ function renderTools(state, settings, standalone = false) {
         <span><b>Medium</b>${escapeHtml(tools.imagePrompt.medium || "Not set")}</span>
       </div>
       <p class="loomos-tool-lead">${clampProse(tools.imagePrompt.subject, 260)}</p>
+      ${blueprintFields.length > 0 ? `
+        <details class="loomos-image-blueprint">
+          <summary>Structured art direction</summary>
+          <dl class="loomos-facts">
+            ${blueprintFields.map(([label, value]) => `
+              <div><dt>${escapeHtml(label)}</dt><dd>${clampProse(value, 320)}</dd></div>
+            `).join("")}
+          </dl>
+        </details>
+      ` : ""}
       <div class="loomos-prompt-output">
         <div class="loomos-prompt-output-heading">
           <span>Full prompt</span>
@@ -6165,7 +6278,8 @@ function renderTools(state, settings, standalone = false) {
           <p>${escapeHtml(tools.imagePrompt.negative || "None generated.")}</p>
         </details>
       </div>
-      ${tools.imagePrompt.hint ? `<small>${clampProse(tools.imagePrompt.hint, 240)}</small>` : ""}
+      ${tools.imagePrompt.constraints.length > 0 ? `<div><div class="loomos-subhead">Hard constraints</div>${chips(tools.imagePrompt.constraints)}</div>` : ""}
+      ${tools.imagePrompt.hint ? `<small>${clampProse(tools.imagePrompt.hint, 400)}</small>` : ""}
     </article>`);
   } else {
     renderEmpty("imagePrompt", "Image Prompt");
@@ -6352,7 +6466,7 @@ function renderDashboard(state, settings, activeTab = "overview") {
       renderTools(state, settings),
       ...renderCustomModules(state, settings)
     ].filter(Boolean);
-    return sections.length > 0 ? `<div class="loomos-dashboard">${overview}${sections.join("")}</div>` : `<div class="loomos-dashboard">${overview}<div class="loomos-empty"><h3>All overview display modules are hidden</h3><p>Enable display for Kernel, Deltas, Meters, or Tools in Setup.</p></div></div>`;
+    return sections.length > 0 ? `<div class="loomos-dashboard">${overview}${sections.join("")}</div>` : `<div class="loomos-dashboard">${overview}<div class="loomos-empty"><h3>All overview display modules are hidden</h3><p>Enable display for Scene Context, Recent Changes, Meters, or Tools in Setup.</p></div></div>`;
   }
   if (activeTab === "cast") {
     const sections = [
@@ -7301,6 +7415,61 @@ var LOOMOS_STYLES = `
     font-size: 11px;
     min-width: 0;
   }
+  .loomos-appearance-description,
+  .loomos-clothing-description,
+  .loomos-cast-description {
+    color: var(--loomos-ink);
+    font-size: 11px;
+    line-height: 1.48;
+    margin: 0;
+  }
+  .loomos-cast-description {
+    color: color-mix(in srgb, var(--loomos-ink) 88%, var(--loomos-muted));
+    margin: 7px 0;
+  }
+  .loomos-appearance-description,
+  .loomos-clothing-description {
+    margin-bottom: 8px;
+  }
+  .loomos-appearance-anchor {
+    background: color-mix(in srgb, var(--loomos-accent) 7%, var(--loomos-surface-2));
+    border-left: 3px solid var(--loomos-accent);
+    border-radius: 5px;
+    display: grid;
+    gap: 2px;
+    line-height: 1.4;
+    margin-top: 8px;
+    padding: 7px 8px;
+  }
+  .loomos-appearance-anchor b {
+    color: var(--loomos-muted);
+    font-size: 8px;
+    text-transform: uppercase;
+  }
+  .loomos-clothing-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .loomos-clothing-layers {
+    display: grid;
+    gap: 5px;
+  }
+  .loomos-clothing-layers > div {
+    background: var(--loomos-surface-2);
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 6px;
+    display: grid;
+    gap: 2px;
+    padding: 6px 7px;
+  }
+  .loomos-clothing-layers b {
+    color: var(--loomos-accent);
+    font-size: 8px;
+    text-transform: uppercase;
+  }
+  .loomos-clothing-layers small {
+    color: var(--loomos-muted);
+    font-size: 9px;
+  }
 
   .loomos-prose-details {
     margin-top: 4px;
@@ -8233,6 +8402,20 @@ var LOOMOS_STYLES = `
     background: color-mix(in srgb, var(--loomos-accent) 5%, var(--loomos-surface-3));
     grid-column: 1 / -1;
   }
+  .loomos-image-blueprint {
+    border: 1px solid var(--loomos-soft-border);
+    border-radius: 7px;
+    padding: 7px;
+  }
+  .loomos-image-blueprint summary {
+    color: var(--loomos-muted);
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 800;
+  }
+  .loomos-image-blueprint .loomos-facts {
+    margin-top: 7px;
+  }
   .loomos-tool-meta {
     display: grid;
     gap: 5px;
@@ -8277,7 +8460,7 @@ var LOOMOS_STYLES = `
     color: var(--loomos-ink);
     font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
     margin: 0;
-    max-height: 220px;
+    max-height: 420px;
     overflow: auto;
     white-space: pre-wrap;
   }
@@ -8614,7 +8797,7 @@ var LOOMOS_STYLES = `
     }
   }
 
-  /* 0.1.12 chat tracker viewer */
+  /* 0.1.13 chat tracker viewer */
   .loomos-root[data-view="modal"] {
     container-name: loomos-viewer;
     container-type: inline-size;
@@ -8636,31 +8819,33 @@ var LOOMOS_STYLES = `
     border-top: 0;
     border-radius: 0 0 8px 8px;
     display: grid;
-    gap: 9px;
+    gap: 6px;
     margin-inline: -6px;
-    padding: 9px 8px 8px;
+    padding: 6px 7px;
     position: sticky;
     top: 0;
     z-index: 110;
   }
   .loomos-viewer-context {
     display: grid;
-    gap: 2px;
+    gap: 1px;
     min-width: 0;
   }
-  .loomos-viewer-title-row {
+  .loomos-viewer-eyebrow {
     align-items: center;
     display: flex;
-    gap: 10px;
+    gap: 8px;
     justify-content: space-between;
   }
-  .loomos-viewer-title-row h1 {
-    font-size: 18px;
-    line-height: 1.2;
-    margin: 0;
+  .loomos-viewer-context h1 {
+    display: -webkit-box;
+    font-size: 15px;
+    line-height: 1.18;
+    margin: 1px 0 2px;
     overflow: hidden;
-    text-overflow: ellipsis;
-    text-wrap: balance;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
   .loomos-viewer-context p,
   .loomos-viewer-context small {
@@ -8673,16 +8858,23 @@ var LOOMOS_STYLES = `
   }
   .loomos-viewer-context small {
     color: color-mix(in srgb, var(--loomos-muted) 78%, transparent);
+    font-size: 9px;
+  }
+  .loomos-viewer-command .loomos-state-pill {
+    font-size: 9px;
+    min-height: 22px;
+    padding: 2px 6px;
   }
   .loomos-viewer-actions {
     display: grid;
-    gap: 5px;
-    grid-template-columns: minmax(140px, 1.8fr) repeat(2, minmax(72px, 1fr));
+    gap: 4px;
+    grid-template-columns: minmax(92px, 1.35fr) repeat(2, minmax(62px, .8fr));
   }
   .loomos-viewer-actions .loomos-button {
-    border-radius: 7px;
-    min-height: 42px;
-    padding-inline: 8px;
+    border-radius: 6px;
+    font-size: 10px;
+    min-height: 34px;
+    padding: 4px 7px;
   }
   .loomos-viewer-primary {
     font-weight: 900;
@@ -8697,7 +8889,7 @@ var LOOMOS_STYLES = `
     margin: 0;
     padding: 4px;
     position: sticky;
-    top: 112px;
+    top: 88px;
     z-index: 105;
   }
   .loomos-root[data-view="modal"] .loomos-viewer-tabs .loomos-tab-btn {
@@ -8894,10 +9086,7 @@ var LOOMOS_STYLES = `
 
   @container loomos-viewer (max-width: 620px) {
     .loomos-viewer-actions {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .loomos-viewer-actions .loomos-viewer-primary {
-      grid-column: 1 / -1;
+      grid-template-columns: minmax(92px, 1.35fr) repeat(2, minmax(58px, .8fr));
     }
     .loomos-root[data-view="modal"] .loomos-viewer-tabs {
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -8905,6 +9094,9 @@ var LOOMOS_STYLES = `
     }
     .loomos-tools-grid,
     .loomos-prompt-details {
+      grid-template-columns: 1fr;
+    }
+    .loomos-clothing-facts {
       grid-template-columns: 1fr;
     }
     .loomos-root[data-view="modal"] .loomos-overview-stats {
@@ -9933,7 +10125,7 @@ function setup(ctx) {
   }
   function diagnosticText() {
     const lines = [
-      `version: 0.1.12`,
+      `version: 0.1.13`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -10022,18 +10214,18 @@ function setup(ctx) {
     return `
       <section class="loomos-viewer-command">
         <div class="loomos-viewer-context">
-          <span class="loomos-kicker">LoomOS tracker</span>
-          <div class="loomos-viewer-title-row">
-            <h1>${escapeHtml(sceneTitle)}</h1>
+          <div class="loomos-viewer-eyebrow">
+            <span class="loomos-kicker">LoomOS tracker</span>
             <span class="loomos-state-pill${busy ? " is-busy" : state ? " is-ready" : ""}" data-live-pill title="${escapeHtml(elapsedLabel())}">
               <i></i><span data-live-state-label>${stateLabel}</span>
             </span>
           </div>
+          <h1>${escapeHtml(sceneTitle)}</h1>
           <p>${escapeHtml(sceneMeta || exactLabel())}</p>
           <small data-live-status>${escapeHtml(exactLabel())} | ${escapeHtml(status)}</small>
         </div>
         <div class="loomos-viewer-actions">
-          ${busy ? `<button class="loomos-button loomos-button-danger loomos-viewer-primary" data-action="cancel">Stop <span data-live-elapsed>${formatElapsed(currentElapsedMs())}</span></button>` : `<button class="loomos-button loomos-button-primary loomos-viewer-primary" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh tracker" : "Generate tracker"}</button>`}
+          ${busy ? `<button class="loomos-button loomos-button-danger loomos-viewer-primary" data-action="cancel">Stop <span data-live-elapsed>${formatElapsed(currentElapsedMs())}</span></button>` : `<button class="loomos-button loomos-button-primary loomos-viewer-primary" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh" : "Generate"}</button>`}
           <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation || busy)}>Reload</button>
           ${state && !busy ? `<button class="loomos-button loomos-button-danger" data-action="delete">Delete</button>` : ""}
         </div>

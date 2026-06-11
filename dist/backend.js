@@ -4077,7 +4077,7 @@ var CORE_TRACKING_MODULES = /* @__PURE__ */ new Set([
 var MODULE_CATALOG = [
   {
     key: "sceneKernel",
-    label: "Scene Kernel",
+    label: "Scene Context",
     group: "Core",
     core: true,
     intensity: "medium",
@@ -4089,7 +4089,7 @@ var MODULE_CATALOG = [
   },
   {
     key: "deltas",
-    label: "Turn Deltas",
+    label: "Recent Changes",
     group: "Core",
     core: true,
     intensity: "medium",
@@ -4129,9 +4129,9 @@ var MODULE_CATALOG = [
     group: "Cast",
     core: false,
     intensity: "medium",
-    description: "Persistent physical identity: hair, eyes, height, weight, build, body shape, proportions, marks, and unique features.",
-    schemaSummary: "castMatrix[].appearance{species, ageBand, apparentAge, genderPresentation, height, weight, build, bodyType, frame, proportions, silhouette, bodyComposition, shoulders, chest, bust, waist, hips, arms, legs, hands, skin, complexion, face, facialStructure, hair, eyes, eyebrows, nose, lips, ears, facialHair, posture, movement, voice, distinguishingMarks, scars, tattoos, piercings, birthmarks, uniqueFeatures, immutableTraits[], presence, fullDescription, anchor}",
-    compilerInstruction: "Track grounded, persistent physical traits for adult named characters. Preserve established hair, eyes, height, weight description, build, body type, proportions, bust/waist/hips description, skin, face, marks, scars, tattoos, piercings, posture, movement, and unique features until transcript evidence changes them. Use neutral non-explicit language. Never infer exact measurements, cup sizes, weight numbers, or hidden anatomy when the transcript does not provide them. Use empty fields rather than inventing details.",
+    description: "Persistent adult physical identity: face, hair, eyes, height, weight, build, body shape, proportions, marks, attractive features, and unique traits.",
+    schemaSummary: "castMatrix[].appearance{species, ageBand, apparentAge, genderPresentation, height, weight, build, bodyType, frame, proportions, silhouette, bodyComposition, shoulders, chest, bust, waist, hips, glutes, arms, legs, hands, skin, complexion, face, facialStructure, hair, eyes, eyebrows, nose, lips, ears, facialHair, posture, movement, voice, distinguishingMarks, scars, tattoos, piercings, birthmarks, uniqueFeatures, attractiveFeatures, immutableTraits[], presence, fullDescription, anchor}",
+    compilerInstruction: "Create a rich persistent visual profile for every important named adult character using transcript and seed evidence. Describe hair color, length, texture and styling; eye color, shape and expression; facial shape and features; complexion and skin details; height and weight impression; frame, build, musculature or softness; shoulders, chest or bust, waist, hips, glute or seat shape, limbs, hands, posture, movement, voice, marks, scars, tattoos, piercings, attractive features, and unique identifiers when known. fullDescription should read as a coherent 3-6 sentence visual portrait, while anchor is a concise continuity lock. Preserve established traits until evidence changes them. Never invent exact measurements, cup sizes, numeric weight, hidden anatomy, or sexual details unsupported by the transcript. Only use body-shape and attractive-feature fields for confirmed or assumed adults; keep any minor or age-ambiguous description neutral and leave sexualized proportional fields empty.",
     injectionBehavior: "When enabled, injects a compact immutable appearance anchor for important cast members. Budget-aware.",
     renderBehavior: "Cast tab - dedicated expandable appearance profile with physical traits, proportions, identifying marks, and immutable anchors."
   },
@@ -4153,9 +4153,9 @@ var MODULE_CATALOG = [
     group: "Cast",
     core: false,
     intensity: "light",
-    description: "Compact grounded clothing continuity with layers and condition.",
-    schemaSummary: "summary, silhouette, palette, fabric, fit, condition, notable, layerCount, layers[{slot, text, state, color}]",
-    compilerInstruction: "Track clothing state per character. Persist until changed by transcript evidence. Include silhouette, palette, notable items. Mark changed when clothing updates.",
+    description: "Detailed wardrobe continuity with layers, fabrics, fit, coverage, footwear, accessories, styling, and condition.",
+    schemaSummary: "summary, silhouette, palette, fabric, fit, condition, notable, styling, coverage, footwear, accessories, layerCount, layers[{slot, text, state, color}]",
+    compilerInstruction: "Track each character's complete visible outfit in grounded detail and persist it until the transcript changes it. Describe every visible layer from outerwear through upper body, lower body, footwear, jewelry and accessories; include garment type, cut, color, pattern, material, texture, fit, coverage, closures, condition, wear, wetness, damage, stains, and how the outfit sits on or moves with the body. summary should be a coherent 2-4 sentence wardrobe description, while layers should preserve item-level continuity. Mark changed when any garment is added, removed, opened, shifted, damaged, wet, stained, or transferred.",
     injectionBehavior: "Included only if changed or currently plot-relevant. Budget-aware.",
     renderBehavior: "Cast tab \u2014 Clothing section in expandable details. Shows layers with slot labels."
   },
@@ -4285,9 +4285,9 @@ var MODULE_CATALOG = [
     group: "Tools",
     core: false,
     intensity: "experimental",
-    description: "Optional compact visual prompt assembly.",
-    schemaSummary: "aspect, shot, medium, subject, positive, negative, full, hint",
-    compilerInstruction: "Assemble a compact text-to-image prompt from the current scene if visually distinctive. Aspect, shot type, medium, subject, and style cues.",
+    description: "A structured, production-ready GPT Image brief grounded in the exact scene, cast continuity, composition, and constraints.",
+    schemaSummary: "aspect, shot, medium, subject, positive, negative, intent, composition, camera, lighting, colorPalette, environment, characterContinuity, action, materials, mood, textRendering, constraints[], full, hint",
+    compilerInstruction: "Write a production-ready prompt optimized for OpenAI GPT Image. Use a consistent labeled order: intended use and visual goal; background and environment; subjects; exact adult character appearance and wardrobe continuity; pose, gaze, hands and object interactions; composition and placement; camera framing, viewpoint and perspective; lighting, atmosphere and color palette; materials and textures; medium and finish; then explicit constraints. Use concrete natural language rather than keyword stuffing. If photorealism is intended, say photorealistic or real photograph directly. Preserve transcript-grounded identities, clothing, geometry, spatial relationships, visible props and scene facts; never invent conflicting appearance details. State no watermark, no unintended text, no logos, no extra people or limbs, no cropped required body parts, and no continuity drift unless the scene requires otherwise. If text is requested, quote the exact text and placement; otherwise specify no text. full should normally be 350-800 words when sufficient scene evidence exists, organized with short labeled sections or line breaks. Keep it specific, coherent, and free of filler.",
     injectionBehavior: "Not injected by default. Consumes significant budget if enabled.",
     renderBehavior: "Pulse view \u2014 image prompt card with shot, medium, subject, and hint."
   },
@@ -4722,6 +4722,7 @@ var AppearanceSchema = external_exports.object({
   bust: ShortText.optional(),
   waist: ShortText.optional(),
   hips: ShortText.optional(),
+  glutes: ShortText.optional(),
   arms: ShortText.optional(),
   legs: ShortText.optional(),
   hands: ShortText.optional(),
@@ -4745,21 +4746,26 @@ var AppearanceSchema = external_exports.object({
   piercings: MediumText.optional(),
   birthmarks: MediumText.optional(),
   uniqueFeatures: MediumText.optional(),
+  attractiveFeatures: MediumText.optional(),
   immutableTraits: external_exports.array(ShortText).max(16).optional().default([]),
   presence: ShortText.optional(),
   fullDescription: MediumText.optional(),
   anchor: MediumText.optional()
 }).strict();
 var ClothingSchema = external_exports.object({
-  summary: ShortText.optional(),
+  summary: MediumText.optional(),
   silhouette: ShortText.optional(),
   palette: ShortText.optional(),
-  fabric: ShortText.optional(),
-  fit: ShortText.optional(),
-  condition: ShortText.optional(),
-  notable: ShortText.optional(),
-  layerCount: external_exports.number().int().min(0).max(5).optional().default(0),
-  layers: external_exports.array(LayerSchema).max(5).optional().default([])
+  fabric: MediumText.optional(),
+  fit: MediumText.optional(),
+  condition: MediumText.optional(),
+  notable: MediumText.optional(),
+  styling: MediumText.optional(),
+  coverage: MediumText.optional(),
+  footwear: MediumText.optional(),
+  accessories: MediumText.optional(),
+  layerCount: external_exports.number().int().min(0).max(8).optional().default(0),
+  layers: external_exports.array(LayerSchema).max(8).optional().default([])
 }).strict();
 var CurrentStateSchema = external_exports.object({
   injury: ShortText.optional(),
@@ -4968,7 +4974,19 @@ var ToolsSchema = external_exports.object({
     subject: MediumText,
     positive: MediumText,
     negative: MediumText,
-    full: external_exports.string().trim().max(3e3),
+    intent: MediumText.optional().default(""),
+    composition: MediumText.optional().default(""),
+    camera: MediumText.optional().default(""),
+    lighting: MediumText.optional().default(""),
+    colorPalette: MediumText.optional().default(""),
+    environment: MediumText.optional().default(""),
+    characterContinuity: external_exports.string().trim().max(4e3).optional().default(""),
+    action: MediumText.optional().default(""),
+    materials: MediumText.optional().default(""),
+    mood: MediumText.optional().default(""),
+    textRendering: MediumText.optional().default(""),
+    constraints: external_exports.array(MediumText).max(16).optional().default([]),
+    full: external_exports.string().trim().max(8e3),
     hint: MediumText
   }).strict().nullable()
 }).strict();
@@ -5318,6 +5336,7 @@ function normalizeAppearance(value) {
     "piercings",
     "birthmarks",
     "uniqueFeatures",
+    "attractiveFeatures",
     "fullDescription",
     "anchor"
   ]);
@@ -5339,6 +5358,7 @@ function normalizeAppearance(value) {
     "bust",
     "waist",
     "hips",
+    "glutes",
     "arms",
     "legs",
     "hands",
@@ -5362,6 +5382,7 @@ function normalizeAppearance(value) {
     "piercings",
     "birthmarks",
     "uniqueFeatures",
+    "attractiveFeatures",
     "presence",
     "fullDescription",
     "anchor"
@@ -5392,18 +5413,37 @@ function normalizeClothing(value) {
       ...state ? { state } : {},
       ...color ? { color } : {}
     };
-  }).filter((item) => Boolean(item)).slice(0, 5);
+  }).filter((item) => Boolean(item)).slice(0, 8);
+  const mediumFields = /* @__PURE__ */ new Set([
+    "summary",
+    "fabric",
+    "fit",
+    "condition",
+    "notable",
+    "styling",
+    "coverage",
+    "footwear",
+    "accessories"
+  ]);
+  const fields = [
+    "summary",
+    "silhouette",
+    "palette",
+    "fabric",
+    "fit",
+    "condition",
+    "notable",
+    "styling",
+    "coverage",
+    "footwear",
+    "accessories"
+  ];
   return {
-    ...normalizeOptionalTextObject(source, [
-      "summary",
-      "silhouette",
-      "palette",
-      "fabric",
-      "fit",
-      "condition",
-      "notable"
-    ]),
-    layerCount: integerValue(source.layerCount, 0, 5, layers.length),
+    ...Object.fromEntries(fields.flatMap((field) => {
+      const normalized = text(source[field], mediumFields.has(field) ? 1600 : 500);
+      return normalized ? [[field, normalized]] : [];
+    })),
+    layerCount: integerValue(source.layerCount, 0, 8, layers.length),
     layers
   };
 }
@@ -5918,7 +5958,19 @@ function normalizeTools(value) {
       subject: text(source.imagePrompt.subject, 1600),
       positive: text(source.imagePrompt.positive, 1600),
       negative: text(source.imagePrompt.negative, 1600),
-      full: text(source.imagePrompt.full, 3e3),
+      intent: text(source.imagePrompt.intent, 1600),
+      composition: text(source.imagePrompt.composition, 1600),
+      camera: text(source.imagePrompt.camera, 1600),
+      lighting: text(source.imagePrompt.lighting, 1600),
+      colorPalette: text(source.imagePrompt.colorPalette, 1600),
+      environment: text(source.imagePrompt.environment, 1600),
+      characterContinuity: text(source.imagePrompt.characterContinuity, 4e3),
+      action: text(source.imagePrompt.action, 1600),
+      materials: text(source.imagePrompt.materials, 1600),
+      mood: text(source.imagePrompt.mood, 1600),
+      textRendering: text(source.imagePrompt.textRendering, 1600),
+      constraints: stringArray(source.imagePrompt.constraints, 16, 1600),
+      full: text(source.imagePrompt.full, 8e3),
       hint: text(source.imagePrompt.hint, 1600)
     };
   }
@@ -6184,15 +6236,20 @@ Exact JSON field contract (values below are type examples, not story facts):
       "species":"","ageBand":"","apparentAge":"","genderPresentation":"",
       "height":"","weight":"","build":"","bodyType":"","frame":"",
       "proportions":"","silhouette":"","bodyComposition":"",
-      "shoulders":"","chest":"","bust":"","waist":"","hips":"",
+      "shoulders":"","chest":"","bust":"","waist":"","hips":"","glutes":"",
       "arms":"","legs":"","hands":"","skin":"","complexion":"",
       "face":"","facialStructure":"","hair":"","eyes":"","eyebrows":"",
       "nose":"","lips":"","ears":"","facialHair":"","voice":"",
       "movement":"","posture":"","distinguishingMarks":"","scars":"",
       "tattoos":"","piercings":"","birthmarks":"","uniqueFeatures":"",
+      "attractiveFeatures":"",
       "immutableTraits":[],"presence":"","fullDescription":"","anchor":""
     },
-    "clothing":{"summary":"","layerCount":0,"layers":[]},
+    "clothing":{
+      "summary":"","silhouette":"","palette":"","fabric":"","fit":"",
+      "condition":"","notable":"","styling":"","coverage":"",
+      "footwear":"","accessories":"","layerCount":0,"layers":[]
+    },
     "currentState":{"pose":"","proximity":"","leftHand":"","rightHand":"","emotion":"","intent":"","injury":""},
     "emotionalState":"","intent":"","pose":"","proximity":"","hands":"",
     "visualAnchor":"","identitySummary":"","clothingSummary":"",
@@ -6240,7 +6297,10 @@ Exact JSON field contract (values below are type examples, not story facts):
     },
     "imagePrompt": {
       "aspect":"","shot":"","medium":"","subject":"","positive":"",
-      "negative":"","full":"","hint":""
+      "negative":"","intent":"","composition":"","camera":"",
+      "lighting":"","colorPalette":"","environment":"",
+      "characterContinuity":"","action":"","materials":"","mood":"",
+      "textRendering":"","constraints":[],"full":"","hint":""
     }
   },
   "auditLog": [{
@@ -6315,8 +6375,9 @@ function buildStateCompilerPrompt(enabledModules, customModules = [], overrides 
   const appearanceRules = enabledModules.includes("appearance") ? `
 - For each named adult character, populate grounded appearance fields when transcript or seed evidence exists.
 - Treat appearance as persistent identity state. Carry it forward unchanged unless the transcript explicitly changes it.
-- Track hair, eyes, height, weight description, build, bodyType, frame, proportions, silhouette, shoulders, chest, bust, waist, hips, limbs, hands, skin, face, marks, scars, tattoos, piercings, posture, movement, voice, unique features, and immutableTraits when known.
-- Use neutral, non-explicit physical language. Never infer exact measurements, cup sizes, weight numbers, hidden anatomy, or other unsupported details.
+- Write fullDescription as a coherent 3-6 sentence visual portrait, not a terse keyword list. Write anchor as a concise identity lock for future turns.
+- Describe hair color, length, texture and styling; eye color, shape and expression; facial structure and features; complexion and skin details; height and weight impression; frame, build, musculature or softness; shoulders, chest or bust, waist, hips, glute or seat shape, limbs, hands, posture, movement, voice, marks, scars, tattoos, piercings, attractive features, and unique identifiers when evidence supports them.
+- Never infer exact measurements, cup sizes, numeric weight, hidden anatomy, or unsupported sexual details. Only populate bust, glutes, and attractiveFeatures for confirmed or assumed adults. Keep any minor or age-ambiguous description neutral.
 - Use empty strings and arrays for unknown appearance fields. Never reset established appearance each turn.` : `
 - Appearance tracking is disabled. Preserve an empty appearance object and do not invent new physical traits.`;
   const closingBraceIdx = STATE_SHAPE_GUIDE.lastIndexOf("}");
@@ -6354,7 +6415,9 @@ Rules:
 
 Character depth rules:
 ${appearanceRules}
-- Clothing persists until transcript explicitly shows change. Track layers (outer/upper/lower/feet/accessory). Mark clothing.changed=true when clothing updates.
+- Clothing persists until transcript explicitly shows change. Write clothing.summary as a coherent 2-4 sentence outfit description and separately track up to 8 visible layers (outer/upper/lower/feet/accessory/other).
+- For clothing, include garment type, cut, color, pattern, material, texture, fit, coverage, closures, condition, wear, wetness, damage, stains, accessories, footwear, and how the outfit sits on or moves with the body when evidence supports it.
+- Mark clothing.changed=true when clothing updates, including when a garment is added, removed, opened, shifted, damaged, wet, stained, or transferred.
 - Update currentState (pose, proximity, leftHand, rightHand, emotion, intent, physicalTell, injury) from latest transcript actions and descriptions.
 - Relationships: use axis labels (Trust, Fear, Attraction, Rivalry, Loyalty, Debt). Value -100 (hostile) to 100 (devoted). Include evidence for changes.
 - Spot trends (up/down/steady) on relationship values.
@@ -6365,6 +6428,17 @@ ${appearanceRules}
 - When age is unspecified, assume adult. Never output minors.
 - Spotlight queue: track turnsSince each named character last had narrative focus. Use need: active/soon/okay/quiet/background.
 - Character-level castMatrix[].goals are always compact strings. Structured goals with who/goal/status/note fields belong only in storyState.goals.
+
+GPT Image prompt rules:
+- When imagePrompt is enabled, build a production-ready visual brief from the exact tracker state rather than a short tag list.
+- Follow this order inside tools.imagePrompt.full: INTENT; SCENE AND ENVIRONMENT; SUBJECTS AND CONTINUITY; ACTION AND POSE; COMPOSITION; CAMERA; LIGHTING AND COLOR; MATERIALS AND TEXTURE; MEDIUM AND FINISH; TEXT; CONSTRAINTS.
+- Use short labeled sections or line breaks. Use concrete natural language and avoid repetitive quality buzzwords or keyword stuffing.
+- Preserve each character's established appearance, clothing, body proportions, marks, visible accessories, pose, gaze, hands, and object interactions. Do not contradict appearance or clothing modules.
+- Specify subject scale and body framing, whether feet must be visible, gaze direction, hand placement, foreground/midground/background placement, camera angle, viewpoint, perspective, atmosphere, and negative space when relevant.
+- For photorealistic output, say photorealistic, real photograph, professional photography, or an equivalent direct cue. Treat lens and camera details as high-level visual guidance rather than exact physical simulation.
+- State explicit invariants and exclusions: no watermark, no unintended text, no logos or trademarks, no extra people or limbs, no malformed hands, no cropped required body parts, and no continuity drift unless requested.
+- If text should appear, put the exact text and placement in textRendering. Otherwise use "No text in the image."
+- Use a detailed 350-800 word full prompt when the tracker contains enough visual evidence. Prefer specificity over filler; do not invent missing scene or character facts.
 `;
 }
 var STATE_REPAIR_PROMPT = `Repair a malformed LoomOS State V2 compiler result.
@@ -6920,13 +6994,27 @@ function trimJsonToBudget(value, tokenBudget) {
   const serialized = JSON.stringify(value);
   const maxChars = Math.max(800, tokenBudget * 4);
   if (serialized.length <= maxChars) return serialized;
-  return JSON.stringify({
-    snapshotExcerpt: serialized.slice(0, maxChars - 120),
-    truncated: true
-  });
+  let low = 0;
+  let high = serialized.length;
+  let result = JSON.stringify({ snapshotExcerpt: "", truncated: true });
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const candidate = JSON.stringify({
+      snapshotExcerpt: serialized.slice(0, middle),
+      truncated: true
+    });
+    if (candidate.length <= maxChars) {
+      result = candidate;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return result;
 }
 function buildStateSeedForCompiler(state, settings) {
   const modules = settings.moduleSettings;
+  const expandedSeed = settings.compilerSeedTokenBudget >= 1800;
   const seed = {
     identity: state.identity,
     generatedAt: state.generatedAt,
@@ -6952,38 +7040,62 @@ function buildStateSeedForCompiler(state, settings) {
       status: compactText(member.status),
       intent: compactText(member.intent),
       appearance: modules.appearance.track && hasAppearanceEvidence(member.appearance) ? {
-        species: member.appearance.species,
         ageBand: member.appearance.ageBand,
-        apparentAge: member.appearance.apparentAge,
-        genderPresentation: member.appearance.genderPresentation,
-        height: member.appearance.height,
-        weight: member.appearance.weight,
-        build: member.appearance.build,
         bodyType: member.appearance.bodyType,
-        frame: member.appearance.frame,
         proportions: member.appearance.proportions,
-        silhouette: member.appearance.silhouette,
-        shoulders: member.appearance.shoulders,
-        bust: member.appearance.bust,
-        waist: member.appearance.waist,
-        hips: member.appearance.hips,
-        skin: member.appearance.skin,
-        complexion: member.appearance.complexion,
+        glutes: member.appearance.glutes,
         hair: member.appearance.hair,
         eyes: member.appearance.eyes,
-        distinguishingMarks: member.appearance.distinguishingMarks,
-        scars: member.appearance.scars,
-        tattoos: member.appearance.tattoos,
-        piercings: member.appearance.piercings,
         uniqueFeatures: member.appearance.uniqueFeatures,
+        attractiveFeatures: member.appearance.attractiveFeatures,
         immutableTraits: member.appearance.immutableTraits?.slice(0, 8),
-        presence: member.appearance.presence,
-        anchor: member.appearance.anchor
+        anchor: member.appearance.anchor,
+        ...expandedSeed ? {
+          species: member.appearance.species,
+          apparentAge: member.appearance.apparentAge,
+          genderPresentation: member.appearance.genderPresentation,
+          height: member.appearance.height,
+          weight: member.appearance.weight,
+          build: member.appearance.build,
+          frame: member.appearance.frame,
+          silhouette: member.appearance.silhouette,
+          shoulders: member.appearance.shoulders,
+          bust: member.appearance.bust,
+          waist: member.appearance.waist,
+          hips: member.appearance.hips,
+          skin: member.appearance.skin,
+          complexion: member.appearance.complexion,
+          face: member.appearance.face,
+          facialStructure: member.appearance.facialStructure,
+          distinguishingMarks: member.appearance.distinguishingMarks,
+          scars: member.appearance.scars,
+          tattoos: member.appearance.tattoos,
+          piercings: member.appearance.piercings,
+          presence: member.appearance.presence,
+          fullDescription: member.appearance.fullDescription
+        } : {}
       } : void 0,
       clothing: modules.clothing.track ? {
-        summary: compactText(member.clothing?.summary ?? member.clothingSummary ?? ""),
+        summary: compactText(member.clothing?.summary ?? member.clothingSummary ?? "", expandedSeed ? 600 : 170),
         layerCount: member.clothing?.layerCount ?? 0,
-        notable: compactText(member.clothing?.notable ?? "")
+        layers: member.clothing?.layers.slice(0, expandedSeed ? 8 : 4).map((layer) => ({
+          slot: layer.slot,
+          text: compactText(layer.text, expandedSeed ? 360 : 140),
+          state: compactText(layer.state ?? "", expandedSeed ? 240 : 80),
+          color: layer.color
+        })),
+        ...expandedSeed ? {
+          condition: compactText(member.clothing?.condition ?? "", 420),
+          footwear: compactText(member.clothing?.footwear ?? "", 420),
+          accessories: compactText(member.clothing?.accessories ?? "", 420),
+          notable: compactText(member.clothing?.notable ?? "", 420),
+          silhouette: compactText(member.clothing?.silhouette ?? ""),
+          palette: compactText(member.clothing?.palette ?? ""),
+          fabric: compactText(member.clothing?.fabric ?? "", 420),
+          fit: compactText(member.clothing?.fit ?? "", 420),
+          styling: compactText(member.clothing?.styling ?? "", 420),
+          coverage: compactText(member.clothing?.coverage ?? "", 420)
+        } : {}
       } : void 0,
       currentState: modules.castVisuals.track && member.currentState ? {
         pose: compactText(member.currentState.pose ?? member.pose ?? ""),

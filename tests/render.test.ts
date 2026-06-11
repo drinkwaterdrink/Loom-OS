@@ -140,14 +140,19 @@ test("enhanced renderContinuity renders explainer and metrics", async () => {
   assert.match(html, /Do not use the east stair/);
 });
 
-test("cast dashboard renders the dedicated immutable appearance profile", async () => {
+test("cast dashboard renders detailed appearance and clothing profiles", async () => {
   const state = makeState();
   const html = renderDashboard(state, DEFAULT_SETTINGS, "cast");
-  assert.match(html, /Immutable Appearance/);
+  assert.match(html, /Detailed Appearance/);
+  assert.match(html, /Detailed Clothing/);
   assert.match(html, /Slim with subtle curves/);
-  assert.match(html, /Modest/);
+  assert.match(html, /Compact and rounded/);
+  assert.match(html, /Expressive grey eyes/);
   assert.match(html, /A faint crescent scar beneath the left eye/);
   assert.match(html, /Dark tied-back hair/);
+  assert.match(html, /charcoal wool investigator/);
+  assert.match(html, /Materials &amp; texture/);
+  assert.match(html, /Current State & Inventory/);
 });
 
 test("tools workspace explains when image prompt needs a refreshed tracker", () => {
@@ -182,11 +187,27 @@ test("image prompt renders its complete generator payload and copy action", () =
     subject: "Mara and Iven in the rain-lit observatory.",
     positive: "Copper dome, moonlight, wet wool, tense expressions.",
     negative: "Text, watermark, extra fingers.",
-    full: "Wide cinematic view of Mara and Iven in a rain-lit observatory.",
+    intent: "A continuity-accurate dramatic scene illustration.",
+    composition: "Mara occupies the left third and Iven the right third.",
+    camera: "Eye-level 35mm environmental portrait.",
+    lighting: "Cold moonlight with one warm lantern key.",
+    colorPalette: "Copper, charcoal, smoke blue, and amber.",
+    environment: "A rain-lashed brass observatory.",
+    characterContinuity: "Preserve Mara's grey eyes, dark low knot, crescent scar, and fitted charcoal coat.",
+    action: "Mara studies the soot on Iven's glove.",
+    materials: "Wet wool, worn leather, aged brass, rain-streaked glass.",
+    mood: "Tense, intimate, conspiratorial.",
+    textRendering: "No text, captions, signatures, or watermarks.",
+    constraints: ["Exactly two adult characters", "Hands visible and anatomically coherent"],
+    full: "INTENT: A continuity-accurate dramatic scene illustration.\n\nSCENE: Wide cinematic view of Mara and Iven in a rain-lit observatory.",
     hint: "Keep both characters readable.",
   };
   const html = renderDashboard(state, settings, "tools");
   assert.match(html, /Wide cinematic view/);
+  assert.match(html, /GPT Image production brief/);
+  assert.match(html, /Structured art direction/);
+  assert.match(html, /Character continuity/);
+  assert.match(html, /Exactly two adult characters/);
   assert.match(html, /Positive guidance/);
   assert.match(html, /Negative guidance/);
   assert.match(html, /data-action="copy-image-prompt"/);

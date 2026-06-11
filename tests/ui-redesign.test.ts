@@ -31,8 +31,13 @@ test("responsive design layer uses full-width grid navigation and safe areas", a
   assert.match(styles, /grid-auto-rows:\s*max-content/);
   assert.match(styles, /@container loomos-viewer/);
   assert.match(styles, /\.loomos-viewer-command/);
+  assert.match(styles, /grid-template-columns:\s*minmax\(92px, 1\.35fr\) repeat\(2, minmax\(62px, \.8fr\)\)/);
+  assert.match(styles, /\.loomos-viewer-actions \.loomos-button[\s\S]*?min-height:\s*34px/);
+  assert.match(styles, /-webkit-line-clamp:\s*2/);
   assert.match(styles, /\.loomos-tools-grid/);
   assert.match(styles, /\.loomos-image-prompt-card/);
+  assert.match(styles, /\.loomos-image-blueprint/);
+  assert.match(styles, /\.loomos-clothing-layers/);
   assert.match(styles, /\.loomos-section\[data-section="cast"\] \.loomos-card/);
   assert.match(styles, /@media \(max-width: 380px\)/);
   assert.doesNotMatch(styles, /linear-gradient/);

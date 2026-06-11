@@ -72,15 +72,20 @@ Exact JSON field contract (values below are type examples, not story facts):
       "species":"","ageBand":"","apparentAge":"","genderPresentation":"",
       "height":"","weight":"","build":"","bodyType":"","frame":"",
       "proportions":"","silhouette":"","bodyComposition":"",
-      "shoulders":"","chest":"","bust":"","waist":"","hips":"",
+      "shoulders":"","chest":"","bust":"","waist":"","hips":"","glutes":"",
       "arms":"","legs":"","hands":"","skin":"","complexion":"",
       "face":"","facialStructure":"","hair":"","eyes":"","eyebrows":"",
       "nose":"","lips":"","ears":"","facialHair":"","voice":"",
       "movement":"","posture":"","distinguishingMarks":"","scars":"",
       "tattoos":"","piercings":"","birthmarks":"","uniqueFeatures":"",
+      "attractiveFeatures":"",
       "immutableTraits":[],"presence":"","fullDescription":"","anchor":""
     },
-    "clothing":{"summary":"","layerCount":0,"layers":[]},
+    "clothing":{
+      "summary":"","silhouette":"","palette":"","fabric":"","fit":"",
+      "condition":"","notable":"","styling":"","coverage":"",
+      "footwear":"","accessories":"","layerCount":0,"layers":[]
+    },
     "currentState":{"pose":"","proximity":"","leftHand":"","rightHand":"","emotion":"","intent":"","injury":""},
     "emotionalState":"","intent":"","pose":"","proximity":"","hands":"",
     "visualAnchor":"","identitySummary":"","clothingSummary":"",
@@ -128,7 +133,10 @@ Exact JSON field contract (values below are type examples, not story facts):
     },
     "imagePrompt": {
       "aspect":"","shot":"","medium":"","subject":"","positive":"",
-      "negative":"","full":"","hint":""
+      "negative":"","intent":"","composition":"","camera":"",
+      "lighting":"","colorPalette":"","environment":"",
+      "characterContinuity":"","action":"","materials":"","mood":"",
+      "textRendering":"","constraints":[],"full":"","hint":""
     }
   },
   "auditLog": [{
@@ -243,8 +251,9 @@ export function buildStateCompilerPrompt(
     ? `
 - For each named adult character, populate grounded appearance fields when transcript or seed evidence exists.
 - Treat appearance as persistent identity state. Carry it forward unchanged unless the transcript explicitly changes it.
-- Track hair, eyes, height, weight description, build, bodyType, frame, proportions, silhouette, shoulders, chest, bust, waist, hips, limbs, hands, skin, face, marks, scars, tattoos, piercings, posture, movement, voice, unique features, and immutableTraits when known.
-- Use neutral, non-explicit physical language. Never infer exact measurements, cup sizes, weight numbers, hidden anatomy, or other unsupported details.
+- Write fullDescription as a coherent 3-6 sentence visual portrait, not a terse keyword list. Write anchor as a concise identity lock for future turns.
+- Describe hair color, length, texture and styling; eye color, shape and expression; facial structure and features; complexion and skin details; height and weight impression; frame, build, musculature or softness; shoulders, chest or bust, waist, hips, glute or seat shape, limbs, hands, posture, movement, voice, marks, scars, tattoos, piercings, attractive features, and unique identifiers when evidence supports them.
+- Never infer exact measurements, cup sizes, numeric weight, hidden anatomy, or unsupported sexual details. Only populate bust, glutes, and attractiveFeatures for confirmed or assumed adults. Keep any minor or age-ambiguous description neutral.
 - Use empty strings and arrays for unknown appearance fields. Never reset established appearance each turn.`
     : `
 - Appearance tracking is disabled. Preserve an empty appearance object and do not invent new physical traits.`;
@@ -286,7 +295,9 @@ Rules:
 
 Character depth rules:
 ${appearanceRules}
-- Clothing persists until transcript explicitly shows change. Track layers (outer/upper/lower/feet/accessory). Mark clothing.changed=true when clothing updates.
+- Clothing persists until transcript explicitly shows change. Write clothing.summary as a coherent 2-4 sentence outfit description and separately track up to 8 visible layers (outer/upper/lower/feet/accessory/other).
+- For clothing, include garment type, cut, color, pattern, material, texture, fit, coverage, closures, condition, wear, wetness, damage, stains, accessories, footwear, and how the outfit sits on or moves with the body when evidence supports it.
+- Mark clothing.changed=true when clothing updates, including when a garment is added, removed, opened, shifted, damaged, wet, stained, or transferred.
 - Update currentState (pose, proximity, leftHand, rightHand, emotion, intent, physicalTell, injury) from latest transcript actions and descriptions.
 - Relationships: use axis labels (Trust, Fear, Attraction, Rivalry, Loyalty, Debt). Value -100 (hostile) to 100 (devoted). Include evidence for changes.
 - Spot trends (up/down/steady) on relationship values.
@@ -297,6 +308,17 @@ ${appearanceRules}
 - When age is unspecified, assume adult. Never output minors.
 - Spotlight queue: track turnsSince each named character last had narrative focus. Use need: active/soon/okay/quiet/background.
 - Character-level castMatrix[].goals are always compact strings. Structured goals with who/goal/status/note fields belong only in storyState.goals.
+
+GPT Image prompt rules:
+- When imagePrompt is enabled, build a production-ready visual brief from the exact tracker state rather than a short tag list.
+- Follow this order inside tools.imagePrompt.full: INTENT; SCENE AND ENVIRONMENT; SUBJECTS AND CONTINUITY; ACTION AND POSE; COMPOSITION; CAMERA; LIGHTING AND COLOR; MATERIALS AND TEXTURE; MEDIUM AND FINISH; TEXT; CONSTRAINTS.
+- Use short labeled sections or line breaks. Use concrete natural language and avoid repetitive quality buzzwords or keyword stuffing.
+- Preserve each character's established appearance, clothing, body proportions, marks, visible accessories, pose, gaze, hands, and object interactions. Do not contradict appearance or clothing modules.
+- Specify subject scale and body framing, whether feet must be visible, gaze direction, hand placement, foreground/midground/background placement, camera angle, viewpoint, perspective, atmosphere, and negative space when relevant.
+- For photorealistic output, say photorealistic, real photograph, professional photography, or an equivalent direct cue. Treat lens and camera details as high-level visual guidance rather than exact physical simulation.
+- State explicit invariants and exclusions: no watermark, no unintended text, no logos or trademarks, no extra people or limbs, no malformed hands, no cropped required body parts, and no continuity drift unless requested.
+- If text should appear, put the exact text and placement in textRendering. Otherwise use "No text in the image."
+- Use a detailed 350-800 word full prompt when the tracker contains enough visual evidence. Prefer specificity over filler; do not invent missing scene or character facts.
 `;
 }
 

@@ -19,10 +19,23 @@ function trimJsonToBudget(value: unknown, tokenBudget: number): string {
   const serialized = JSON.stringify(value);
   const maxChars = Math.max(800, tokenBudget * 4);
   if (serialized.length <= maxChars) return serialized;
-  return JSON.stringify({
-    snapshotExcerpt: serialized.slice(0, maxChars - 120),
-    truncated: true,
-  });
+  let low = 0;
+  let high = serialized.length;
+  let result = JSON.stringify({ snapshotExcerpt: "", truncated: true });
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const candidate = JSON.stringify({
+      snapshotExcerpt: serialized.slice(0, middle),
+      truncated: true,
+    });
+    if (candidate.length <= maxChars) {
+      result = candidate;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return result;
 }
 
 export function buildStateSeedForCompiler(
@@ -30,6 +43,7 @@ export function buildStateSeedForCompiler(
   settings: LoomOSSettings,
 ): string {
   const modules = settings.moduleSettings;
+  const expandedSeed = settings.compilerSeedTokenBudget >= 1800;
   const seed = {
     identity: state.identity,
     generatedAt: state.generatedAt,
@@ -56,40 +70,68 @@ export function buildStateSeedForCompiler(
       intent: compactText(member.intent),
       appearance: modules.appearance.track && hasAppearanceEvidence(member.appearance)
         ? {
-            species: member.appearance.species,
             ageBand: member.appearance.ageBand,
-            apparentAge: member.appearance.apparentAge,
-            genderPresentation: member.appearance.genderPresentation,
-            height: member.appearance.height,
-            weight: member.appearance.weight,
-            build: member.appearance.build,
             bodyType: member.appearance.bodyType,
-            frame: member.appearance.frame,
             proportions: member.appearance.proportions,
-            silhouette: member.appearance.silhouette,
-            shoulders: member.appearance.shoulders,
-            bust: member.appearance.bust,
-            waist: member.appearance.waist,
-            hips: member.appearance.hips,
-            skin: member.appearance.skin,
-            complexion: member.appearance.complexion,
+            glutes: member.appearance.glutes,
             hair: member.appearance.hair,
             eyes: member.appearance.eyes,
-            distinguishingMarks: member.appearance.distinguishingMarks,
-            scars: member.appearance.scars,
-            tattoos: member.appearance.tattoos,
-            piercings: member.appearance.piercings,
             uniqueFeatures: member.appearance.uniqueFeatures,
+            attractiveFeatures: member.appearance.attractiveFeatures,
             immutableTraits: member.appearance.immutableTraits?.slice(0, 8),
-            presence: member.appearance.presence,
             anchor: member.appearance.anchor,
+            ...(expandedSeed
+              ? {
+                  species: member.appearance.species,
+                  apparentAge: member.appearance.apparentAge,
+                  genderPresentation: member.appearance.genderPresentation,
+                  height: member.appearance.height,
+                  weight: member.appearance.weight,
+                  build: member.appearance.build,
+                  frame: member.appearance.frame,
+                  silhouette: member.appearance.silhouette,
+                  shoulders: member.appearance.shoulders,
+                  bust: member.appearance.bust,
+                  waist: member.appearance.waist,
+                  hips: member.appearance.hips,
+                  skin: member.appearance.skin,
+                  complexion: member.appearance.complexion,
+                  face: member.appearance.face,
+                  facialStructure: member.appearance.facialStructure,
+                  distinguishingMarks: member.appearance.distinguishingMarks,
+                  scars: member.appearance.scars,
+                  tattoos: member.appearance.tattoos,
+                  piercings: member.appearance.piercings,
+                  presence: member.appearance.presence,
+                  fullDescription: member.appearance.fullDescription,
+                }
+              : {}),
           }
         : undefined,
       clothing: modules.clothing.track
         ? {
-            summary: compactText(member.clothing?.summary ?? member.clothingSummary ?? ""),
+            summary: compactText(member.clothing?.summary ?? member.clothingSummary ?? "", expandedSeed ? 600 : 170),
             layerCount: member.clothing?.layerCount ?? 0,
-            notable: compactText(member.clothing?.notable ?? ""),
+            layers: member.clothing?.layers.slice(0, expandedSeed ? 8 : 4).map((layer) => ({
+              slot: layer.slot,
+              text: compactText(layer.text, expandedSeed ? 360 : 140),
+              state: compactText(layer.state ?? "", expandedSeed ? 240 : 80),
+              color: layer.color,
+            })),
+            ...(expandedSeed
+              ? {
+                  condition: compactText(member.clothing?.condition ?? "", 420),
+                  footwear: compactText(member.clothing?.footwear ?? "", 420),
+                  accessories: compactText(member.clothing?.accessories ?? "", 420),
+                  notable: compactText(member.clothing?.notable ?? "", 420),
+                  silhouette: compactText(member.clothing?.silhouette ?? ""),
+                  palette: compactText(member.clothing?.palette ?? ""),
+                  fabric: compactText(member.clothing?.fabric ?? "", 420),
+                  fit: compactText(member.clothing?.fit ?? "", 420),
+                  styling: compactText(member.clothing?.styling ?? "", 420),
+                  coverage: compactText(member.clothing?.coverage ?? "", 420),
+                }
+              : {}),
           }
         : undefined,
       currentState: modules.castVisuals.track && member.currentState

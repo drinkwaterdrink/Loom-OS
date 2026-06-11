@@ -48,6 +48,8 @@ function clampProse(text: string, maxLength = 140): string {
 function renderAppearanceProfile(
   appearance: LoomOSState["castMatrix"][number]["appearance"],
 ): string {
+  const fullDescription = appearance.fullDescription;
+  const anchor = appearance.anchor;
   const allFields: Array<[string, unknown]> = [
     ["Species", appearance.species],
     ["Age band", appearance.ageBand],
@@ -66,6 +68,7 @@ function renderAppearanceProfile(
     ["Bust", appearance.bust],
     ["Waist", appearance.waist],
     ["Hips", appearance.hips],
+    ["Glute / seat shape", appearance.glutes],
     ["Arms", appearance.arms],
     ["Legs", appearance.legs],
     ["Hands", appearance.hands],
@@ -89,17 +92,19 @@ function renderAppearanceProfile(
     ["Piercings", appearance.piercings],
     ["Birthmarks", appearance.birthmarks],
     ["Unique features", appearance.uniqueFeatures],
+    ["Attractive features", appearance.attractiveFeatures],
     ["Presence", appearance.presence],
-    ["Full description", appearance.fullDescription],
-    ["Immutable anchor", appearance.anchor],
   ];
   const fields = allFields.filter(([, value]) => Boolean(value));
   const immutableTraits = appearance.immutableTraits ?? [];
-  if (fields.length === 0 && immutableTraits.length === 0) return "";
+  if (fields.length === 0 && immutableTraits.length === 0 && !fullDescription && !anchor) return "";
   return `
     <details class="loomos-cast-extra">
-      <summary>Immutable Appearance</summary>
+      <summary>Detailed Appearance</summary>
       <div class="loomos-cast-extra-body">
+        ${fullDescription
+          ? `<p class="loomos-appearance-description">${clampProse(fullDescription, 560)}</p>`
+          : ""}
         ${fields.length > 0 ? `<dl class="loomos-facts loomos-appearance-facts">
           ${fields.map(([label, value]) => `
             <div><dt>${escapeHtml(label)}</dt><dd>${clampProse(String(value), 180)}</dd></div>
@@ -108,6 +113,56 @@ function renderAppearanceProfile(
         ${immutableTraits.length > 0
           ? `<div class="loomos-subhead">Immutable traits</div>${chips(immutableTraits)}`
           : ""}
+        ${anchor
+          ? `<div class="loomos-appearance-anchor"><b>Continuity anchor</b>${clampProse(anchor, 360)}</div>`
+          : ""}
+      </div>
+    </details>
+  `;
+}
+
+function renderClothingProfile(
+  clothing: LoomOSState["castMatrix"][number]["clothing"],
+  fallbackSummary: string,
+): string {
+  const summary = clothing.summary || fallbackSummary;
+  const fields: Array<[string, unknown]> = [
+    ["Silhouette", clothing.silhouette],
+    ["Palette", clothing.palette],
+    ["Materials & texture", clothing.fabric],
+    ["Fit & drape", clothing.fit],
+    ["Coverage", clothing.coverage],
+    ["Styling", clothing.styling],
+    ["Condition", clothing.condition],
+    ["Footwear", clothing.footwear],
+    ["Accessories", clothing.accessories],
+    ["Notable details", clothing.notable],
+  ];
+  const populated = fields.filter(([, value]) => Boolean(value));
+  const layers = clothing.layers ?? [];
+  if (!summary && populated.length === 0 && layers.length === 0) return "";
+  return `
+    <details class="loomos-cast-extra">
+      <summary>Detailed Clothing</summary>
+      <div class="loomos-cast-extra-body">
+        ${summary ? `<p class="loomos-clothing-description">${clampProse(summary, 560)}</p>` : ""}
+        ${populated.length > 0 ? `<dl class="loomos-facts loomos-clothing-facts">
+          ${populated.map(([label, value]) => `
+            <div><dt>${escapeHtml(label)}</dt><dd>${clampProse(String(value), 200)}</dd></div>
+          `).join("")}
+        </dl>` : ""}
+        ${layers.length > 0 ? `
+          <div class="loomos-subhead">Garment layers</div>
+          <div class="loomos-clothing-layers">
+            ${layers.map((layer) => `
+              <div>
+                <b>${escapeHtml(layer.slot)}</b>
+                <span>${clampProse(layer.text, 240)}</span>
+                ${layer.state ? `<small>${clampProse(layer.state, 180)}</small>` : ""}
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
       </div>
     </details>
   `;
@@ -156,7 +211,7 @@ function section(
 
 function renderKernel(state: LoomOSState, settings: LoomOSSettings): string {
   const kernel = state.kernel;
-  return section("kernel", "Kernel", kernel.scene || "Current scene", `
+  return section("kernel", "Scene Context", kernel.scene || "Current scene", `
     <div class="loomos-hero">
       <span class="loomos-kicker">Current focus</span>
       <strong>${clampProse(kernel.currentFocus || kernel.objective, 120)}</strong>
@@ -179,7 +234,7 @@ function renderKernel(state: LoomOSState, settings: LoomOSSettings): string {
 
 function renderDelta(state: LoomOSState, settings: LoomOSSettings): string {
   const delta = state.delta;
-  return section("delta", "Delta", delta.headline || "No major change", `
+  return section("delta", "Recent Changes", delta.headline || "No major change", `
     <div class="loomos-callout">${clampProse(delta.headline, 140)}</div>
     <div class="loomos-list">
       ${delta.changes.length === 0
@@ -238,8 +293,13 @@ function renderCast(state: LoomOSState, settings: LoomOSSettings): string {
             const appearanceHtml = visible(settings, "appearance")
               ? renderAppearanceProfile(member.appearance)
               : "";
+            const clothingHtml = visible(settings, "clothing")
+              ? renderClothingProfile(member.clothing, member.clothingSummary)
+              : "";
+            const characterDescription = member.appearance.fullDescription
+              || member.identitySummary
+              || member.visualAnchor;
             const hasExtra = member.pose || member.proximity || member.hands || member.visualAnchor || 
-                             (visible(settings, "clothing") && member.clothingSummary) || 
                              member.goals.length > 0 || 
                              (visible(settings, "relationships") && member.relationships.length > 0) || 
                              (visible(settings, "inventory") && member.pockets.length > 0) || 
@@ -258,21 +318,24 @@ function renderCast(state: LoomOSState, settings: LoomOSSettings): string {
                   <span><b>Mood</b>${escapeHtml(member.emotionalState)}</span>
                   <span><b>Threat</b>${escapeHtml(member.threat.pct)}</span>
                 </div>
+                ${characterDescription
+                  ? `<p class="loomos-cast-description">${clampProse(characterDescription, 420)}</p>`
+                  : ""}
                 <dl class="loomos-cast-summary">
-                  <div><dt>Intent</dt><dd>${clampProse(member.intent, 100)}</dd></div>
-                  <div><dt>Status</dt><dd>${clampProse(member.status, 100)}</dd></div>
+                  <div><dt>Intent</dt><dd>${clampProse(member.intent, 180)}</dd></div>
+                  <div><dt>Status</dt><dd>${clampProse(member.status, 180)}</dd></div>
                 </dl>
                 ${appearanceHtml}
+                ${clothingHtml}
                 
                 ${hasExtra ? `
                   <details class="loomos-cast-extra">
-                    <summary>Visuals & Pockets</summary>
+                    <summary>Current State & Inventory</summary>
                     <div class="loomos-cast-extra-body" style="display: grid; gap: 6px;">
-                      ${member.pose ? `<p><strong>Pose:</strong> ${clampProse(member.pose, 100)}</p>` : ""}
-                      ${member.proximity ? `<p><strong>Proximity:</strong> ${clampProse(member.proximity, 100)}</p>` : ""}
-                      ${member.hands ? `<p><strong>Hands:</strong> ${clampProse(member.hands, 100)}</p>` : ""}
-                      ${member.visualAnchor ? `<p><strong>Visual Anchor:</strong> ${clampProse(member.visualAnchor, 100)}</p>` : ""}
-                      ${visible(settings, "clothing") && member.clothingSummary ? `<p><strong>Clothing:</strong> ${clampProse(member.clothingSummary, 100)}</p>` : ""}
+                      ${member.pose ? `<p><strong>Pose:</strong> ${clampProse(member.pose, 180)}</p>` : ""}
+                      ${member.proximity ? `<p><strong>Proximity:</strong> ${clampProse(member.proximity, 180)}</p>` : ""}
+                      ${member.hands ? `<p><strong>Hands:</strong> ${clampProse(member.hands, 180)}</p>` : ""}
+                      ${member.visualAnchor ? `<p><strong>Visual anchor:</strong> ${clampProse(member.visualAnchor, 240)}</p>` : ""}
                       ${member.goals.length > 0 ? `<div class="loomos-subhead">Goals</div>${chips(member.goals)}` : ""}
                       ${visible(settings, "relationships") && member.relationships.length > 0 ? `<div class="loomos-subhead">Relationships</div>${chips(member.relationships.map((r) => `${r.target}: ${r.axis}=${r.value}${r.evidence ? ` (${r.evidence.slice(0, 60)})` : ""}`))}` : ""}
                       ${visible(settings, "inventory") && member.pockets.length > 0 ? `<div class="loomos-subhead">Pockets</div>${chips(member.pockets.map(item => `${item.name} x${item.qty}${item.known ? "" : " (unknown)"}`))}` : ""}
@@ -565,9 +628,22 @@ function renderTools(
   if (include("imagePrompt") && visible(settings, "imagePrompt") && tools.imagePrompt) {
     const fullPrompt = tools.imagePrompt.full
       || [tools.imagePrompt.subject, tools.imagePrompt.positive].filter(Boolean).join(", ");
+    const blueprintFields: Array<[string, string]> = [
+      ["Intent", tools.imagePrompt.intent],
+      ["Composition", tools.imagePrompt.composition],
+      ["Camera", tools.imagePrompt.camera],
+      ["Lighting", tools.imagePrompt.lighting],
+      ["Color palette", tools.imagePrompt.colorPalette],
+      ["Environment", tools.imagePrompt.environment],
+      ["Character continuity", tools.imagePrompt.characterContinuity],
+      ["Action", tools.imagePrompt.action],
+      ["Materials", tools.imagePrompt.materials],
+      ["Mood", tools.imagePrompt.mood],
+      ["Text rendering", tools.imagePrompt.textRendering],
+    ].filter((entry): entry is [string, string] => Boolean(entry[1]));
     readyBlocks.unshift(`<article class="loomos-card loomos-tool-card loomos-image-prompt-card">
       <div class="loomos-tool-card-heading">
-        <div><span class="loomos-kicker">Visual generator</span><strong>Image Prompt</strong></div>
+        <div><span class="loomos-kicker">GPT Image production brief</span><strong>Image Prompt</strong></div>
         <span class="loomos-tool-state is-ready">Ready</span>
       </div>
       <div class="loomos-tool-meta">
@@ -576,6 +652,16 @@ function renderTools(
         <span><b>Medium</b>${escapeHtml(tools.imagePrompt.medium || "Not set")}</span>
       </div>
       <p class="loomos-tool-lead">${clampProse(tools.imagePrompt.subject, 260)}</p>
+      ${blueprintFields.length > 0 ? `
+        <details class="loomos-image-blueprint">
+          <summary>Structured art direction</summary>
+          <dl class="loomos-facts">
+            ${blueprintFields.map(([label, value]) => `
+              <div><dt>${escapeHtml(label)}</dt><dd>${clampProse(value, 320)}</dd></div>
+            `).join("")}
+          </dl>
+        </details>
+      ` : ""}
       <div class="loomos-prompt-output">
         <div class="loomos-prompt-output-heading">
           <span>Full prompt</span>
@@ -593,7 +679,10 @@ function renderTools(
           <p>${escapeHtml(tools.imagePrompt.negative || "None generated.")}</p>
         </details>
       </div>
-      ${tools.imagePrompt.hint ? `<small>${clampProse(tools.imagePrompt.hint, 240)}</small>` : ""}
+      ${tools.imagePrompt.constraints.length > 0
+        ? `<div><div class="loomos-subhead">Hard constraints</div>${chips(tools.imagePrompt.constraints)}</div>`
+        : ""}
+      ${tools.imagePrompt.hint ? `<small>${clampProse(tools.imagePrompt.hint, 400)}</small>` : ""}
     </article>`);
   } else {
     renderEmpty("imagePrompt", "Image Prompt");
@@ -806,7 +895,7 @@ export function renderDashboard(
     ].filter(Boolean);
     return sections.length > 0
       ? `<div class="loomos-dashboard">${overview}${sections.join("")}</div>`
-      : `<div class="loomos-dashboard">${overview}<div class="loomos-empty"><h3>All overview display modules are hidden</h3><p>Enable display for Kernel, Deltas, Meters, or Tools in Setup.</p></div></div>`;
+      : `<div class="loomos-dashboard">${overview}<div class="loomos-empty"><h3>All overview display modules are hidden</h3><p>Enable display for Scene Context, Recent Changes, Meters, or Tools in Setup.</p></div></div>`;
   }
   
   if (activeTab === "cast") {

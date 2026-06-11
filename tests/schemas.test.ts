@@ -65,8 +65,13 @@ test("expanded immutable appearance fields validate", () => {
   const appearance = state.castMatrix[0]!.appearance;
   assert.equal(appearance.bodyType, "Slim with subtle curves");
   assert.equal(appearance.bust, "Modest");
+  assert.equal(appearance.glutes, "Compact and rounded, proportionate to her slim frame");
   assert.equal(appearance.uniqueFeatures, "A faint crescent scar beneath the left eye");
+  assert.match(appearance.attractiveFeatures ?? "", /Expressive grey eyes/);
+  assert.match(appearance.fullDescription ?? "", /heart-shaped face/);
   assert.deepEqual(appearance.immutableTraits, ["Dark tied-back hair", "Keen grey eyes"]);
+  assert.equal(state.castMatrix[0]!.clothing.layers.length, 5);
+  assert.match(state.castMatrix[0]!.clothing.styling ?? "", /Collar turned up/);
   assert.equal(LoomOSStateSchema.safeParse(state).success, true);
 });
 

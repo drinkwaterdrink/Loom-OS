@@ -1164,7 +1164,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function diagnosticText(): string {
     const lines = [
-      `version: 0.1.12`,
+      `version: 0.1.13`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -1284,20 +1284,20 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     return `
       <section class="loomos-viewer-command">
         <div class="loomos-viewer-context">
-          <span class="loomos-kicker">LoomOS tracker</span>
-          <div class="loomos-viewer-title-row">
-            <h1>${escapeHtml(sceneTitle)}</h1>
+          <div class="loomos-viewer-eyebrow">
+            <span class="loomos-kicker">LoomOS tracker</span>
             <span class="loomos-state-pill${busy ? " is-busy" : state ? " is-ready" : ""}" data-live-pill title="${escapeHtml(elapsedLabel())}">
               <i></i><span data-live-state-label>${stateLabel}</span>
             </span>
           </div>
+          <h1>${escapeHtml(sceneTitle)}</h1>
           <p>${escapeHtml(sceneMeta || exactLabel())}</p>
           <small data-live-status>${escapeHtml(exactLabel())} | ${escapeHtml(status)}</small>
         </div>
         <div class="loomos-viewer-actions">
           ${busy
             ? `<button class="loomos-button loomos-button-danger loomos-viewer-primary" data-action="cancel">Stop <span data-live-elapsed>${formatElapsed(currentElapsedMs())}</span></button>`
-            : `<button class="loomos-button loomos-button-primary loomos-viewer-primary" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh tracker" : "Generate tracker"}</button>`
+            : `<button class="loomos-button loomos-button-primary loomos-viewer-primary" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh" : "Generate"}</button>`
           }
           <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation || busy)}>Reload</button>
           ${state && !busy ? `<button class="loomos-button loomos-button-danger" data-action="delete">Delete</button>` : ""}

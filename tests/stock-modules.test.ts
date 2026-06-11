@@ -75,6 +75,15 @@ test("stock module contract document exposes every current module template", () 
   assert.match(document, /Render behavior:/);
 });
 
+test("image prompt contract follows the GPT Image production brief structure", () => {
+  const prompt = buildStateCompilerPrompt(["imagePrompt"], []);
+  assert.match(prompt, /GPT Image prompt rules/);
+  assert.match(prompt, /INTENT; SCENE/);
+  assert.match(prompt, /350-800 words/);
+  assert.match(prompt, /photorealistic/);
+  assert.match(prompt, /characterContinuity/);
+});
+
 test("duplicate stock as custom creates a valid independent custom module", () => {
   const settings = LoomOSSettingsSchema.parse({
     stockModuleOverrides: {

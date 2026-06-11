@@ -2,6 +2,30 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.13] - 2026-06-11
+
+### Added
+
+- Expanded adult character appearance tracking for detailed facial structure, complexion, body proportions, bust, glute/seat shape, attractive features, unique marks, multi-sentence portraits, and compact continuity anchors.
+- Expanded clothing tracking for materials, texture, fit, drape, coverage, styling, condition, footwear, accessories, and up to eight garment layers.
+- Structured GPT Image production fields for intent, environment, character continuity, action, composition, camera, lighting, color palette, materials, mood, text rendering, and hard constraints.
+- Long-form 350-800 word GPT Image compiler guidance based on OpenAI's current image-generation prompting recommendations.
+- Rich appearance, clothing, and image-prompt fixtures plus normalization, seed, schema, render, and UI regression coverage.
+
+### Changed
+
+- Compressed the chat tracker command header into a two-line title limit and one 34px-high Refresh, Reload, and Delete action row.
+- Renamed the user-facing **Kernel** section to **Scene Context** and **Delta** to **Recent Changes**.
+- Reorganized Cast cards into a visible portrait plus **Detailed Appearance**, **Detailed Clothing**, and **Current State & Inventory** disclosures.
+- Raised normalized Image Prompt capacity from 3,000 to 8,000 characters and clothing layers from five to eight.
+- Expanded the Image Prompt Tools card with structured art direction, hard constraints, and a larger full-prompt reading surface.
+
+### Fixed
+
+- Prevented rich appearance, clothing, and image-prompt output from being silently discarded or shortened by older normalization limits.
+- Preserved the expanded appearance and wardrobe contract in the previous-state compiler seed for stronger long-running continuity.
+- Reduced the amount of mobile viewport consumed before the tracker navigation and content become visible.
+
 ## [0.1.12] - 2026-06-11
 
 ### Added

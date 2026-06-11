@@ -1,19 +1,19 @@
 # LoomOS Command Deck
 
-Current release: **0.1.12**
+Current release: **0.1.13**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.12
+## Key Features & Upgrades in 0.1.13
 
-- **Differential message widgets**: LoomOS no longer destroys and recreates every tracker-history widget after routine settings, state, or status updates. Widgets are signature-checked and only changed controls are replaced.
-- **Frame-batched history controls**: When a chat has a large retained history, previous-message controls mount four at a time with a short yield between batches instead of blocking the chat thread.
-- **Coalesced tracker updates**: Chat-state and History responses patch only their owned UI. A completed generation no longer causes repeated full drawer, viewer, and widget redraws.
-- **Live generation clock**: Manual and automatic tracker generations show an `MM:SS` counter in the compiling status pill, Stop button, and generation rail. The final duration remains visible in the completion status.
-- **Lower paint cost**: Infinite glow, pulse, filter, and progress-bar effects were removed from the generation surfaces and inline tracker widget.
-- **Performance regression coverage**: The local preview now simulates a complete generation lifecycle, and tests guard the targeted-render, batched-widget, and timer paths.
+- **Compact chat command bar**: Long scene titles are limited to two lines, status sits beside the tracker label, and Refresh, Reload, and Delete share one 34px-high action row.
+- **Detailed character portraits**: Appearance generation now covers facial structure, hair, eyes, complexion, build, proportions, bust, waist, hips, glute/seat shape, attractive features, marks, and a multi-sentence continuity portrait when evidence supports them.
+- **Layered wardrobe continuity**: Clothing output now records materials, texture, fit, drape, coverage, styling, condition, footwear, accessories, and up to eight garment layers.
+- **GPT Image production briefs**: Image Prompt can generate a 350-800 word structured brief with intent, environment, character continuity, action, composition, camera, lighting, palette, materials, text handling, and hard constraints.
+- **Plain-language scene labels**: The Pulse sections formerly named Kernel and Delta are now **Scene Context** and **Recent Changes**.
+- **Compact progressive disclosure**: Cast cards keep a useful portrait visible while moving full appearance, clothing, current-state, and inventory detail into focused expandable sections.
 
 ---
 
@@ -30,6 +30,7 @@ LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat h
 - [Tracker Modules Catalog](#tracker-modules-catalog)
 - [Schema & Presentation Studio](#schema--presentation-studio)
 - [Immutable Appearance Module](#immutable-appearance-module)
+- [GPT Image Prompt Module](#gpt-image-prompt-module)
 - [Track / Display / Inject Controls](#track--display--inject-controls)
 - [Settings Reference](#settings-reference)
 - [Theme Skins](#theme-skins)
@@ -55,16 +56,16 @@ The drawer still owns Setup. The pop-up viewer stays focused on tracker reading,
 The drawer presents eight workspaces. The viewer presents the seven tracker-reading workspaces. Tab choice, scroll position, focused controls, and expandable section states are preserved across re-renders.
 
 ### Pulse
-A scan-first scene summary showing the latest delta, location, timeframe, injection state, and stable counts for cast, threads, risks, and active modules. **Review changes** opens the focused delta modal. Kernel, Delta, Meters, Tools, and custom modules remain available as compact expandable sections below it.
+A scan-first scene summary showing the latest change, location, timeframe, injection state, and stable counts for cast, threads, risks, and active modules. **Review changes** opens the focused change modal. Scene Context, Recent Changes, Meters, Tools, and custom modules remain available as compact expandable sections below it.
 
-- **Kernel** — Scene name, current focus, summary, POV, tone, objective, risk, stop mode, and constraints.
-- **Delta** — Headline, all changes with importance badges (low/medium/high/critical), carried-forward facts, and newly-established facts.
+- **Scene Context** — Scene name, current focus, summary, POV, tone, objective, risk, stop mode, and constraints.
+- **Recent Changes** — Headline, all changes with importance badges (low/medium/high/critical), carried-forward facts, and newly-established facts.
 - **Meters** — Diagnostic gauges (tension, danger, coherence, etc.) with trend indicators, bar visualization, and band labels.
 - **Tools** — Compact Action Resolver, Dialogue State, Director Style, Closeness State, and Image Prompt cards. The full Tools workspace gives every tool an explicit status.
 - **Custom Modules** — User-defined module cards rendered in their configured output mode (cards, bullets, chips, gauge, or sanitized template).
 
 ### Cast
-Full cast matrix with all tracked characters. Each card shows name, kind (POV/main/NPC/crowd), quantity, awareness level, location, emotional state, threat rating, intent, and status. A dedicated **Immutable Appearance** profile presents persistent physical traits when the Appearance module is displayed. A separate "Visuals & Pockets" section contains turn-level pose, proximity, hands, visual anchor, clothing summary, goals, relationships, pocket inventories, and stable facts. Card visibility respects per-module Display settings.
+Full cast matrix with all tracked characters. Each card shows name, kind (POV/main/NPC/crowd), quantity, awareness level, location, emotional state, threat rating, intent, status, and a concise visual portrait. **Detailed Appearance** expands persistent physical identity. **Detailed Clothing** expands the current wardrobe by silhouette, palette, materials, fit, coverage, styling, footwear, accessories, condition, and individual garment layers. **Current State & Inventory** holds turn-level pose, proximity, hands, visual anchor, goals, relationships, pocket inventories, and stable facts. Card visibility respects per-module Display settings.
 
 ### World
 Spatial and environmental state:
@@ -97,7 +98,7 @@ Generated utility modules for the exact swipe:
 - **Dialogue State** — Open conversational thread, social mask, levers, and taboos.
 - **Director Style** — Optional scene-framing pressure, narrative mask, push, and voice cues.
 - **Closeness State** — Non-explicit emotional/physical closeness, consent signals, and boundaries.
-- **Image Prompt** — Visual generation payload with aspect, shot, medium, subject, positive prompt, negative prompt, full prompt, hint, and copy control.
+- **Image Prompt** — GPT Image-oriented production brief with aspect, shot, medium, subject, intent, environment, character continuity, action, composition, camera, lighting, color palette, materials, mood, exact text handling, hard constraints, positive/negative guidance, a long full prompt, hint, and copy control.
 
 The Tools workspace intentionally shows diagnostic cards when a module is configured but has no output. If Image Prompt was toggled on after the current tracker was generated, LoomOS shows **Refresh needed** because Track changes affect future compilations. If the module was active but the compiler returned `null`, LoomOS shows **No output** and explains that the current snapshot did not produce an image prompt.
 
@@ -105,9 +106,9 @@ The Tools workspace intentionally shows diagnostic cards when a module is config
 The **State History Timeline** shows every state snapshot generated for the active chat, sorted newest-first. Each entry displays:
 - Scene name and generation timestamp
 - Repaired badge (if applicable)
-- Kernel focus, location, and time
+- Scene Context focus, location, and time
 - Cast, thread, and risk counts
-- Delta headline
+- Recent Changes headline
 
 Use the search bar to filter by scene, focus, location, or message ID. Search updates only the history results list so mobile input focus and scroll position stay stable. Click **Load** to inspect any historical snapshot. The currently active state is highlighted. Delete buttons remove unwanted snapshots from storage. Previous chat messages also receive an inline **Tracker history** control when they have stored state, with one button per saved swipe.
 
@@ -130,7 +131,7 @@ A compact sticky command dock pins to the top of both the drawer and viewer. It 
 
 | Button | Action |
 |---|---|
-| **Generate tracker / Refresh tracker / Stop compile** | One primary action that changes with the current state and compilation status |
+| **Generate / Refresh / Stop compile** | One compact primary action that changes with the current state and compilation status |
 | **Viewer** | Opens the full-screen-friendly tracker viewer from the drawer |
 | **Reload** | Refresh exact-swipe state from storage |
 | **Delete** | Remove the current exact-swipe snapshot |
@@ -211,13 +212,13 @@ LoomOS has 19 built-in modules and unlimited custom modules:
 
 | Group | Module Key | Description | Core (locked Track) |
 |---|---|---|---|
-| **Core** | `sceneKernel` | Basic scene details, POV, objective, and stop triggers | ✅ |
-|  | `deltas` | Direct diff comparison between the previous turn and the current | ✅ |
+| **Core** | `sceneKernel` | **Scene Context**: scene details, POV, objective, and stop triggers | ✅ |
+|  | `deltas` | **Recent Changes**: direct diff comparison between the previous turn and the current | ✅ |
 | **Scene** | `meters` | Tension, danger, and coherence diagnostic gauges | |
 | **Cast** | `castCore` | Core presence, status, goals, and visual anchors | ✅ |
-|  | `appearance` | Persistent physical identity, body description, facial details, marks, and immutable anchors | |
+|  | `appearance` | Persistent adult physical identity, detailed body/facial portrait, attractive features, marks, and immutable anchors | |
 |  | `castVisuals` | Spatial arrangement, poses, and Spotlight metrics | |
-|  | `clothing` | Grounded clothing and wardrobe continuity | |
+|  | `clothing` | Detailed garment layers, fit, materials, styling, condition, and wardrobe continuity | |
 |  | `relationships` | Emotional standings and character alignments | |
 |  | `inventory` | Pocket inventories and item conditions | |
 | **World** | `worldSpace` | Environmental changes, active hazards, and scene items | |
@@ -228,7 +229,7 @@ LoomOS has 19 built-in modules and unlimited custom modules:
 |  | `dialogueState` | Social masks, taboos, and current conversational thread | |
 |  | `directorStyle` | Mask constraints, voice cues, and push direction | |
 |  | `closenessState` | Emotional/physical closeness and boundaries | |
-|  | `imagePrompt` | Dynamic text-to-image prompts for scenes | |
+|  | `imagePrompt` | Structured long-form GPT Image production briefs for exact tracker scenes | |
 | **System** | `auditLog` | Compiler steps, validation failures, and repairs | |
 
 Five continuity-critical modules are locked **Track: on** for system safety. Their Display and Inject controls remain freely configurable.
@@ -284,12 +285,22 @@ It can retain:
 
 - Identity basics: species, age band, apparent age, and gender presentation.
 - Scale and build: height, weight description, build, body type, frame, silhouette, body composition, and proportions.
-- Body shape: shoulders, chest, bust, waist, hips, arms, legs, and hands.
+- Body shape: shoulders, chest, bust, waist, hips, glute/seat shape, arms, legs, and hands.
 - Surface and facial identity: skin, complexion, face, facial structure, hair, eyes, eyebrows, nose, lips, ears, and facial hair.
-- Distinguishing identity: scars, tattoos, piercings, birthmarks, marks, unique features, and immutable trait chips.
+- Distinguishing identity: scars, tattoos, piercings, birthmarks, marks, unique features, attractive features, and immutable trait chips.
 - Presentation: posture, movement, voice, presence, full description, and a compact immutable anchor.
 
 Compiler safety rules keep this non-explicit and evidence-based. LoomOS does not infer exact measurements, cup sizes, numeric weight, hidden anatomy, or unsupported physical details. Unknown fields remain empty, while established traits persist through the previous-state seed until the transcript changes them.
+
+## GPT Image Prompt Module
+
+The `imagePrompt` module turns the exact-swipe tracker into a production-ready prompt for OpenAI GPT Image models. It uses a consistent visual brief order: intended use, scene and environment, subjects and continuity, action and pose, composition, camera, lighting and color, materials and texture, medium and finish, text rendering, then hard constraints.
+
+When enough visual evidence exists, the compiler targets a detailed 350-800 word `full` prompt instead of a short keyword list. Character appearance, body proportions, immutable marks, clothing layers, visible accessories, gaze, hands, object interactions, scene geometry, and required framing are carried forward from tracked state. Photorealistic scenes use an explicit photorealism or professional-photography cue; stylized scenes name the intended medium directly. Missing facts are not invented.
+
+The Tools view exposes both the full copyable prompt and its structured art direction. `textRendering` contains exact requested wording and placement, or explicitly states that no text should appear. `constraints` records invariants such as character count, continuity locks, visible hands or objects, required body framing, and exclusions such as watermarks, unintended text, extra limbs, malformed hands, or cropped required details.
+
+This structure follows OpenAI's current [Image generation guide](https://developers.openai.com/api/docs/guides/image-generation) and [GPT Image prompting guide](https://developers.openai.com/cookbook/examples/multimodal/image-gen-models-prompting-guide).
 
 ---
 
@@ -398,8 +409,8 @@ Seven built-in CSS skins, selected via the `skin` setting:
 
 When compact injection is active, LoomOS inserts state data into future generations according to a strict priority schedule under the configured token budget:
 
-1. Turn Deltas and headlines
-2. Scene Kernel, location, and constraints
+1. Recent Changes and headlines
+2. Scene Context, location, and constraints
 3. Continuity Firewall anchors and consequences
 4. Action Resolver state
 5. Cast Core poses, intent, and goals

@@ -325,6 +325,7 @@ function normalizeAppearance(value: unknown): RecordValue {
     "piercings",
     "birthmarks",
     "uniqueFeatures",
+    "attractiveFeatures",
     "fullDescription",
     "anchor",
   ]);
@@ -346,6 +347,7 @@ function normalizeAppearance(value: unknown): RecordValue {
     "bust",
     "waist",
     "hips",
+    "glutes",
     "arms",
     "legs",
     "hands",
@@ -369,6 +371,7 @@ function normalizeAppearance(value: unknown): RecordValue {
     "piercings",
     "birthmarks",
     "uniqueFeatures",
+    "attractiveFeatures",
     "presence",
     "fullDescription",
     "anchor",
@@ -403,18 +406,37 @@ function normalizeClothing(value: unknown): RecordValue {
       };
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
-    .slice(0, 5);
+    .slice(0, 8);
+  const mediumFields = new Set([
+    "summary",
+    "fabric",
+    "fit",
+    "condition",
+    "notable",
+    "styling",
+    "coverage",
+    "footwear",
+    "accessories",
+  ]);
+  const fields = [
+    "summary",
+    "silhouette",
+    "palette",
+    "fabric",
+    "fit",
+    "condition",
+    "notable",
+    "styling",
+    "coverage",
+    "footwear",
+    "accessories",
+  ] as const;
   return {
-    ...normalizeOptionalTextObject(source, [
-      "summary",
-      "silhouette",
-      "palette",
-      "fabric",
-      "fit",
-      "condition",
-      "notable",
-    ]),
-    layerCount: integerValue(source.layerCount, 0, 5, layers.length),
+    ...Object.fromEntries(fields.flatMap((field) => {
+      const normalized = text(source[field], mediumFields.has(field) ? 1600 : 500);
+      return normalized ? [[field, normalized]] : [];
+    })),
+    layerCount: integerValue(source.layerCount, 0, 8, layers.length),
     layers,
   };
 }
@@ -1062,7 +1084,19 @@ function normalizeTools(value: unknown) {
       subject: text(source.imagePrompt.subject, 1600),
       positive: text(source.imagePrompt.positive, 1600),
       negative: text(source.imagePrompt.negative, 1600),
-      full: text(source.imagePrompt.full, 3000),
+      intent: text(source.imagePrompt.intent, 1600),
+      composition: text(source.imagePrompt.composition, 1600),
+      camera: text(source.imagePrompt.camera, 1600),
+      lighting: text(source.imagePrompt.lighting, 1600),
+      colorPalette: text(source.imagePrompt.colorPalette, 1600),
+      environment: text(source.imagePrompt.environment, 1600),
+      characterContinuity: text(source.imagePrompt.characterContinuity, 4000),
+      action: text(source.imagePrompt.action, 1600),
+      materials: text(source.imagePrompt.materials, 1600),
+      mood: text(source.imagePrompt.mood, 1600),
+      textRendering: text(source.imagePrompt.textRendering, 1600),
+      constraints: stringArray(source.imagePrompt.constraints, 16, 1600),
+      full: text(source.imagePrompt.full, 8000),
       hint: text(source.imagePrompt.hint, 1600),
     };
   }
