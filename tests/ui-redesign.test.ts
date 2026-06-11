@@ -75,3 +75,30 @@ test("schema studio exposes viewer editing and per-module portability", async ()
   assert.match(source, /data-studio-action="export-stock"/);
   assert.match(source, /data-studio-action="export-custom"/);
 });
+
+test("tracker updates avoid global widget and surface rebuilds", async () => {
+  const source = await readFile("src/frontend.ts", "utf8");
+  const renderAll = source.match(/function renderAll[\s\S]*?\n  }\n\n  function updateLiveStatusDom/)?.[0] ?? "";
+  assert.doesNotMatch(renderAll, /refreshAllMessageWidgets/);
+  assert.match(source, /messageWidgetSignatures/);
+  assert.match(source, /mountedHistoryWidgets >= 4/);
+  assert.match(source, /refreshAllMessageWidgets\(syncVersion\)/);
+  assert.match(source, /case "chat_states":[\s\S]*?renderMode = "none"/);
+  assert.match(source, /case "state_history":[\s\S]*?renderMode = "history"/);
+  assert.match(source, /updateHistoryMetadataDom/);
+});
+
+test("generation clock covers manual and automatic compiler runs", async () => {
+  const source = await readFile("src/frontend.ts", "utf8");
+  const styles = await readFile("src/frontend/styles.ts", "utf8");
+  const preview = await readFile("preview/mock-host.js", "utf8");
+  assert.match(source, /function formatElapsed/);
+  assert.match(source, /startElapsedTimer\(response\.report\?\.elapsedMs \?\? 0\)/);
+  assert.match(source, /data-live-elapsed/);
+  assert.match(source, /Generating tracker/);
+  assert.match(source, /formatElapsed\(finalElapsedMs\)/);
+  assert.match(styles, /font-variant-numeric:\s*tabular-nums/);
+  assert.doesNotMatch(styles, /loomos-glow-pulse/);
+  assert.match(preview, /payload\.type === "generate_state"/);
+  assert.match(preview, /status: "completed"/);
+});

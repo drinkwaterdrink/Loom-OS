@@ -1,18 +1,19 @@
 # LoomOS Command Deck
 
-Current release: **0.1.11**
+Current release: **0.1.12**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.11
+## Key Features & Upgrades in 0.1.12
 
-- **Viewer freeze fix**: The tracker no longer rebuilds the entire drawer, modal, and message widgets every second while compiling. Live status updates now patch visible status text in place.
-- **Stable History search**: Typing in History updates only the result list, preserving mobile input focus and scroll position.
-- **Dedicated Tools workspace**: Pulse, Cast, World, Story, Memory, Tools, and History are now available in the chat tracker viewer. Tools stays discoverable even when a tool has no generated payload.
-- **Image Prompt visibility**: Image Prompt now shows clear off, hidden, refresh-needed, no-output, and ready states. Ready prompts expose aspect, shot, medium, subject, full prompt, positive guidance, negative guidance, hint, and a copy button.
-- **Mobile-safe polish pass**: The viewer uses crisp opaque sticky surfaces and avoids embedded-webview-expensive blur and `content-visibility` behavior.
+- **Differential message widgets**: LoomOS no longer destroys and recreates every tracker-history widget after routine settings, state, or status updates. Widgets are signature-checked and only changed controls are replaced.
+- **Frame-batched history controls**: When a chat has a large retained history, previous-message controls mount four at a time with a short yield between batches instead of blocking the chat thread.
+- **Coalesced tracker updates**: Chat-state and History responses patch only their owned UI. A completed generation no longer causes repeated full drawer, viewer, and widget redraws.
+- **Live generation clock**: Manual and automatic tracker generations show an `MM:SS` counter in the compiling status pill, Stop button, and generation rail. The final duration remains visible in the completion status.
+- **Lower paint cost**: Infinite glow, pulse, filter, and progress-bar effects were removed from the generation surfaces and inline tracker widget.
+- **Performance regression coverage**: The local preview now simulates a complete generation lifecycle, and tests guard the targeted-render, batched-widget, and timer paths.
 
 ---
 
@@ -21,6 +22,7 @@ LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat h
 - [Chat Tracker Viewer](#chat-tracker-viewer)
 - [Workspace Views](#workspace-views)
 - [Control Dock](#control-dock)
+- [Performance and Generation Timing](#performance-and-generation-timing)
 - [State History Timeline](#state-history-timeline)
 - [Injection Preview Panel](#injection-preview-panel)
 - [What Changed Modal](#what-changed-modal)
@@ -136,6 +138,24 @@ A compact sticky command dock pins to the top of both the drawer and viewer. It 
 
 ---
 
+## Performance and Generation Timing
+
+LoomOS keeps generation progress separate from tracker rendering. While the compiler runs, visible status, phase, attempt, and elapsed clock values update directly in the existing DOM. The tracker body, open sections, scroll position, and message widgets are not rebuilt once per second.
+
+The elapsed clock uses `MM:SS` and starts for both manual generations and automatic generations triggered after an assistant response. It appears in the state pill, Stop control, and generation rail. When generation finishes, fails, or is cancelled, the live timer stops and the final elapsed duration is appended to the status message. The backend-reported duration is used when available; otherwise LoomOS uses the frontend clock.
+
+Message widgets use a differential render queue:
+
+- The latest-message action widget is replaced only when its exact state, swipe, permission, or busy state changes.
+- Previous-message History controls are replaced only when that message's saved swipe list changes.
+- New or changed History controls mount in batches of four with a frame yield between batches.
+- Removed history entries clean up only their matching widget.
+- Chat-state responses do not redraw the drawer or viewer, and History responses update only History counts and visible History results.
+
+These rules matter most when `historyRetentionLimit` is high. Retaining hundreds of trackers still requires storage and History-list work, but it no longer turns each unrelated UI update into hundreds of embedded widget remounts.
+
+---
+
 ## State History Timeline
 
 Accessed via the **History** tab. All states are listed newest-first with full metadata. The search bar supports real-time filtering across scene, focus, location, and message ID fields. Click **Load** to replace the viewer's current tracker with the selected historical state. The viewer returns to Pulse after loading so the archived snapshot is immediately visible. The actively-loaded state is visually distinguished.
@@ -177,10 +197,11 @@ Opened via **Review changes** in the Pulse summary. Provides a focused delta bre
 ## Latest-Message Tracker Widget
 
 When viewing the latest message in a chat, LoomOS renders a widget bar beneath the message. The widget shows:
-- **Open Tracker** button — Opens the full LoomOS dashboard in a modal for the exact message/swipe.
-- Module status chips indicating which modules are active.
+- **Open LoomOS** - Opens the chat tracker viewer for the active exact swipe.
+- **Generate / Refresh / Stop** - Generates a missing tracker, refreshes an existing tracker, or cancels the active compile.
+- **Exact-state status** - Shows whether the active swipe has a stored tracker.
 
-Each message-swipe combination gets a unique widget ID, so multiple swipes in the same conversation each have their own independent LoomOS widget.
+Previous messages with retained trackers receive a separate compact **Tracker history** widget with one button per stored swipe. LoomOS computes a signature for each widget and leaves it mounted until its state actually changes. Large batches of previous-message widgets are mounted incrementally so opening or updating the tracker does not lock the chat interface.
 
 ---
 

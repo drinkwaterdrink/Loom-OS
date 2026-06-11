@@ -236,6 +236,7 @@ archivedState.kernel.currentFocus = "Find a dry route back to the north tower.";
 archivedState.delta.headline = "Floodwater cut off the eastern archive corridor.";
 
 let previewStates = [seededState, archivedState];
+const generationTimers = new Map();
 
 function toHistoryItem(state) {
   return {
@@ -371,6 +372,77 @@ const ctx = {
         identity: seededState.identity,
         state: seededState,
       }));
+    } else if (payload.type === "generate_state") {
+      const startedAt = Date.now();
+      const timers = [];
+      generationTimers.set(payload.requestId, timers);
+      queueMicrotask(() => backendHandler({
+        type: "generation_status",
+        requestId: payload.requestId,
+        status: "started",
+        identity: payload.identity,
+        message: "Reading exact-swipe context",
+      }));
+      timers.push(setTimeout(() => backendHandler({
+        type: "generation_status",
+        requestId: payload.requestId,
+        status: "progress",
+        identity: payload.identity,
+        message: "Compiling active modules",
+      }), 1500));
+      timers.push(setTimeout(() => backendHandler({
+        type: "generation_status",
+        requestId: payload.requestId,
+        status: "progress",
+        identity: payload.identity,
+        message: "Validating continuity",
+      }), 3500));
+      timers.push(setTimeout(() => {
+        const generatedState = {
+          ...seededState,
+          generatedAt: new Date().toISOString(),
+          identity: {
+            ...seededState.identity,
+            swipeId: payload.identity?.swipeId ?? seededState.identity.swipeId,
+          },
+        };
+        previewStates = [
+          generatedState,
+          ...previewStates.filter((candidate) => !sameIdentity(candidate.identity, generatedState.identity)),
+        ];
+        backendHandler({
+          type: "state",
+          requestId: payload.requestId,
+          identity: generatedState.identity,
+          state: generatedState,
+        });
+        backendHandler({
+          type: "generation_status",
+          requestId: payload.requestId,
+          status: "completed",
+          identity: generatedState.identity,
+          message: "Tracker generated",
+          report: {
+            phase: "completed",
+            attempt: 1,
+            elapsedMs: Date.now() - startedAt,
+            connectionId: "preview-connection",
+            normalized: true,
+            fallbackSaved: false,
+            issues: [],
+          },
+        });
+        generationTimers.delete(payload.requestId);
+      }, 6000));
+    } else if (payload.type === "cancel_generation") {
+      for (const timer of generationTimers.get(payload.requestId) ?? []) clearTimeout(timer);
+      generationTimers.delete(payload.requestId);
+      queueMicrotask(() => backendHandler({
+        type: "generation_status",
+        requestId: payload.requestId,
+        status: "cancelled",
+        message: "Generation cancelled",
+      }));
     } else if (payload.type === "get_state" || payload.type === "load_history_state") {
       const requested = payload.identity ?? seededState.identity;
       const found = previewStates.find((candidate) => sameIdentity(candidate.identity, requested)) ?? null;
@@ -425,7 +497,14 @@ const ctx = {
   },
 };
 
-window.loomosPreviewCleanup = setup(ctx);
+const extensionCleanup = setup(ctx);
+window.loomosPreviewCleanup = () => {
+  for (const timers of generationTimers.values()) {
+    for (const timer of timers) clearTimeout(timer);
+  }
+  generationTimers.clear();
+  extensionCleanup();
+};
 
 const previewParams = new URLSearchParams(window.location.search);
 setTimeout(() => {

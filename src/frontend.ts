@@ -134,6 +134,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   let elapsedTimer: ReturnType<typeof setInterval> | null = null;
   let hostSyncTimeout: ReturnType<typeof setTimeout> | null = null;
   const messageWidgetCleanups = new Map<string, () => void>();
+  const messageWidgetSignatures = new Map<string, string>();
+  let messageWidgetSyncTimer: ReturnType<typeof setTimeout> | null = null;
+  let messageWidgetSyncVersion = 0;
+  let messageWidgetChatId: string | null = null;
   let chatStates: Array<{ messageId: string; swipeId: number }> = [];
   let historyItems: StateHistoryItem[] = [];
   let injectionPreview: InjectionPreview | null = null;
@@ -201,9 +205,21 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     elapsedTimer = null;
   }
 
-  function startElapsedTimer(): void {
+  function formatElapsed(elapsedMs: number): string {
+    const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  function currentElapsedMs(): number {
+    return generationStartedAt > 0 ? Date.now() - generationStartedAt : 0;
+  }
+
+  function startElapsedTimer(initialElapsedMs = 0): void {
     stopElapsedTimer();
-    generationStartedAt = Date.now();
+    generationStartedAt = Date.now() - Math.max(0, initialElapsedMs);
+    updateLiveStatusDom();
     elapsedTimer = setInterval(() => {
       if (!activeGenerationRequestId) {
         stopElapsedTimer();
@@ -215,7 +231,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function elapsedLabel(): string {
     if (!activeGenerationRequestId || generationStartedAt === 0) return status;
-    return `${status} | ${Math.floor((Date.now() - generationStartedAt) / 1000)}s`;
+    return `${status} | ${formatElapsed(currentElapsedMs())}`;
   }
 
   function captureUiState() {
@@ -346,6 +362,9 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   }
 
   function clearAllMessageWidgets(): void {
+    messageWidgetSyncVersion += 1;
+    if (messageWidgetSyncTimer) clearTimeout(messageWidgetSyncTimer);
+    messageWidgetSyncTimer = null;
     for (const cleanup of messageWidgetCleanups.values()) {
       try {
         cleanup();
@@ -354,18 +373,52 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       }
     }
     messageWidgetCleanups.clear();
+    messageWidgetSignatures.clear();
+    messageWidgetChatId = null;
   }
 
-  function refreshAllMessageWidgets(): void {
-    clearAllMessageWidgets();
+  function cleanupMessageWidget(key: string): void {
+    const cleanup = messageWidgetCleanups.get(key);
+    if (cleanup) {
+      try {
+        cleanup();
+      } catch {
+        // ignore
+      }
+    }
+    messageWidgetCleanups.delete(key);
+    messageWidgetSignatures.delete(key);
+  }
 
+  function scheduleMessageWidgetSync(delay = 25): void {
+    messageWidgetSyncVersion += 1;
+    if (messageWidgetSyncTimer) clearTimeout(messageWidgetSyncTimer);
+    messageWidgetSyncTimer = setTimeout(() => {
+      messageWidgetSyncTimer = null;
+      refreshAllMessageWidgets(messageWidgetSyncVersion);
+    }, delay);
+  }
+
+  function refreshAllMessageWidgets(syncVersion = messageWidgetSyncVersion): void {
+    if (disposed || syncVersion !== messageWidgetSyncVersion) return;
     const activeChat = ctx.getActiveChat();
-    if (!activeChat.chatId) return;
+    if (!activeChat.chatId) {
+      clearAllMessageWidgets();
+      return;
+    }
+    if (messageWidgetChatId !== activeChat.chatId) {
+      for (const key of [...messageWidgetSignatures.keys()]) cleanupMessageWidget(key);
+      messageWidgetChatId = activeChat.chatId;
+    }
 
     const latestId = ctx.messages.getLatestMessageId();
+    const desiredKeys = new Set<string>();
+    let mountedHistoryWidgets = 0;
+    let hasDeferredWidgets = false;
 
     const historyByMessage = new Map<string, StateHistoryItem[]>();
     for (const item of historyItems) {
+      if (item.identity.chatId !== activeChat.chatId) continue;
       if (item.identity.messageId === latestId) continue;
       const entries = historyByMessage.get(item.identity.messageId) ?? [];
       entries.push(item);
@@ -375,6 +428,17 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     // 1. Render one history control on each previous message with stored trackers.
     for (const [messageId, entries] of historyByMessage) {
       const widgetKey = `history:${messageId}`;
+      desiredKeys.add(widgetKey);
+      const signature = entries
+        .map((item) => `${item.identity.swipeId}:${item.generatedAt}`)
+        .sort()
+        .join("|");
+      if (messageWidgetSignatures.get(widgetKey) === signature) continue;
+      if (mountedHistoryWidgets >= 4) {
+        hasDeferredWidgets = true;
+        continue;
+      }
+      cleanupMessageWidget(widgetKey);
       const widgetId = `loomos-history-${messageId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64)}`;
       const buttons = entries.map((item) => `
         <button type="button" data-swipe="${item.identity.swipeId}" title="Open tracker for swipe ${item.identity.swipeId}">
@@ -420,7 +484,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
               align-items: center;
               justify-content: center;
               white-space: nowrap;
-              transition: all 0.2s ease;
+              transition: background-color 0.16s ease, border-color 0.16s ease;
             }
             button:hover {
               border-color: var(--lumiverse-accent, #7c6cff);
@@ -471,17 +535,33 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       if (cleanup) {
         messageWidgetCleanups.set(widgetKey, cleanup);
       }
+      messageWidgetSignatures.set(widgetKey, signature);
+      mountedHistoryWidgets += 1;
     }
 
     // 2. Render widget for latest message (always rendered)
     if (latestId) {
+      const widgetKey = `latest:${latestId}`;
+      for (const key of [...messageWidgetSignatures.keys()]) {
+        if (key.startsWith("latest:") && key !== widgetKey) cleanupMessageWidget(key);
+      }
+      desiredKeys.add(widgetKey);
       const hasState = hasExactStateForLatest();
       const busy = activeGenerationRequestId !== null;
       const generateLabel = busy ? "Stop" : hasState ? "Refresh" : "Generate";
-      const generateClass = busy ? "danger pulse" : "primary";
+      const generateClass = busy ? "danger" : "primary";
       const swipeText = activeIdentity ? `swipe ${activeIdentity.swipeId}` : "this swipe";
-      
-      const cleanup = ctx.messages.renderWidget({
+      const signature = [
+        hasState,
+        busy,
+        activeIdentity?.swipeId ?? "none",
+        permissions.generation,
+        permissions.chatMutation,
+      ].join("|");
+
+      if (messageWidgetSignatures.get(widgetKey) !== signature) {
+        cleanupMessageWidget(widgetKey);
+        const cleanup = ctx.messages.renderWidget({
         messageId: latestId,
         widgetId: "loomos-action",
         html: `
@@ -519,7 +599,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
               align-items: center;
               justify-content: center;
               white-space: nowrap;
-              transition: all 0.2s ease;
+              transition: background-color 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
             }
             button:hover {
               border-color: var(--lumiverse-accent, #7c6cff);
@@ -532,15 +612,11 @@ export function setup(ctx: SpindleFrontendContext): () => void {
             }
             button.primary:hover {
               opacity: 0.9;
-              filter: brightness(1.1);
             }
             button.danger {
               border-color: #df5259;
               background: rgba(223, 82, 89, 0.15);
               color: #ff6b72;
-            }
-            button.pulse {
-              animation: loomos-pulse 1.6s infinite;
             }
             button:disabled {
               cursor: not-allowed;
@@ -566,16 +642,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
             }
             .status-dot.active {
               background-color: #10b981;
-              box-shadow: 0 0 6px #10b981;
-            }
-            @keyframes loomos-pulse {
-              0% { opacity: 1; }
-              50% { opacity: 0.5; }
-              100% { opacity: 1; }
             }
           </style>
           <div class="bar">
-            <button id="open" type="button">🔮 Open LoomOS</button>
+            <button id="open" type="button">Open LoomOS</button>
             <button id="generate" class="${generateClass}" type="button"${disabled(!permissions.generation || !permissions.chatMutation)}>${escapeHtml(generateLabel)}</button>
             <div class="status-wrapper">
               <i class="status-dot ${hasState ? "active" : ""}"></i>
@@ -601,25 +671,40 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         }
       });
 
-      if (cleanup) {
-        messageWidgetCleanups.set(latestId, cleanup);
+        if (cleanup) {
+          messageWidgetCleanups.set(widgetKey, cleanup);
+        }
+        messageWidgetSignatures.set(widgetKey, signature);
       }
+    }
+
+    for (const key of [...messageWidgetSignatures.keys()]) {
+      if (!desiredKeys.has(key)) cleanupMessageWidget(key);
+    }
+
+    if (hasDeferredWidgets && syncVersion === messageWidgetSyncVersion) {
+      messageWidgetSyncTimer = setTimeout(() => {
+        messageWidgetSyncTimer = null;
+        refreshAllMessageWidgets(syncVersion);
+      }, 16);
     }
   }
 
   function compileStatusCardHtml(): string {
     if (!activeGenerationRequestId) return "";
-    const elapsed = generationStartedAt ? Math.floor((Date.now() - generationStartedAt) / 1000) : 0;
+    const elapsed = formatElapsed(currentElapsedMs());
     const phaseLabel = pipeline ? pipeline.phase.replace("_", " ") : "resolving";
     return `
-      <div class="loomos-shell loomos-compile-status loomos-pulse" data-live-compile style="margin-top: 8px;">
-        <div class="loomos-row-title">
-          <strong>Compiling Story State...</strong>
-          <span class="loomos-badge loomos-badge-compiling" data-live-elapsed>${elapsed}s</span>
+      <div class="loomos-shell loomos-compile-status" data-live-compile>
+        <div class="loomos-compile-copy">
+          <span class="loomos-compile-dot" aria-hidden="true"></span>
+          <div>
+            <strong>Generating tracker</strong>
+            <p data-live-status>${escapeHtml(status)}</p>
+          </div>
         </div>
-        <p data-live-status>${escapeHtml(status)}</p>
-        <div class="loomos-meter-track"><i style="width: 100%; animation: loomos-bar-pulse 2s infinite;"></i></div>
-        <small>Phase: <span data-live-phase>${escapeHtml(phaseLabel)}</span> | Attempt: <span data-live-attempt>${pipeline ? pipeline.attempt : 1}</span>/2</small>
+        <strong class="loomos-generation-clock" data-live-elapsed>${elapsed}</strong>
+        <small>Phase <span data-live-phase>${escapeHtml(phaseLabel)}</span> | attempt <span data-live-attempt>${pipeline ? pipeline.attempt : 1}</span>/2</small>
       </div>
     `;
   }
@@ -1079,7 +1164,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function diagnosticText(): string {
     const lines = [
-      `version: 0.1.11`,
+      `version: 0.1.12`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -1121,7 +1206,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     ];
     return `<nav class="loomos-tabs-nav${scope === "viewer" ? " loomos-viewer-tabs" : ""}" aria-label="Tracker views" role="tablist">${tabs.map((tabItem) =>
       `<button class="loomos-tab-btn${selectedTab === tabItem.id ? " active" : ""}" data-tab="${tabItem.id}" data-tab-scope="${scope}" role="tab" aria-selected="${selectedTab === tabItem.id}">
-        <span>${tabItem.label}</span><small>${tabItem.meta}</small>
+        <span>${tabItem.label}</span><small data-tab-meta="${tabItem.id}">${tabItem.meta}</small>
       </button>`
     ).join("")}</nav>`;
   }
@@ -1136,7 +1221,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     const missingPermission = !permissions.generation
       || !permissions.chatMutation
       || (settings.injectionEnabled && !permissions.interceptor);
-    const stateLabel = busy ? "Compiling" : state ? "Synced" : "No state";
+    const stateLabel = busy ? `Compiling ${formatElapsed(currentElapsedMs())}` : state ? "Synced" : "No state";
     return `
       <div class="loomos-header-sticky">
         <div class="loomos-context-bar">
@@ -1150,7 +1235,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         </div>
         <div class="loomos-header-actions">
           ${busy
-            ? `<button class="loomos-button loomos-button-danger loomos-button-pulse loomos-action-primary" data-action="cancel">Stop compile</button>`
+            ? `<button class="loomos-button loomos-button-danger loomos-action-primary" data-action="cancel">Stop <span data-live-elapsed>${formatElapsed(currentElapsedMs())}</span></button>`
             : `<button class="loomos-button loomos-button-primary loomos-action-primary" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh tracker" : "Generate tracker"}</button>`
           }
           ${view === "drawer" ? `<button class="loomos-button" data-action="viewer">Viewer</button>` : ""}
@@ -1191,7 +1276,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   function viewerCommandHtml(): string {
     const canGenerate = permissions.generation && permissions.chatMutation;
     const busy = activeGenerationRequestId !== null;
-    const stateLabel = busy ? "Compiling" : state ? "Synced" : "No state";
+    const stateLabel = busy ? `Compiling ${formatElapsed(currentElapsedMs())}` : state ? "Synced" : "No state";
     const sceneTitle = state?.kernel.scene || "Exact-swipe tracker";
     const sceneMeta = state
       ? [state.kernel.location, state.kernel.timeframe].filter(Boolean).join(" · ")
@@ -1211,7 +1296,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         </div>
         <div class="loomos-viewer-actions">
           ${busy
-            ? `<button class="loomos-button loomos-button-danger loomos-button-pulse loomos-viewer-primary" data-action="cancel">Stop compile</button>`
+            ? `<button class="loomos-button loomos-button-danger loomos-viewer-primary" data-action="cancel">Stop <span data-live-elapsed>${formatElapsed(currentElapsedMs())}</span></button>`
             : `<button class="loomos-button loomos-button-primary loomos-viewer-primary" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh tracker" : "Generate tracker"}</button>`
           }
           <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation || busy)}>Reload</button>
@@ -1265,16 +1350,14 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function renderAll(preserveDisclosure = true): void {
     renderSurfaces(preserveDisclosure);
-    refreshAllMessageWidgets();
   }
 
   function updateLiveStatusDom(): void {
     const busy = activeGenerationRequestId !== null;
-    const stateLabel = busy ? "Compiling" : state ? "Synced" : "No state";
+    const elapsed = currentElapsedMs();
+    const elapsedText = formatElapsed(elapsed);
+    const stateLabel = busy ? `Compiling ${elapsedText}` : state ? "Synced" : "No state";
     const phaseLabel = pipeline ? pipeline.phase.replaceAll("_", " ") : "resolving";
-    const elapsed = generationStartedAt && busy
-      ? Math.floor((Date.now() - generationStartedAt) / 1000)
-      : 0;
     const roots = [tab.root, modal?.root].filter((root): root is HTMLElement => Boolean(root));
 
     for (const root of roots) {
@@ -1294,7 +1377,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         element.textContent = stateLabel;
       });
       root.querySelectorAll<HTMLElement>("[data-live-elapsed]").forEach((element) => {
-        element.textContent = `${elapsed}s`;
+        element.textContent = elapsedText;
       });
       root.querySelectorAll<HTMLElement>("[data-live-phase]").forEach((element) => {
         element.textContent = phaseLabel;
@@ -1302,6 +1385,16 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       root.querySelectorAll<HTMLElement>("[data-live-attempt]").forEach((element) => {
         element.textContent = String(pipeline?.attempt ?? 1);
       });
+    }
+  }
+
+  function updateHistoryMetadataDom(): void {
+    const roots = [tab.root, modal?.root].filter((root): root is HTMLElement => Boolean(root));
+    for (const root of roots) {
+      root.querySelectorAll<HTMLElement>('[data-tab-meta="history"]').forEach((element) => {
+        element.textContent = String(historyItems.length);
+      });
+      updateHistorySurface(root);
     }
   }
 
@@ -1475,6 +1568,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       identity,
     });
     renderAll();
+    scheduleMessageWidgetSync();
   }
 
   function reloadState(): void {
@@ -1597,6 +1691,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       status = "No active chat";
       send({ type: "ready", active: null });
       renderAll();
+      scheduleMessageWidgetSync();
       return;
     }
     status = "Loading exact swipe";
@@ -1611,6 +1706,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       send({ type: "preview_injection", requestId: requestId("preview-sync"), chatId: active.chatId });
     }
     renderAll();
+    scheduleMessageWidgetSync();
   }
 
   function scheduleHostSync(): void {
@@ -2794,7 +2890,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   function handleBackendMessage(payload: unknown): void {
     if (!isRecord(payload) || typeof payload.type !== "string") return;
     const response = payload as unknown as BackendResponse;
-    let renderMode: "all" | "surfaces" | "live" = "all";
+    let renderMode: "surfaces" | "live" | "history" | "none" = "surfaces";
+    let syncWidgets = false;
     switch (response.type) {
       case "bootstrap":
         settings = response.settings;
@@ -2813,6 +2910,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
             send({ type: "preview_injection", requestId: requestId("preview"), chatId: activeIdentity.chatId });
           }
         }
+        syncWidgets = true;
         break;
       case "settings":
         settings = response.settings;
@@ -2831,33 +2929,46 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       case "state":
         activeIdentity = response.identity;
         state = response.state;
-        status = response.state ? "Exact swipe state loaded" : "No state for this swipe";
+        status = activeGenerationRequestId
+          ? "Finalizing tracker"
+          : response.state ? "Exact swipe state loaded" : "No state for this swipe";
         
-        if (activeIdentity?.chatId) {
+        if (activeIdentity?.chatId && !activeGenerationRequestId) {
           send({ type: "get_chat_states", requestId: requestId("chat-states"), chatId: activeIdentity.chatId });
           send({ type: "list_state_history", requestId: requestId("history"), chatId: activeIdentity.chatId });
           if (settings.showInjectionPreview) {
             send({ type: "preview_injection", requestId: requestId("preview"), chatId: activeIdentity.chatId });
           }
         }
+        renderMode = activeGenerationRequestId ? "live" : "surfaces";
+        syncWidgets = true;
         break;
       case "permissions":
         permissions = response.permissions;
         status = "Permissions updated";
         renderMode = "surfaces";
+        syncWidgets = true;
         break;
       case "generation_status":
         if (response.report) pipeline = response.report;
         if (response.status === "started" || response.status === "progress") {
+          const continuingRequest = activeGenerationRequestId === response.requestId && generationStartedAt > 0;
           activeGenerationRequestId = response.requestId;
           if (response.identity) activeIdentity = response.identity;
           status = response.message ?? "Compiling story state";
+          if (!continuingRequest) startElapsedTimer(response.report?.elapsedMs ?? 0);
           renderMode = response.status === "progress" ? "live" : "surfaces";
+          syncWidgets = response.status === "started";
         } else {
+          const finalElapsedMs = response.report?.elapsedMs ?? currentElapsedMs();
           if (activeGenerationRequestId === response.requestId) activeGenerationRequestId = null;
           stopElapsedTimer();
-          status = response.message ?? (response.status === "completed" ? "State compiled" : response.status);
+          generationStartedAt = 0;
+          const completionMessage = response.message
+            ?? (response.status === "completed" ? "State compiled" : response.status);
+          status = `${completionMessage} in ${formatElapsed(finalElapsedMs)}`;
           renderMode = "surfaces";
+          syncWidgets = true;
           
           if (activeIdentity?.chatId) {
             send({ type: "get_chat_states", requestId: requestId("chat-states"), chatId: activeIdentity.chatId });
@@ -2868,10 +2979,18 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       case "chat_states":
         if (response.chatId === ctx.getActiveChat().chatId) {
           chatStates = response.states;
+          syncWidgets = true;
         }
+        renderMode = "none";
         break;
       case "state_history":
-        historyItems = response.items;
+        if (response.chatId === ctx.getActiveChat().chatId) {
+          historyItems = response.items;
+          renderMode = "history";
+          syncWidgets = true;
+        } else {
+          renderMode = "none";
+        }
         break;
       case "history_state_deleted": {
         historyItems = response.items;
@@ -2880,6 +2999,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           && activeIdentity.swipeId === response.identity.swipeId;
         if (deletedActive) state = null;
         status = "History tracker deleted";
+        syncWidgets = true;
         break;
       }
       case "injection_preview":
@@ -2888,10 +3008,15 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         break;
       case "error":
         if (response.requestId === activeGenerationRequestId) {
+          const failedElapsedMs = currentElapsedMs();
           activeGenerationRequestId = null;
           stopElapsedTimer();
+          generationStartedAt = 0;
+          status = `${response.message} after ${formatElapsed(failedElapsedMs)}`;
+          syncWidgets = true;
+        } else {
+          status = response.message;
         }
-        status = response.message;
         renderMode = "surfaces";
         break;
     }
@@ -2899,9 +3024,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       updateLiveStatusDom();
     } else if (renderMode === "surfaces") {
       renderSurfaces();
-    } else {
-      renderAll();
+    } else if (renderMode === "history") {
+      updateHistoryMetadataDom();
     }
+    if (syncWidgets) scheduleMessageWidgetSync();
   }
 
   function handleActionClick(event: Event): void {
@@ -3115,6 +3241,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       send({ type: "get_chat_states", requestId: requestId("chat-states-swipe"), chatId: identity.chatId });
       send({ type: "list_state_history", requestId: requestId("history-swipe"), chatId: identity.chatId });
       renderAll();
+      scheduleMessageWidgetSync();
     }
   }));
   cleanups.push(ctx.events.on("SWIPE_EDITED", (payload) => {
@@ -3126,9 +3253,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     }
   }));
   cleanups.push(ctx.events.on("CHARACTER_MESSAGE_RENDERED", scheduleHostSync));
-  cleanups.push(ctx.events.on("USER_MESSAGE_RENDERED", refreshAllMessageWidgets));
+  cleanups.push(ctx.events.on("USER_MESSAGE_RENDERED", () => scheduleMessageWidgetSync()));
 
   renderAll();
+  scheduleMessageWidgetSync();
   syncFromHost(true);
 
   return () => {

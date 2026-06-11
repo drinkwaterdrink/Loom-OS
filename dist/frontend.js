@@ -7045,26 +7045,62 @@ var LOOMOS_STYLES = `
   }
 
   .loomos-compile-status {
+    align-items: center;
     background: color-mix(in srgb, var(--loomos-accent) 8%, var(--loomos-bg));
     border-color: var(--loomos-accent);
+    display: grid;
+    gap: 4px 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    margin-top: 8px;
+    padding: 10px 12px;
   }
-  .loomos-badge-compiling {
+  .loomos-compile-copy {
+    align-items: center;
+    display: flex;
+    gap: 9px;
+    min-width: 0;
+  }
+  .loomos-compile-copy > div {
+    min-width: 0;
+  }
+  .loomos-compile-copy strong {
+    display: block;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+  .loomos-compile-copy p {
+    color: var(--loomos-muted);
+    font-size: 10px;
+    line-height: 1.25;
+    margin: 2px 0 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .loomos-compile-dot {
     background: var(--loomos-accent);
-    color: #fff;
-    font-weight: 800;
+    border-radius: 50%;
+    flex: 0 0 8px;
+    height: 8px;
+    opacity: .9;
+    width: 8px;
   }
-  .loomos-button-pulse, .loomos-pulse {
-    animation: loomos-glow-pulse 1.8s infinite;
+  .loomos-generation-clock,
+  [data-live-elapsed] {
+    font-variant-numeric: tabular-nums;
   }
-  @keyframes loomos-glow-pulse {
-    0% { box-shadow: 0 0 0 0px color-mix(in srgb, var(--loomos-accent) 30%, transparent); }
-    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--loomos-accent) 0%, transparent); }
-    100% { box-shadow: 0 0 0 0px color-mix(in srgb, var(--loomos-accent) 30%, transparent); }
+  .loomos-generation-clock {
+    color: var(--loomos-ink);
+    font-size: 20px;
+    line-height: 1;
+    min-width: 5ch;
+    text-align: right;
   }
-  @keyframes loomos-bar-pulse {
-    0% { opacity: 0.6; }
-    50% { opacity: 1; }
-    100% { opacity: 0.6; }
+  .loomos-compile-status > small {
+    color: var(--loomos-muted);
+    font-size: 9px;
+    grid-column: 1 / -1;
+    padding-left: 17px;
   }
 
   .loomos-prompt-dialog {
@@ -7584,7 +7620,7 @@ var LOOMOS_STYLES = `
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .loomos-button-pulse, .loomos-pulse, .loomos-meter-track i {
+    .loomos-state-pill.is-busy i {
       animation: none !important;
       transition: none !important;
     }
@@ -7869,11 +7905,7 @@ var LOOMOS_STYLES = `
     color: var(--loomos-accent);
   }
   .loomos-state-pill.is-busy i {
-    animation: loomos-status-pulse 1.2s ease-in-out infinite;
     background: var(--loomos-accent);
-  }
-  @keyframes loomos-status-pulse {
-    50% { opacity: .35; transform: scale(.72); }
   }
   .loomos-header-actions {
     display: grid;
@@ -8582,7 +8614,7 @@ var LOOMOS_STYLES = `
     }
   }
 
-  /* 0.1.11 chat tracker viewer */
+  /* 0.1.12 chat tracker viewer */
   .loomos-root[data-view="modal"] {
     container-name: loomos-viewer;
     container-type: inline-size;
@@ -8962,6 +8994,10 @@ function setup(ctx) {
   let elapsedTimer = null;
   let hostSyncTimeout = null;
   const messageWidgetCleanups = /* @__PURE__ */ new Map();
+  const messageWidgetSignatures = /* @__PURE__ */ new Map();
+  let messageWidgetSyncTimer = null;
+  let messageWidgetSyncVersion = 0;
+  let messageWidgetChatId = null;
   let chatStates = [];
   let historyItems = [];
   let injectionPreview = null;
@@ -9011,9 +9047,19 @@ function setup(ctx) {
     if (elapsedTimer) clearInterval(elapsedTimer);
     elapsedTimer = null;
   }
-  function startElapsedTimer() {
+  function formatElapsed(elapsedMs) {
+    const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1e3));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+  function currentElapsedMs() {
+    return generationStartedAt > 0 ? Date.now() - generationStartedAt : 0;
+  }
+  function startElapsedTimer(initialElapsedMs = 0) {
     stopElapsedTimer();
-    generationStartedAt = Date.now();
+    generationStartedAt = Date.now() - Math.max(0, initialElapsedMs);
+    updateLiveStatusDom();
     elapsedTimer = setInterval(() => {
       if (!activeGenerationRequestId) {
         stopElapsedTimer();
@@ -9024,7 +9070,7 @@ function setup(ctx) {
   }
   function elapsedLabel() {
     if (!activeGenerationRequestId || generationStartedAt === 0) return status;
-    return `${status} | ${Math.floor((Date.now() - generationStartedAt) / 1e3)}s`;
+    return `${status} | ${formatElapsed(currentElapsedMs())}`;
   }
   function captureUiState() {
     const openDetails = /* @__PURE__ */ new Set();
@@ -9138,6 +9184,9 @@ function setup(ctx) {
     }
   }
   function clearAllMessageWidgets() {
+    messageWidgetSyncVersion += 1;
+    if (messageWidgetSyncTimer) clearTimeout(messageWidgetSyncTimer);
+    messageWidgetSyncTimer = null;
     for (const cleanup of messageWidgetCleanups.values()) {
       try {
         cleanup();
@@ -9145,14 +9194,46 @@ function setup(ctx) {
       }
     }
     messageWidgetCleanups.clear();
+    messageWidgetSignatures.clear();
+    messageWidgetChatId = null;
   }
-  function refreshAllMessageWidgets() {
-    clearAllMessageWidgets();
+  function cleanupMessageWidget(key) {
+    const cleanup = messageWidgetCleanups.get(key);
+    if (cleanup) {
+      try {
+        cleanup();
+      } catch {
+      }
+    }
+    messageWidgetCleanups.delete(key);
+    messageWidgetSignatures.delete(key);
+  }
+  function scheduleMessageWidgetSync(delay = 25) {
+    messageWidgetSyncVersion += 1;
+    if (messageWidgetSyncTimer) clearTimeout(messageWidgetSyncTimer);
+    messageWidgetSyncTimer = setTimeout(() => {
+      messageWidgetSyncTimer = null;
+      refreshAllMessageWidgets(messageWidgetSyncVersion);
+    }, delay);
+  }
+  function refreshAllMessageWidgets(syncVersion = messageWidgetSyncVersion) {
+    if (disposed || syncVersion !== messageWidgetSyncVersion) return;
     const activeChat = ctx.getActiveChat();
-    if (!activeChat.chatId) return;
+    if (!activeChat.chatId) {
+      clearAllMessageWidgets();
+      return;
+    }
+    if (messageWidgetChatId !== activeChat.chatId) {
+      for (const key of [...messageWidgetSignatures.keys()]) cleanupMessageWidget(key);
+      messageWidgetChatId = activeChat.chatId;
+    }
     const latestId = ctx.messages.getLatestMessageId();
+    const desiredKeys = /* @__PURE__ */ new Set();
+    let mountedHistoryWidgets = 0;
+    let hasDeferredWidgets = false;
     const historyByMessage = /* @__PURE__ */ new Map();
     for (const item of historyItems) {
+      if (item.identity.chatId !== activeChat.chatId) continue;
       if (item.identity.messageId === latestId) continue;
       const entries = historyByMessage.get(item.identity.messageId) ?? [];
       entries.push(item);
@@ -9160,6 +9241,14 @@ function setup(ctx) {
     }
     for (const [messageId, entries] of historyByMessage) {
       const widgetKey = `history:${messageId}`;
+      desiredKeys.add(widgetKey);
+      const signature = entries.map((item) => `${item.identity.swipeId}:${item.generatedAt}`).sort().join("|");
+      if (messageWidgetSignatures.get(widgetKey) === signature) continue;
+      if (mountedHistoryWidgets >= 4) {
+        hasDeferredWidgets = true;
+        continue;
+      }
+      cleanupMessageWidget(widgetKey);
       const widgetId = `loomos-history-${messageId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64)}`;
       const buttons = entries.map((item) => `
         <button type="button" data-swipe="${item.identity.swipeId}" title="Open tracker for swipe ${item.identity.swipeId}">
@@ -9204,7 +9293,7 @@ function setup(ctx) {
               align-items: center;
               justify-content: center;
               white-space: nowrap;
-              transition: all 0.2s ease;
+              transition: background-color 0.16s ease, border-color 0.16s ease;
             }
             button:hover {
               border-color: var(--lumiverse-accent, #7c6cff);
@@ -9254,17 +9343,33 @@ function setup(ctx) {
       if (cleanup) {
         messageWidgetCleanups.set(widgetKey, cleanup);
       }
+      messageWidgetSignatures.set(widgetKey, signature);
+      mountedHistoryWidgets += 1;
     }
     if (latestId) {
+      const widgetKey = `latest:${latestId}`;
+      for (const key of [...messageWidgetSignatures.keys()]) {
+        if (key.startsWith("latest:") && key !== widgetKey) cleanupMessageWidget(key);
+      }
+      desiredKeys.add(widgetKey);
       const hasState = hasExactStateForLatest();
       const busy = activeGenerationRequestId !== null;
       const generateLabel = busy ? "Stop" : hasState ? "Refresh" : "Generate";
-      const generateClass = busy ? "danger pulse" : "primary";
+      const generateClass = busy ? "danger" : "primary";
       const swipeText = activeIdentity ? `swipe ${activeIdentity.swipeId}` : "this swipe";
-      const cleanup = ctx.messages.renderWidget({
-        messageId: latestId,
-        widgetId: "loomos-action",
-        html: `
+      const signature = [
+        hasState,
+        busy,
+        activeIdentity?.swipeId ?? "none",
+        permissions.generation,
+        permissions.chatMutation
+      ].join("|");
+      if (messageWidgetSignatures.get(widgetKey) !== signature) {
+        cleanupMessageWidget(widgetKey);
+        const cleanup = ctx.messages.renderWidget({
+          messageId: latestId,
+          widgetId: "loomos-action",
+          html: `
           <style>
             :root { color-scheme: light dark; }
             * { box-sizing: border-box; }
@@ -9299,7 +9404,7 @@ function setup(ctx) {
               align-items: center;
               justify-content: center;
               white-space: nowrap;
-              transition: all 0.2s ease;
+              transition: background-color 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
             }
             button:hover {
               border-color: var(--lumiverse-accent, #7c6cff);
@@ -9312,15 +9417,11 @@ function setup(ctx) {
             }
             button.primary:hover {
               opacity: 0.9;
-              filter: brightness(1.1);
             }
             button.danger {
               border-color: #df5259;
               background: rgba(223, 82, 89, 0.15);
               color: #ff6b72;
-            }
-            button.pulse {
-              animation: loomos-pulse 1.6s infinite;
             }
             button:disabled {
               cursor: not-allowed;
@@ -9346,16 +9447,10 @@ function setup(ctx) {
             }
             .status-dot.active {
               background-color: #10b981;
-              box-shadow: 0 0 6px #10b981;
-            }
-            @keyframes loomos-pulse {
-              0% { opacity: 1; }
-              50% { opacity: 0.5; }
-              100% { opacity: 1; }
             }
           </style>
           <div class="bar">
-            <button id="open" type="button">\u{1F52E} Open LoomOS</button>
+            <button id="open" type="button">Open LoomOS</button>
             <button id="generate" class="${generateClass}" type="button"${disabled(!permissions.generation || !permissions.chatMutation)}>${escapeHtml(generateLabel)}</button>
             <div class="status-wrapper">
               <i class="status-dot ${hasState ? "active" : ""}"></i>
@@ -9367,37 +9462,50 @@ function setup(ctx) {
             document.getElementById("generate").addEventListener("click",()=>window.spindleSandbox.postMessage({type:"generate"}));
           <\/script>
         `,
-        minHeight: 38,
-        maxHeight: 80
-      }, (payload) => {
-        if (!isRecord(payload) || typeof payload.type !== "string") return;
-        if (payload.type === "open") openViewer();
-        if (payload.type === "generate") {
-          if (activeGenerationRequestId) {
-            send({ type: "cancel_generation", requestId: activeGenerationRequestId });
-          } else {
-            startGeneration();
+          minHeight: 38,
+          maxHeight: 80
+        }, (payload) => {
+          if (!isRecord(payload) || typeof payload.type !== "string") return;
+          if (payload.type === "open") openViewer();
+          if (payload.type === "generate") {
+            if (activeGenerationRequestId) {
+              send({ type: "cancel_generation", requestId: activeGenerationRequestId });
+            } else {
+              startGeneration();
+            }
           }
+        });
+        if (cleanup) {
+          messageWidgetCleanups.set(widgetKey, cleanup);
         }
-      });
-      if (cleanup) {
-        messageWidgetCleanups.set(latestId, cleanup);
+        messageWidgetSignatures.set(widgetKey, signature);
       }
+    }
+    for (const key of [...messageWidgetSignatures.keys()]) {
+      if (!desiredKeys.has(key)) cleanupMessageWidget(key);
+    }
+    if (hasDeferredWidgets && syncVersion === messageWidgetSyncVersion) {
+      messageWidgetSyncTimer = setTimeout(() => {
+        messageWidgetSyncTimer = null;
+        refreshAllMessageWidgets(syncVersion);
+      }, 16);
     }
   }
   function compileStatusCardHtml() {
     if (!activeGenerationRequestId) return "";
-    const elapsed = generationStartedAt ? Math.floor((Date.now() - generationStartedAt) / 1e3) : 0;
+    const elapsed = formatElapsed(currentElapsedMs());
     const phaseLabel = pipeline ? pipeline.phase.replace("_", " ") : "resolving";
     return `
-      <div class="loomos-shell loomos-compile-status loomos-pulse" data-live-compile style="margin-top: 8px;">
-        <div class="loomos-row-title">
-          <strong>Compiling Story State...</strong>
-          <span class="loomos-badge loomos-badge-compiling" data-live-elapsed>${elapsed}s</span>
+      <div class="loomos-shell loomos-compile-status" data-live-compile>
+        <div class="loomos-compile-copy">
+          <span class="loomos-compile-dot" aria-hidden="true"></span>
+          <div>
+            <strong>Generating tracker</strong>
+            <p data-live-status>${escapeHtml(status)}</p>
+          </div>
         </div>
-        <p data-live-status>${escapeHtml(status)}</p>
-        <div class="loomos-meter-track"><i style="width: 100%; animation: loomos-bar-pulse 2s infinite;"></i></div>
-        <small>Phase: <span data-live-phase>${escapeHtml(phaseLabel)}</span> | Attempt: <span data-live-attempt>${pipeline ? pipeline.attempt : 1}</span>/2</small>
+        <strong class="loomos-generation-clock" data-live-elapsed>${elapsed}</strong>
+        <small>Phase <span data-live-phase>${escapeHtml(phaseLabel)}</span> | attempt <span data-live-attempt>${pipeline ? pipeline.attempt : 1}</span>/2</small>
       </div>
     `;
   }
@@ -9825,7 +9933,7 @@ function setup(ctx) {
   }
   function diagnosticText() {
     const lines = [
-      `version: 0.1.11`,
+      `version: 0.1.12`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -9859,7 +9967,7 @@ function setup(ctx) {
     ];
     return `<nav class="loomos-tabs-nav${scope === "viewer" ? " loomos-viewer-tabs" : ""}" aria-label="Tracker views" role="tablist">${tabs.map(
       (tabItem) => `<button class="loomos-tab-btn${selectedTab === tabItem.id ? " active" : ""}" data-tab="${tabItem.id}" data-tab-scope="${scope}" role="tab" aria-selected="${selectedTab === tabItem.id}">
-        <span>${tabItem.label}</span><small>${tabItem.meta}</small>
+        <span>${tabItem.label}</span><small data-tab-meta="${tabItem.id}">${tabItem.meta}</small>
       </button>`
     ).join("")}</nav>`;
   }
@@ -9867,7 +9975,7 @@ function setup(ctx) {
     const canGenerate = permissions.generation && permissions.chatMutation;
     const busy = activeGenerationRequestId !== null;
     const missingPermission = !permissions.generation || !permissions.chatMutation || settings.injectionEnabled && !permissions.interceptor;
-    const stateLabel = busy ? "Compiling" : state ? "Synced" : "No state";
+    const stateLabel = busy ? `Compiling ${formatElapsed(currentElapsedMs())}` : state ? "Synced" : "No state";
     return `
       <div class="loomos-header-sticky">
         <div class="loomos-context-bar">
@@ -9880,7 +9988,7 @@ function setup(ctx) {
           </span>
         </div>
         <div class="loomos-header-actions">
-          ${busy ? `<button class="loomos-button loomos-button-danger loomos-button-pulse loomos-action-primary" data-action="cancel">Stop compile</button>` : `<button class="loomos-button loomos-button-primary loomos-action-primary" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh tracker" : "Generate tracker"}</button>`}
+          ${busy ? `<button class="loomos-button loomos-button-danger loomos-action-primary" data-action="cancel">Stop <span data-live-elapsed>${formatElapsed(currentElapsedMs())}</span></button>` : `<button class="loomos-button loomos-button-primary loomos-action-primary" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh tracker" : "Generate tracker"}</button>`}
           ${view === "drawer" ? `<button class="loomos-button" data-action="viewer">Viewer</button>` : ""}
           <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation || busy)}>Reload</button>
           ${missingPermission ? `<button class="loomos-button" data-action="permissions">Enable</button>` : ""}
@@ -9908,7 +10016,7 @@ function setup(ctx) {
   function viewerCommandHtml() {
     const canGenerate = permissions.generation && permissions.chatMutation;
     const busy = activeGenerationRequestId !== null;
-    const stateLabel = busy ? "Compiling" : state ? "Synced" : "No state";
+    const stateLabel = busy ? `Compiling ${formatElapsed(currentElapsedMs())}` : state ? "Synced" : "No state";
     const sceneTitle = state?.kernel.scene || "Exact-swipe tracker";
     const sceneMeta = state ? [state.kernel.location, state.kernel.timeframe].filter(Boolean).join(" \xB7 ") : status;
     return `
@@ -9925,7 +10033,7 @@ function setup(ctx) {
           <small data-live-status>${escapeHtml(exactLabel())} | ${escapeHtml(status)}</small>
         </div>
         <div class="loomos-viewer-actions">
-          ${busy ? `<button class="loomos-button loomos-button-danger loomos-button-pulse loomos-viewer-primary" data-action="cancel">Stop compile</button>` : `<button class="loomos-button loomos-button-primary loomos-viewer-primary" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh tracker" : "Generate tracker"}</button>`}
+          ${busy ? `<button class="loomos-button loomos-button-danger loomos-viewer-primary" data-action="cancel">Stop <span data-live-elapsed>${formatElapsed(currentElapsedMs())}</span></button>` : `<button class="loomos-button loomos-button-primary loomos-viewer-primary" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh tracker" : "Generate tracker"}</button>`}
           <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation || busy)}>Reload</button>
           ${state && !busy ? `<button class="loomos-button loomos-button-danger" data-action="delete">Delete</button>` : ""}
         </div>
@@ -9965,13 +10073,13 @@ function setup(ctx) {
   }
   function renderAll(preserveDisclosure = true) {
     renderSurfaces(preserveDisclosure);
-    refreshAllMessageWidgets();
   }
   function updateLiveStatusDom() {
     const busy = activeGenerationRequestId !== null;
-    const stateLabel = busy ? "Compiling" : state ? "Synced" : "No state";
+    const elapsed = currentElapsedMs();
+    const elapsedText = formatElapsed(elapsed);
+    const stateLabel = busy ? `Compiling ${elapsedText}` : state ? "Synced" : "No state";
     const phaseLabel = pipeline ? pipeline.phase.replaceAll("_", " ") : "resolving";
-    const elapsed = generationStartedAt && busy ? Math.floor((Date.now() - generationStartedAt) / 1e3) : 0;
     const roots = [tab.root, modal?.root].filter((root) => Boolean(root));
     for (const root of roots) {
       root.querySelectorAll("[data-live-status]").forEach((element) => {
@@ -9990,7 +10098,7 @@ function setup(ctx) {
         element.textContent = stateLabel;
       });
       root.querySelectorAll("[data-live-elapsed]").forEach((element) => {
-        element.textContent = `${elapsed}s`;
+        element.textContent = elapsedText;
       });
       root.querySelectorAll("[data-live-phase]").forEach((element) => {
         element.textContent = phaseLabel;
@@ -9998,6 +10106,15 @@ function setup(ctx) {
       root.querySelectorAll("[data-live-attempt]").forEach((element) => {
         element.textContent = String(pipeline?.attempt ?? 1);
       });
+    }
+  }
+  function updateHistoryMetadataDom() {
+    const roots = [tab.root, modal?.root].filter((root) => Boolean(root));
+    for (const root of roots) {
+      root.querySelectorAll('[data-tab-meta="history"]').forEach((element) => {
+        element.textContent = String(historyItems.length);
+      });
+      updateHistorySurface(root);
     }
   }
   function updateHistorySurface(root) {
@@ -10155,6 +10272,7 @@ function setup(ctx) {
       identity
     });
     renderAll();
+    scheduleMessageWidgetSync();
   }
   function reloadState() {
     const identity = state?.identity ?? currentRequest();
@@ -10269,6 +10387,7 @@ function setup(ctx) {
       status = "No active chat";
       send({ type: "ready", active: null });
       renderAll();
+      scheduleMessageWidgetSync();
       return;
     }
     status = "Loading exact swipe";
@@ -10283,6 +10402,7 @@ function setup(ctx) {
       send({ type: "preview_injection", requestId: requestId("preview-sync"), chatId: active.chatId });
     }
     renderAll();
+    scheduleMessageWidgetSync();
   }
   function scheduleHostSync() {
     if (hostSyncTimeout) clearTimeout(hostSyncTimeout);
@@ -11407,7 +11527,8 @@ ${draft.cssTemplate}`);
   function handleBackendMessage(payload) {
     if (!isRecord(payload) || typeof payload.type !== "string") return;
     const response = payload;
-    let renderMode = "all";
+    let renderMode = "surfaces";
+    let syncWidgets = false;
     switch (response.type) {
       case "bootstrap":
         settings = response.settings;
@@ -11423,6 +11544,7 @@ ${draft.cssTemplate}`);
             send({ type: "preview_injection", requestId: requestId("preview"), chatId: activeIdentity.chatId });
           }
         }
+        syncWidgets = true;
         break;
       case "settings":
         settings = response.settings;
@@ -11441,32 +11563,42 @@ ${draft.cssTemplate}`);
       case "state":
         activeIdentity = response.identity;
         state = response.state;
-        status = response.state ? "Exact swipe state loaded" : "No state for this swipe";
-        if (activeIdentity?.chatId) {
+        status = activeGenerationRequestId ? "Finalizing tracker" : response.state ? "Exact swipe state loaded" : "No state for this swipe";
+        if (activeIdentity?.chatId && !activeGenerationRequestId) {
           send({ type: "get_chat_states", requestId: requestId("chat-states"), chatId: activeIdentity.chatId });
           send({ type: "list_state_history", requestId: requestId("history"), chatId: activeIdentity.chatId });
           if (settings.showInjectionPreview) {
             send({ type: "preview_injection", requestId: requestId("preview"), chatId: activeIdentity.chatId });
           }
         }
+        renderMode = activeGenerationRequestId ? "live" : "surfaces";
+        syncWidgets = true;
         break;
       case "permissions":
         permissions = response.permissions;
         status = "Permissions updated";
         renderMode = "surfaces";
+        syncWidgets = true;
         break;
       case "generation_status":
         if (response.report) pipeline = response.report;
         if (response.status === "started" || response.status === "progress") {
+          const continuingRequest = activeGenerationRequestId === response.requestId && generationStartedAt > 0;
           activeGenerationRequestId = response.requestId;
           if (response.identity) activeIdentity = response.identity;
           status = response.message ?? "Compiling story state";
+          if (!continuingRequest) startElapsedTimer(response.report?.elapsedMs ?? 0);
           renderMode = response.status === "progress" ? "live" : "surfaces";
+          syncWidgets = response.status === "started";
         } else {
+          const finalElapsedMs = response.report?.elapsedMs ?? currentElapsedMs();
           if (activeGenerationRequestId === response.requestId) activeGenerationRequestId = null;
           stopElapsedTimer();
-          status = response.message ?? (response.status === "completed" ? "State compiled" : response.status);
+          generationStartedAt = 0;
+          const completionMessage = response.message ?? (response.status === "completed" ? "State compiled" : response.status);
+          status = `${completionMessage} in ${formatElapsed(finalElapsedMs)}`;
           renderMode = "surfaces";
+          syncWidgets = true;
           if (activeIdentity?.chatId) {
             send({ type: "get_chat_states", requestId: requestId("chat-states"), chatId: activeIdentity.chatId });
             send({ type: "list_state_history", requestId: requestId("history-generation"), chatId: activeIdentity.chatId });
@@ -11476,16 +11608,25 @@ ${draft.cssTemplate}`);
       case "chat_states":
         if (response.chatId === ctx.getActiveChat().chatId) {
           chatStates = response.states;
+          syncWidgets = true;
         }
+        renderMode = "none";
         break;
       case "state_history":
-        historyItems = response.items;
+        if (response.chatId === ctx.getActiveChat().chatId) {
+          historyItems = response.items;
+          renderMode = "history";
+          syncWidgets = true;
+        } else {
+          renderMode = "none";
+        }
         break;
       case "history_state_deleted": {
         historyItems = response.items;
         const deletedActive = activeIdentity?.chatId === response.identity.chatId && activeIdentity.messageId === response.identity.messageId && activeIdentity.swipeId === response.identity.swipeId;
         if (deletedActive) state = null;
         status = "History tracker deleted";
+        syncWidgets = true;
         break;
       }
       case "injection_preview":
@@ -11494,10 +11635,15 @@ ${draft.cssTemplate}`);
         break;
       case "error":
         if (response.requestId === activeGenerationRequestId) {
+          const failedElapsedMs = currentElapsedMs();
           activeGenerationRequestId = null;
           stopElapsedTimer();
+          generationStartedAt = 0;
+          status = `${response.message} after ${formatElapsed(failedElapsedMs)}`;
+          syncWidgets = true;
+        } else {
+          status = response.message;
         }
-        status = response.message;
         renderMode = "surfaces";
         break;
     }
@@ -11505,9 +11651,10 @@ ${draft.cssTemplate}`);
       updateLiveStatusDom();
     } else if (renderMode === "surfaces") {
       renderSurfaces();
-    } else {
-      renderAll();
+    } else if (renderMode === "history") {
+      updateHistoryMetadataDom();
     }
+    if (syncWidgets) scheduleMessageWidgetSync();
   }
   function handleActionClick(event) {
     const target = event.target;
@@ -11699,6 +11846,7 @@ ${draft.cssTemplate}`);
       send({ type: "get_chat_states", requestId: requestId("chat-states-swipe"), chatId: identity.chatId });
       send({ type: "list_state_history", requestId: requestId("history-swipe"), chatId: identity.chatId });
       renderAll();
+      scheduleMessageWidgetSync();
     }
   }));
   cleanups.push(ctx.events.on("SWIPE_EDITED", (payload) => {
@@ -11710,8 +11858,9 @@ ${draft.cssTemplate}`);
     }
   }));
   cleanups.push(ctx.events.on("CHARACTER_MESSAGE_RENDERED", scheduleHostSync));
-  cleanups.push(ctx.events.on("USER_MESSAGE_RENDERED", refreshAllMessageWidgets));
+  cleanups.push(ctx.events.on("USER_MESSAGE_RENDERED", () => scheduleMessageWidgetSync()));
   renderAll();
+  scheduleMessageWidgetSync();
   syncFromHost(true);
   return () => {
     if (disposed) return;

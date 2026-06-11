@@ -2,6 +2,32 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.12] - 2026-06-11
+
+### Added
+
+- A live `MM:SS` generation clock in the compiling state pill, Stop button, and dedicated generation rail.
+- Automatic timer startup for backend-initiated tracker generations, including automatic generation after assistant responses.
+- Final elapsed duration in completed, failed, and cancelled generation status messages.
+- A complete fake generation lifecycle in the local preview for mobile timer and responsiveness testing.
+- Regression coverage for targeted response rendering, differential message widgets, frame-batched history controls, and automatic timer startup.
+
+### Changed
+
+- Replaced global message-widget teardown with signature-based differential updates.
+- Mounted changed previous-message History widgets in batches of four with a short event-loop yield between batches.
+- Decoupled drawer and viewer rendering from message-widget synchronization.
+- Routed chat-state responses to widget synchronization only and History responses to targeted count/result updates.
+- Deferred generated-state presentation until the completion response so a normal compile performs one final tracker render instead of rendering the same result repeatedly.
+- Simplified generation visuals to stable, tabular-number layouts without infinite glow, filter, or progress-bar animation.
+
+### Fixed
+
+- Prevented large retained histories from freezing the chat while every previous-message tracker control was recreated.
+- Prevented generation completion from triggering repeated full drawer, viewer, and message-widget rebuilds.
+- Prevented automatic generations from running without a visible elapsed-time counter.
+- Preserved responsive tab interaction and generated Tools output while compilation status updates are active.
+
 ## [0.1.11] - 2026-06-08
 
 ### Added

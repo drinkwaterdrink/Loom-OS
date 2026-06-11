@@ -505,26 +505,62 @@ export const LOOMOS_STYLES = `
   }
 
   .loomos-compile-status {
+    align-items: center;
     background: color-mix(in srgb, var(--loomos-accent) 8%, var(--loomos-bg));
     border-color: var(--loomos-accent);
+    display: grid;
+    gap: 4px 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    margin-top: 8px;
+    padding: 10px 12px;
   }
-  .loomos-badge-compiling {
+  .loomos-compile-copy {
+    align-items: center;
+    display: flex;
+    gap: 9px;
+    min-width: 0;
+  }
+  .loomos-compile-copy > div {
+    min-width: 0;
+  }
+  .loomos-compile-copy strong {
+    display: block;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+  .loomos-compile-copy p {
+    color: var(--loomos-muted);
+    font-size: 10px;
+    line-height: 1.25;
+    margin: 2px 0 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .loomos-compile-dot {
     background: var(--loomos-accent);
-    color: #fff;
-    font-weight: 800;
+    border-radius: 50%;
+    flex: 0 0 8px;
+    height: 8px;
+    opacity: .9;
+    width: 8px;
   }
-  .loomos-button-pulse, .loomos-pulse {
-    animation: loomos-glow-pulse 1.8s infinite;
+  .loomos-generation-clock,
+  [data-live-elapsed] {
+    font-variant-numeric: tabular-nums;
   }
-  @keyframes loomos-glow-pulse {
-    0% { box-shadow: 0 0 0 0px color-mix(in srgb, var(--loomos-accent) 30%, transparent); }
-    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--loomos-accent) 0%, transparent); }
-    100% { box-shadow: 0 0 0 0px color-mix(in srgb, var(--loomos-accent) 30%, transparent); }
+  .loomos-generation-clock {
+    color: var(--loomos-ink);
+    font-size: 20px;
+    line-height: 1;
+    min-width: 5ch;
+    text-align: right;
   }
-  @keyframes loomos-bar-pulse {
-    0% { opacity: 0.6; }
-    50% { opacity: 1; }
-    100% { opacity: 0.6; }
+  .loomos-compile-status > small {
+    color: var(--loomos-muted);
+    font-size: 9px;
+    grid-column: 1 / -1;
+    padding-left: 17px;
   }
 
   .loomos-prompt-dialog {
@@ -1044,7 +1080,7 @@ export const LOOMOS_STYLES = `
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .loomos-button-pulse, .loomos-pulse, .loomos-meter-track i {
+    .loomos-state-pill.is-busy i {
       animation: none !important;
       transition: none !important;
     }
@@ -1329,11 +1365,7 @@ export const LOOMOS_STYLES = `
     color: var(--loomos-accent);
   }
   .loomos-state-pill.is-busy i {
-    animation: loomos-status-pulse 1.2s ease-in-out infinite;
     background: var(--loomos-accent);
-  }
-  @keyframes loomos-status-pulse {
-    50% { opacity: .35; transform: scale(.72); }
   }
   .loomos-header-actions {
     display: grid;
@@ -2042,7 +2074,7 @@ export const LOOMOS_STYLES = `
     }
   }
 
-  /* 0.1.11 chat tracker viewer */
+  /* 0.1.12 chat tracker viewer */
   .loomos-root[data-view="modal"] {
     container-name: loomos-viewer;
     container-type: inline-size;
