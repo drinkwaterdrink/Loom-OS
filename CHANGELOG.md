@@ -2,6 +2,20 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.16] - 2026-06-14
+
+### Added
+
+- Added Loom Pack (`.loompack`) export/import package format to wrap custom settings, presets, modules, and themes for sharing.
+- Added client-side export configuration dialog in the Creator Workshop to select library artifacts and bundle active presets.
+- Added Zod schemas for `LoomPackSchema` and `LoomPackPresetSchema` in the shared artifacts library.
+- Added comprehensive unit tests for Loom Pack serialization, validation, and parsing.
+
+### Changed
+
+- Enhanced the import confirm handler to automatically detect Loom Packs and prompt with a custom package installation wizard.
+- Integrated the Loom Pack preset loader to save settings and presets directly to custom module settings upon package installation.
+
 ## [0.1.15] - 2026-06-14
 
 ### Added

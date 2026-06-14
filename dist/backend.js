@@ -5839,6 +5839,29 @@ function normalizeValueForJsonSchema(value, schema, depth = 0) {
   const text2 = typeof value === "string" ? value : typeof schema.default === "string" ? schema.default : "";
   return text2.slice(0, schema.maxLength ?? 4e3);
 }
+var LoomPackPresetSchema = external_exports.object({
+  name: external_exports.string().trim().min(1).max(160),
+  description: external_exports.string().trim().max(500).default(""),
+  moduleSettings: external_exports.record(ModuleControlSchema).optional(),
+  activeThemeId: external_exports.string().max(160).optional(),
+  settings: external_exports.object({
+    injectionEnabled: external_exports.boolean().optional(),
+    injectionTokenBudget: external_exports.number().int().min(80).max(1e4).optional(),
+    compilerSeedTokenBudget: external_exports.number().int().min(200).max(1e4).optional(),
+    historyRetentionLimit: external_exports.number().int().min(1).max(1e3).optional(),
+    developerMode: external_exports.boolean().optional()
+  }).strict().optional()
+}).strict();
+var LoomPackSchema = external_exports.object({
+  format: external_exports.literal("loomos-pack"),
+  version: external_exports.literal(1),
+  id: ArtifactIdSchema,
+  createdAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
+  updatedAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
+  meta: ArtifactMetaSchema,
+  artifacts: external_exports.array(LoomOSArtifactSchema).max(120).default([]),
+  preset: LoomPackPresetSchema.nullable().optional()
+}).strict();
 
 // src/shared/normalizeCompiledState.ts
 var CompiledStateNormalizationError = class extends Error {

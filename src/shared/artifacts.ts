@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { parseModuleBundle } from "./moduleBundles";
-import { CustomModuleSchema } from "./schemas";
+import { CustomModuleSchema, ModuleControlSchema } from "./schemas";
 import type { CustomModule } from "./types";
 
 export const ARTIFACT_FORMAT = "loomos-artifact" as const;
@@ -862,3 +862,50 @@ export function normalizeValueForJsonSchema(
   const text = typeof value === "string" ? value : typeof schema.default === "string" ? schema.default : "";
   return text.slice(0, schema.maxLength ?? 4000);
 }
+
+export const LoomPackPresetSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(500).default(""),
+  moduleSettings: z.record(ModuleControlSchema).optional(),
+  activeThemeId: z.string().max(160).optional(),
+  settings: z.object({
+    injectionEnabled: z.boolean().optional(),
+    injectionTokenBudget: z.number().int().min(80).max(10000).optional(),
+    compilerSeedTokenBudget: z.number().int().min(200).max(10000).optional(),
+    historyRetentionLimit: z.number().int().min(1).max(1000).optional(),
+    developerMode: z.boolean().optional(),
+  }).strict().optional(),
+}).strict();
+
+export const LoomPackSchema = z.object({
+  format: z.literal("loomos-pack"),
+  version: z.literal(1),
+  id: ArtifactIdSchema,
+  createdAt: z.string().datetime().default(() => new Date().toISOString()),
+  updatedAt: z.string().datetime().default(() => new Date().toISOString()),
+  meta: ArtifactMetaSchema,
+  artifacts: z.array(LoomOSArtifactSchema).max(120).default([]),
+  preset: LoomPackPresetSchema.nullable().optional(),
+}).strict();
+
+export type LoomPack = z.infer<typeof LoomPackSchema>;
+
+export function parseLoomPack(value: unknown): LoomPack {
+  if (!isRecord(value)) {
+    throw new Error("Loom Pack must be a JSON object.");
+  }
+  const parsed = LoomPackSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(
+      parsed.error.issues
+        .map((issue) => `${issue.path.join(".") || "pack"}: ${issue.message}`)
+        .join("\n")
+    );
+  }
+  return parsed.data;
+}
+
+export function parseLoomPackText(raw: string): LoomPack {
+  return parseLoomPack(extractJsonText(raw));
+}
+

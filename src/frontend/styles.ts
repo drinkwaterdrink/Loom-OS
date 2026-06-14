@@ -2894,6 +2894,19 @@ export const LOOMOS_STYLES = `
     }
   }
 
+  .loomos-workshop-actions-row {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    max-width: 420px;
+    width: 60%;
+    justify-content: flex-end;
+  }
+  .loomos-workshop-actions-row .loomos-workshop-search {
+    max-width: none;
+    width: 100%;
+  }
+
   @media (max-width: 620px) {
     .loomos-viewer-core-context { max-width: 42%; }
     .loomos-core-generate { min-width: 72px; padding: 0 8px; }
@@ -2903,6 +2916,12 @@ export const LOOMOS_STYLES = `
     .loomos-ai-stage {
       align-items: stretch;
       flex-direction: column;
+    }
+    .loomos-workshop-actions-row {
+      align-items: stretch;
+      flex-direction: column;
+      max-width: none;
+      width: 100%;
     }
     .loomos-workshop-search { max-width: none; width: 100%; }
     .loomos-workshop-artifact { grid-template-columns: minmax(0, 1fr) 64px; }

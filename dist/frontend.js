@@ -9572,6 +9572,19 @@ var LOOMOS_STYLES = `
     }
   }
 
+  .loomos-workshop-actions-row {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    max-width: 420px;
+    width: 60%;
+    justify-content: flex-end;
+  }
+  .loomos-workshop-actions-row .loomos-workshop-search {
+    max-width: none;
+    width: 100%;
+  }
+
   @media (max-width: 620px) {
     .loomos-viewer-core-context { max-width: 42%; }
     .loomos-core-generate { min-width: 72px; padding: 0 8px; }
@@ -9581,6 +9594,12 @@ var LOOMOS_STYLES = `
     .loomos-ai-stage {
       align-items: stretch;
       flex-direction: column;
+    }
+    .loomos-workshop-actions-row {
+      align-items: stretch;
+      flex-direction: column;
+      max-width: none;
+      width: 100%;
     }
     .loomos-workshop-search { max-width: none; width: 100%; }
     .loomos-workshop-artifact { grid-template-columns: minmax(0, 1fr) 64px; }
@@ -10030,9 +10049,6 @@ function parseLoomOSArtifact(value) {
     );
   }
 }
-function parseLoomOSArtifactText(raw) {
-  return parseLoomOSArtifact(extractJsonText(raw));
-}
 function createStarterModuleArtifact() {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   return ModuleCapsuleArtifactSchema.parse({
@@ -10200,6 +10216,41 @@ function sampleForArtifact(artifact) {
     return isRecord(artifact.sampleData) && Object.keys(artifact.sampleData).length > 0 ? artifact.sampleData : defaultForSchema(artifact.schema);
   }
   return artifact.kind === "theme" ? artifact.sampleData : {};
+}
+var LoomPackPresetSchema = external_exports.object({
+  name: external_exports.string().trim().min(1).max(160),
+  description: external_exports.string().trim().max(500).default(""),
+  moduleSettings: external_exports.record(ModuleControlSchema).optional(),
+  activeThemeId: external_exports.string().max(160).optional(),
+  settings: external_exports.object({
+    injectionEnabled: external_exports.boolean().optional(),
+    injectionTokenBudget: external_exports.number().int().min(80).max(1e4).optional(),
+    compilerSeedTokenBudget: external_exports.number().int().min(200).max(1e4).optional(),
+    historyRetentionLimit: external_exports.number().int().min(1).max(1e3).optional(),
+    developerMode: external_exports.boolean().optional()
+  }).strict().optional()
+}).strict();
+var LoomPackSchema = external_exports.object({
+  format: external_exports.literal("loomos-pack"),
+  version: external_exports.literal(1),
+  id: ArtifactIdSchema,
+  createdAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
+  updatedAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
+  meta: ArtifactMetaSchema,
+  artifacts: external_exports.array(LoomOSArtifactSchema).max(120).default([]),
+  preset: LoomPackPresetSchema.nullable().optional()
+}).strict();
+function parseLoomPack(value) {
+  if (!isRecord(value)) {
+    throw new Error("Loom Pack must be a JSON object.");
+  }
+  const parsed = LoomPackSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(
+      parsed.error.issues.map((issue) => `${issue.path.join(".") || "pack"}: ${issue.message}`).join("\n")
+    );
+  }
+  return parsed.data;
 }
 
 // src/shared/viewerModel.ts
@@ -38645,10 +38696,13 @@ function openCreatorWorkshop(options) {
             <span class="loomos-kicker">Artifact library</span>
             <h2>Modules, themes, and complete trackers</h2>
           </div>
-          <label class="loomos-workshop-search">
-            <span class="sr-only">Search artifacts</span>
-            <input class="loomos-input" type="search" placeholder="Search library" data-workshop-search>
-          </label>
+          <div class="loomos-workshop-actions-row">
+            <button type="button" class="loomos-button loomos-btn-sm" data-workshop-action="open-export-pack">Export Loom Pack...</button>
+            <label class="loomos-workshop-search">
+              <span class="sr-only">Search artifacts</span>
+              <input class="loomos-input" type="search" placeholder="Search library" data-workshop-search>
+            </label>
+          </div>
         </div>
         <div class="loomos-workshop-create-grid">
           <button type="button" data-workshop-action="create" data-kind="module"><strong>New Module</strong><span>Schema, prompt, and view</span></button>
@@ -38919,11 +38973,19 @@ function openCreatorWorkshop(options) {
     });
     importModal.root.querySelector("[data-import-confirm]")?.addEventListener("click", () => {
       try {
-        const artifact = parseLoomOSArtifactText(textarea?.value ?? "");
-        chooseArtifact(artifact);
-        activeView = "preview";
-        importModal.dismiss();
-        render();
+        const text = textarea?.value ?? "";
+        const json2 = extractJsonText(text);
+        if (json2 && typeof json2 === "object" && "format" in json2 && json2.format === "loomos-pack") {
+          const pack = parseLoomPack(json2);
+          importModal.dismiss();
+          openLoomPackInstall(pack);
+        } else {
+          const artifact = parseLoomOSArtifact(json2);
+          chooseArtifact(artifact);
+          activeView = "preview";
+          importModal.dismiss();
+          render();
+        }
       } catch (error) {
         const errorRoot = importModal.root.querySelector("[data-import-error]");
         if (errorRoot) errorRoot.textContent = error instanceof Error ? error.message : String(error);
@@ -38974,6 +39036,174 @@ function openCreatorWorkshop(options) {
     });
     installModal.root.querySelector("[data-blueprint-cancel]")?.addEventListener("click", () => installModal.dismiss());
   }
+  async function openLoomPackInstall(pack) {
+    const installModal = options.ctx.ui.showModal({
+      title: "Review Loom Pack Installation",
+      width: Math.min(720, window.innerWidth - 12),
+      maxHeight: Math.min(780, window.innerHeight - 20)
+    });
+    installModal.root.className = "loomos-root";
+    installModal.root.innerHTML = `
+      <div class="loomos-prompt-dialog">
+        <p class="loomos-kicker">Loom Pack: ${escapeHtml(pack.meta.name)}</p>
+        <p class="loomos-hint">${escapeHtml(pack.meta.description || "No description provided.")}</p>
+        <div class="loomos-blueprint-parts" style="max-height: 240px; overflow-y: auto;">
+          ${pack.artifacts.map((art) => `
+            <label class="loomos-check">
+              <input type="checkbox" data-pack-part="${escapeHtml(art.id)}" checked>
+              <span><strong>${escapeHtml(art.meta.name)}</strong><small>${escapeHtml(art.kind)}</small></span>
+            </label>
+          `).join("") || `<p class="loomos-muted">This package contains no artifacts.</p>`}
+        </div>
+        ${pack.preset ? `
+          <label class="loomos-check">
+            <input type="checkbox" data-pack-presetchecked checked>
+            <span>Import settings preset & configuration</span>
+          </label>
+        ` : ""}
+        <div class="loomos-dialog-buttons">
+          <button type="button" class="loomos-button loomos-button-primary" data-pack-confirm>Install Package</button>
+          <button type="button" class="loomos-button" data-pack-cancel>Cancel</button>
+        </div>
+      </div>`;
+    installModal.root.querySelector("[data-pack-confirm]")?.addEventListener("click", () => {
+      const selectedIds = [...installModal.root.querySelectorAll("[data-pack-part]:checked")].map((input) => input.dataset.packPart).filter(Boolean);
+      const importPreset = installModal.root.querySelector("[data-pack-presetchecked]")?.checked ?? false;
+      const artifactsToInstall = pack.artifacts.filter((art) => selectedIds.includes(art.id));
+      for (const art of artifactsToInstall) {
+        options.send({
+          type: "save_artifact",
+          requestId: options.requestId("artifact-import-save"),
+          artifact: art
+        });
+      }
+      if (importPreset && pack.preset) {
+        const nextPresets = [...settings.customModulePresets || []];
+        const existingIndex = nextPresets.findIndex((p) => p.id === pack.id);
+        const presetId = pack.id;
+        const presetVal = {
+          id: presetId,
+          name: pack.preset.name,
+          description: pack.preset.description,
+          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          moduleSettings: {
+            ...settings.moduleSettings,
+            ...pack.preset.moduleSettings || {}
+          }
+        };
+        if (existingIndex >= 0) {
+          nextPresets[existingIndex] = presetVal;
+        } else {
+          nextPresets.push(presetVal);
+        }
+        const newSettings = {
+          ...settings,
+          customModulePresets: nextPresets,
+          modulePreset: `custom:${presetId}`,
+          moduleSettings: {
+            ...settings.moduleSettings,
+            ...pack.preset.moduleSettings || {}
+          },
+          ...pack.preset.activeThemeId && selectedIds.includes(pack.preset.activeThemeId) ? { activeThemeId: pack.preset.activeThemeId } : {},
+          ...pack.preset.settings || {}
+        };
+        options.send({
+          type: "save_settings",
+          requestId: options.requestId("settings-import-save"),
+          settings: newSettings
+        });
+      }
+      options.onStatus(`Installed Loom Pack "${pack.meta.name}"`);
+      installModal.dismiss();
+      render();
+    });
+    installModal.root.querySelector("[data-pack-cancel]")?.addEventListener("click", () => installModal.dismiss());
+  }
+  async function openExportPack() {
+    const exportModal = options.ctx.ui.showModal({
+      title: "Export Loom Pack",
+      width: Math.min(720, window.innerWidth - 12),
+      maxHeight: Math.min(780, window.innerHeight - 20)
+    });
+    exportModal.root.className = "loomos-root";
+    exportModal.root.innerHTML = `
+      <div class="loomos-prompt-dialog">
+        <p class="loomos-hint">Bundle multiple artifacts and your active preset settings into a portable .loompack file.</p>
+        <label class="loomos-field">
+          <span>Pack Name</span>
+          <input class="loomos-input" type="text" data-pack-name value="Loom Pack">
+        </label>
+        <label class="loomos-field">
+          <span>Description</span>
+          <textarea class="loomos-input" data-pack-description placeholder="Portable tracking workspace bundle"></textarea>
+        </label>
+        <div class="loomos-blueprint-parts" style="max-height: 200px; overflow-y: auto; margin-bottom: 8px;">
+          ${library.records.map((record) => `
+            <label class="loomos-check">
+              <input type="checkbox" data-pack-artifact="${escapeHtml(record.artifact.id)}" checked>
+              <span><strong>${escapeHtml(record.artifact.meta.name)}</strong><small>${escapeHtml(record.artifact.kind)}</small></span>
+            </label>
+          `).join("") || `<p class="loomos-muted">No artifacts in library to export.</p>`}
+        </div>
+        <label class="loomos-check">
+          <input type="checkbox" data-pack-include-settings checked>
+          <span>Include active preset settings</span>
+        </label>
+        <div class="loomos-dialog-buttons">
+          <button type="button" class="loomos-button loomos-button-primary" data-pack-confirm>Export Package</button>
+          <button type="button" class="loomos-button" data-pack-cancel>Cancel</button>
+        </div>
+      </div>`;
+    exportModal.root.querySelector("[data-pack-confirm]")?.addEventListener("click", () => {
+      const packName = exportModal.root.querySelector("[data-pack-name]")?.value.trim() || "Loom Pack";
+      const packDescription = exportModal.root.querySelector("[data-pack-description]")?.value.trim() || "";
+      const includeSettings = exportModal.root.querySelector("[data-pack-include-settings]")?.checked ?? false;
+      const selectedArtifactIds = [...exportModal.root.querySelectorAll("[data-pack-artifact]:checked")].map((input) => input.dataset.packArtifact).filter(Boolean);
+      const artifactsToInclude = library.records.filter((record) => selectedArtifactIds.includes(record.artifact.id)).map((record) => record.artifact);
+      let preset = null;
+      if (includeSettings) {
+        preset = {
+          name: `${packName} Preset`,
+          description: packDescription || "Bundled settings preset.",
+          moduleSettings: settings.moduleSettings,
+          activeThemeId: selectedArtifactIds.includes(settings.activeThemeId) ? settings.activeThemeId : void 0,
+          settings: {
+            injectionEnabled: settings.injectionEnabled,
+            injectionTokenBudget: settings.injectionTokenBudget,
+            compilerSeedTokenBudget: settings.compilerSeedTokenBudget,
+            historyRetentionLimit: settings.historyRetentionLimit,
+            developerMode: settings.developerMode
+          }
+        };
+      }
+      const slug2 = (val) => val.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "pack";
+      const packPayload = {
+        format: "loomos-pack",
+        version: 1,
+        id: `pack_${slug2(packName)}_${Math.random().toString(36).slice(2, 8)}`,
+        createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        meta: {
+          name: packName,
+          description: packDescription,
+          author: "User",
+          tags: ["loomos-pack"]
+        },
+        artifacts: artifactsToInclude,
+        preset
+      };
+      try {
+        const validatedPack = LoomPackSchema.parse(packPayload);
+        downloadJson(`${safeFilename(packName)}.loompack`, validatedPack);
+        options.onStatus(`Exported Loom Pack "${packName}"`);
+        exportModal.dismiss();
+      } catch (error) {
+        options.onStatus(`Export failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    });
+    exportModal.root.querySelector("[data-pack-cancel]")?.addEventListener("click", () => exportModal.dismiss());
+  }
   async function handleAction(button) {
     const action = button.dataset.workshopAction;
     if (!action) return;
@@ -38993,6 +39223,10 @@ function openCreatorWorkshop(options) {
     }
     if (action === "import") {
       await openImport();
+      return;
+    }
+    if (action === "open-export-pack") {
+      await openExportPack();
       return;
     }
     if (action === "export" && (stagedArtifact ?? workingArtifact)) {
@@ -40252,7 +40486,7 @@ function setup(ctx) {
   }
   function diagnosticText() {
     const lines = [
-      `version: 0.1.15`,
+      `version: 0.1.16`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,

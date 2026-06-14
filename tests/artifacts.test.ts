@@ -13,6 +13,8 @@ import {
   restoreArtifactRecord,
   upsertArtifactRecord,
   validateJsonSchemaSubset,
+  parseLoomPack,
+  parseLoomPackText,
 } from "../src/shared/artifacts";
 import { CustomModuleSchema } from "../src/shared/schemas";
 
@@ -160,3 +162,37 @@ test("blueprints retain complete embedded artifacts", () => {
   if (parsed.kind !== "blueprint") return;
   assert.equal(parsed.modules[0]?.id, module.id);
 });
+
+test("Loom Pack exports, validates and parses package bundles", () => {
+  const module = createStarterModuleArtifact();
+  const blueprint = createStarterBlueprintArtifact();
+  const pack = {
+    format: "loomos-pack" as const,
+    version: 1 as const,
+    id: "pack_test_bundle",
+    meta: {
+      name: "Test Bundle Pack",
+      description: "Bundled test artifacts.",
+      author: "User",
+      tags: ["test"],
+    },
+    artifacts: [module, blueprint],
+    preset: {
+      name: "Test Bundle Preset",
+      description: "Bundled preset description",
+      moduleSettings: {
+        sceneKernel: { track: true, display: true, inject: false },
+      },
+    },
+  };
+
+  const parsed = parseLoomPack(pack);
+  assert.equal(parsed.format, "loomos-pack");
+  assert.equal(parsed.artifacts.length, 2);
+  assert.equal(parsed.preset?.name, "Test Bundle Preset");
+
+  const serialized = JSON.stringify(pack);
+  const textParsed = parseLoomPackText(serialized);
+  assert.equal(textParsed.id, "pack_test_bundle");
+});
+
