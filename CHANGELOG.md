@@ -2,6 +2,32 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.20] - 2026-06-14
+
+### Added
+
+- Added a mobile-first Creator Workshop Home dashboard with setup status, quick actions, AI Creator access, and a plain-language workflow.
+- Added dedicated Packs, unified Modules, Layout, Theme, Test Lab, Advanced Code, and Revisions workspaces.
+- Added a persistent desktop preview and diagnostics pane with Theme/Native surfaces, mobile/tablet/desktop sizes, and current/empty/dense sample modes.
+- Added mobile context navigation, a full-screen preview overlay, and persistent Preview, Save, and Install actions.
+- Added artifact and module filtering, glossary help, source/status badges, missing-slot warnings, and direct Preview/Edit/Export/Duplicate/Install/Delete actions.
+- Added Phase 3 UI regression tests covering responsive navigation, artifact and Loom Pack actions, sandbox boundaries, and module/theme controls.
+
+### Changed
+
+- Rebuilt the Creator Workshop as a wide-screen three-pane workspace that collapses to a focused single-panel mobile flow.
+- Unified stock and custom module controls around Track, Display, Inject, slot, display mode, priority, order, source, and lock state.
+- Extended Loom Pack exports to preserve layout data alongside artifacts and preset settings.
+- Updated Workshop documentation and corrected the Theme runtime description for approved raw `renderedContent` paths.
+
+### Fixed
+
+- Normalized settings at the Workshop boundary so installations created before the layout system immediately receive module cards, counts, slots, and controls from their existing Track/Display/Inject configuration.
+
+### Preserved
+
+- Kept exact-swipe identity, compiler behavior, storage schemas, permission boundaries, sandbox/CSP restrictions, revision history, and legacy artifact compatibility unchanged.
+
 ## [0.1.19] - 2026-06-14
 
 ### Fixed

@@ -76,17 +76,85 @@ test("history uses a compact archive heading and search surface", () => {
   assert.match(html, /data-history-results/);
 });
 
-test("creator workshop exposes portable artifacts, code editing, and isolated preview", async () => {
+test("creator workshop exposes the Phase 3 navigation and responsive workspace", async () => {
   const source = await readFile("src/frontend.ts", "utf8");
   const workshop = await readFile("src/frontend/workshop.ts", "utf8");
+  const styles = await readFile("src/frontend/styles.ts", "utf8");
   assert.match(source, /Creator Workshop/);
   assert.match(source, /activeThemeId/);
   assert.match(source, /developerMode/);
   assert.match(workshop, /LoomOS Creator Workshop/);
+  for (const view of ["home", "packs", "modules", "layout", "theme", "test-lab", "advanced-code", "revisions"]) {
+    assert.match(workshop, new RegExp(`id: "${view}"`));
+  }
+  assert.match(workshop, /loomos-workshop-rail/);
+  assert.match(workshop, /loomos-workshop-preview-pane/);
+  assert.match(workshop, /loomos-workshop-bottom-actions/);
+  assert.match(workshop, /loomos-mobile-preview/);
+  assert.match(styles, /grid-template-columns:\s*minmax\(190px, 224px\) minmax\(420px, 1fr\) minmax\(310px, 390px\)/);
+  assert.match(styles, /@media \(max-width: 760px\)/);
+  assert.match(styles, /\.loomos-workshop-bottom-actions/);
+  assert.match(styles, /min-height:\s*44px/);
+  assert.match(styles, /overflow-x:\s*hidden/);
+});
+
+test("creator workshop preserves artifact, Loom Pack, layout, and advanced code actions", async () => {
+  const workshop = await readFile("src/frontend/workshop.ts", "utf8");
   assert.match(workshop, /CodeMirror 6/);
   assert.match(workshop, /sandbox="allow-scripts"/);
-  assert.match(workshop, /data-workshop-action="duplicate"/);
-  assert.match(workshop, /data-workshop-action="export"/);
+  for (const action of [
+    "create",
+    "import",
+    "open-export-pack",
+    "export-artifact",
+    "duplicate-artifact",
+    "install-artifact",
+    "delete-artifact",
+    "save",
+    "restore",
+    "generate-ai",
+    "preview-artifact",
+  ]) {
+    assert.match(workshop, new RegExp(`data-workshop-action="${action}"`));
+  }
+  assert.match(workshop, /install_loom_pack/);
+  assert.match(workshop, /LoomPackSchema\.parse/);
+  assert.match(workshop, /layout:\s*settings\.layout/);
+  assert.match(workshop, /data-layout-action="reset-layout"/);
+  assert.match(workshop, /data-layout-action="save-layout"/);
+  assert.match(workshop, /function saveLayoutFromDOM/);
+});
+
+test("advanced code and preview keep valid-artifact and sandbox boundaries", async () => {
+  const workshop = await readFile("src/frontend/workshop.ts", "utf8");
+  assert.match(workshop, /activeView !== "advanced-code"/);
+  assert.match(workshop, /applyCodeValue\(workingArtifact, codeSection, codeEditor\.getValue\(\)\)/);
+  assert.match(workshop, /Draft contains invalid data and has not replaced the last valid revision/);
+  assert.match(workshop, /LoomOSArtifactSchema\.parse\(workingArtifact\)/);
+  assert.match(workshop, /buildViewerModel\(previewState, settings, history, "Workshop preview"\)/);
+  assert.match(workshop, /enrichViewerModelWithLayout/);
+  assert.match(workshop, /buildThemeDocument/);
+  assert.match(workshop, /nativePreviewDocument/);
+  assert.match(workshop, /inspectLayoutDiagnostics/);
+  assert.match(workshop, /inspectThemeComplexity/);
+  assert.match(workshop, /Developer Mode/);
+  assert.doesNotMatch(workshop, /\beval\s*\(/);
+  assert.doesNotMatch(workshop, /new Function/);
+});
+
+test("creator workshop exposes unified module and theme controls", async () => {
+  const workshop = await readFile("src/frontend/workshop.ts", "utf8");
+  assert.match(workshop, /let settings = LoomOSSettingsSchema\.parse\(options\.settings\)/);
+  assert.match(workshop, /settings = LoomOSSettingsSchema\.parse\(nextSettings\)/);
+  assert.match(workshop, /Unified module manager/);
+  assert.match(workshop, /data-widget-property="track"/);
+  assert.match(workshop, /data-widget-property="display"/);
+  assert.match(workshop, /data-widget-property="inject"/);
+  assert.match(workshop, /data-widget-property="slot"/);
+  assert.match(workshop, /data-widget-property="displayMode"/);
+  assert.match(workshop, /Core · Track locked/);
+  assert.match(workshop, /Theme references missing layout slot/);
+  assert.match(workshop, /Install & Activate/);
   assert.match(workshop, /data-workshop-action="install"/);
 });
 
