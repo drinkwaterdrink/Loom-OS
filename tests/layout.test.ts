@@ -248,3 +248,187 @@ test("track/display/inject behavior remains synchronized", () => {
   assert.equal(kernelWidget.display, false);
   assert.equal(kernelWidget.inject, true);
 });
+
+// 12. Triple-brace escaping logic in themeRuntime
+test("Triple-brace escaping logic in themeRuntime", async () => {
+  const { buildThemeDocument } = await import("../src/shared/themeRuntime");
+  
+  const mockTheme: any = {
+    id: "theme-test",
+    kind: "theme",
+    meta: { name: "Theme Test", author: "Tester" },
+    manifest: {
+      viewerModelVersion: 1,
+      developerMode: false,
+      capabilities: [],
+      minWidth: 320,
+      preferredColorScheme: "auto"
+    },
+    view: {
+      html: `
+        <div>
+          <span>Escaped Scene: {{kernel.scene}}</span>
+          <span>Triple Escaped Scene: {{{kernel.scene}}}</span>
+          <span>Raw Content: {{{layout.widgets.0.renderedContent}}}</span>
+          <span>Unsafe Triple: {{{kernel.weather}}}</span>
+        </div>
+      `,
+      css: "",
+      javascript: "",
+      partials: {}
+    }
+  };
+
+  const state = makeMockState();
+  state.kernel.scene = "<b>Observatory</b>";
+  state.kernel.weather = "<script>alert(1)</script>";
+
+  const settings = LoomOSSettingsSchema.parse({});
+  const baseModel = buildViewerModel(state, settings, [], "active");
+  
+  // Set a pre-rendered layout widget
+  const layout = settings.layout!;
+  layout.widgets = [
+    {
+      id: "sceneKernel",
+      moduleId: "sceneKernel",
+      source: "stock",
+      label: "Scene Context",
+      slot: "hero",
+      order: 0,
+      track: true,
+      display: true,
+      inject: false,
+      displayMode: "card",
+      tokenPriority: 0,
+      localOverrides: {}
+    }
+  ];
+
+  const enrichedModel = enrichViewerModelWithLayout(baseModel, state, { ...settings, layout });
+  assert.ok(enrichedModel.layout);
+  
+  // Directly set a pre-rendered HTML on widgets
+  enrichedModel.layout!.widgets[0]!.renderedContent = "<div class='widget-card'>Card</div>";
+
+  const docHtml = buildThemeDocument(mockTheme, enrichedModel, { nonce: "abc", developerModeEnabled: false });
+
+  // 1. {{kernel.scene}} must be escaped
+  assert.match(docHtml, /Escaped Scene: &lt;b&gt;Observatory&lt;\/b&gt;/);
+
+  // 2. {{{kernel.scene}}} must STILL be escaped because kernel.scene is not an approved raw path
+  assert.match(docHtml, /Triple Escaped Scene: &lt;b&gt;Observatory&lt;\/b&gt;/);
+
+  // 3. {{{layout.widgets.0.renderedContent}}} must render RAW HTML (approved path)
+  assert.match(docHtml, /Raw Content: <div class='widget-card'>Card<\/div>/);
+
+  // 4. Unsafe field like kernel.weather in triple braces must still be escaped
+  assert.match(docHtml, /Unsafe Triple: &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+});
+
+// 13. Stock widget renderer prefers moduleId for rendering lookup
+test("Stock widget renderer prefers moduleId for rendering lookup", () => {
+  const settings = LoomOSSettingsSchema.parse({});
+  const layout = settings.layout!;
+  
+  // Add a widget instance where id is custom but moduleId points to stock
+  layout.widgets = [
+    {
+      id: "hero_scene_widget",
+      moduleId: "sceneKernel",
+      source: "stock",
+      label: "Scene Context Custom ID",
+      slot: "hero",
+      order: 0,
+      track: true,
+      display: true,
+      inject: false,
+      displayMode: "card",
+      tokenPriority: 0,
+      localOverrides: {}
+    }
+  ];
+
+  const state = makeMockState();
+  state.kernel.scene = "Observatory Hall";
+  state.kernel.summary = "Observatory Hall";
+
+  const baseModel = buildViewerModel(state, settings, [], "active");
+  const enriched = enrichViewerModelWithLayout(baseModel, state, { ...settings, layout });
+
+  assert.ok(enriched.layout);
+  const widget = enriched.layout.widgets.find(w => w.id === "hero_scene_widget");
+  assert.ok(widget);
+  // Verify it rendered successfully (which means it found sceneKernel stock renderer by moduleId)
+  assert.match(widget.renderedContent, /Observatory Hall/);
+  // Also verify metadata is resolved correctly
+  assert.equal(widget.moduleMetadata?.label, "Scene Context Custom ID");
+  assert.equal(widget.moduleMetadata?.summary, "Observatory Hall");
+});
+
+// 14. Tiny slot-aware theme rendering integration test
+test("Integration: tiny slot-aware theme rendering", async () => {
+  const { buildThemeDocument } = await import("../src/shared/themeRuntime");
+
+  const mockTheme: any = {
+    id: "theme-slots",
+    kind: "theme",
+    meta: { name: "Theme slots", author: "Tester" },
+    manifest: {
+      viewerModelVersion: 1,
+      developerMode: false,
+      capabilities: [],
+      minWidth: 320,
+      preferredColorScheme: "auto",
+      slots: ["hero"]
+    },
+    view: {
+      html: `
+        <div class="slots-container">
+          {{#each layout.slotsGrouped.hero.widgets}}
+            <div class="widget-outer">
+              <h4>{{label}}</h4>
+              {{{renderedContent}}}
+            </div>
+          {{/each}}
+        </div>
+      `,
+      css: "",
+      javascript: "",
+      partials: {}
+    }
+  };
+
+  const state = makeMockState();
+  state.kernel.scene = "Hallway";
+
+  const settings = LoomOSSettingsSchema.parse({});
+  const baseModel = buildViewerModel(state, settings, [], "active");
+  
+  const layout = settings.layout!;
+  layout.widgets = [
+    {
+      id: "sceneKernel",
+      moduleId: "sceneKernel",
+      source: "stock",
+      label: "My Scene",
+      slot: "hero",
+      order: 0,
+      track: true,
+      display: true,
+      inject: false,
+      displayMode: "card",
+      tokenPriority: 0,
+      localOverrides: {}
+    }
+  ];
+
+  const enriched = enrichViewerModelWithLayout(baseModel, state, { ...settings, layout });
+  const docHtml = buildThemeDocument(mockTheme, enriched, { nonce: "xyz", developerModeEnabled: false });
+
+  // Check the label is rendered
+  assert.match(docHtml, /<h4>My Scene<\/h4>/);
+  // Check the pre-rendered widget content (from sceneKernel stock module renderer) is rendered raw
+  assert.match(docHtml, /<details class="loomos-section" data-section="kernel">/);
+  assert.match(docHtml, /Hallway/);
+});

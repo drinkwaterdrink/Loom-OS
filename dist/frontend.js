@@ -7454,7 +7454,7 @@ function enrichViewerModelWithLayout(model, state, settings) {
     let renderedContent = "";
     if (widget.track && widget.display && widget.slot !== "hidden") {
       if (widget.source === "stock") {
-        renderedContent = renderStockModuleWidget(widget.id, stateObj, settings);
+        renderedContent = renderStockModuleWidget(widget.moduleId, stateObj, settings);
       } else {
         const cm = settings.customModules?.find((c) => c.id === widget.moduleId);
         const compiled = stateObj.customModuleData?.find((m) => m.moduleId === widget.moduleId);
@@ -7469,11 +7469,11 @@ function enrichViewerModelWithLayout(model, state, settings) {
     if (widget.source === "stock") {
       moduleMetadata = {
         label: widget.label,
-        summary: getStockModuleSummary(widget.id, stateObj),
-        items: getStockModuleItems(widget.id, stateObj)
+        summary: getStockModuleSummary(widget.moduleId, stateObj),
+        items: getStockModuleItems(widget.moduleId, stateObj)
       };
     } else {
-      const m = model.modules[widget.id];
+      const m = model.modules[widget.moduleId];
       if (m) {
         moduleMetadata = {
           label: m.label,
@@ -11406,10 +11406,29 @@ function truthy(value) {
   if (isRecord2(value)) return Object.keys(value).length > 0;
   return Boolean(value);
 }
-function renderHelper(expression, scope) {
+function isApprovedRawPath(path) {
+  const clean = path.trim().replace(/^(@root\.|this\.|.\/)/, "");
+  if (clean === "renderedContent") {
+    return true;
+  }
+  if (/^layout\.widgets\.\d+\.renderedContent$/.test(clean)) {
+    return true;
+  }
+  if (/^layout\.slotsGrouped\.[A-Za-z0-9_-]+\.widgets\.\d+\.renderedContent$/.test(clean)) {
+    return true;
+  }
+  return false;
+}
+function renderHelper(expression, scope, isTripleBrace = false) {
   const [name2, ...args] = expression.trim().split(/\s+/);
   if (!name2) return "";
-  if (args.length === 0) return escapeHtml2(resolvePath(scope, name2));
+  if (args.length === 0) {
+    const rawValue = resolvePath(scope, name2);
+    if (isTripleBrace && isApprovedRawPath(name2)) {
+      return String(rawValue ?? "");
+    }
+    return escapeHtml2(rawValue);
+  }
   const value = resolvePath(scope, args[0] ?? "");
   if (name2 === "count") {
     return escapeHtml2(Array.isArray(value) ? value.length : isRecord2(value) ? Object.keys(value).length : 0);
@@ -11494,10 +11513,10 @@ function renderTemplateInternal(source, scope) {
   const withBlocks = renderBlocks(source, scope);
   return withBlocks.replace(
     /\{\{\{\s*([^{}]+?)\s*\}\}\}/g,
-    (_match, expression) => renderHelper(expression, scope)
+    (_match, expression) => renderHelper(expression, scope, true)
   ).replace(
     /\{\{\s*([^{}#/][^{}]*?)\s*\}\}/g,
-    (_match, expression) => renderHelper(expression, scope)
+    (_match, expression) => renderHelper(expression, scope, false)
   ).replace(/\{\{[^{}]+\}\}/g, "");
 }
 function expandPartials(source, partials) {
@@ -41808,7 +41827,7 @@ function setup(ctx) {
   function diagnosticText() {
     const layoutIssues = settings.layout ? inspectLayoutDiagnostics(settings.layout, settings, activeTheme()) : [];
     const lines = [
-      `version: 0.1.18`,
+      `version: 0.1.19`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,

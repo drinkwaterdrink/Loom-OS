@@ -1,13 +1,14 @@
 # LoomOS Command Deck
 
-Current release: **0.1.18**
+Current release: **0.1.19**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.18
+## Key Features & Upgrades in 0.1.19
 
+- **Phase 2.1 Slot/Widget Runtime Correctness Pass**: Fixed triple-brace widget HTML escaping so slot-aware layouts can safely render raw widget HTML with `{{{renderedContent}}}` (restricted only to approved layout and widget path fields, preventing safety bypasses on arbitrary data). Fixed stock module widget indexing to support custom widget instance IDs by referencing `widget.moduleId` for stock renderers.
 - **Phase 2 Slot-Based Layout & Widget Overhaul**: Added additive slot-based layout system. Themes can define named layout regions, and stock or custom modules render as movable widgets inside them, preserving compatibility with monolithic themes.
 - **Minimal Layout Studio UI**: Added a dedicated Layout view in Creator Workshop with stacked cards, search filters, slot assignments, display modes, ordering, and token priority, optimized for mobile (min 44px tap targets).
 - **Layout Diagnostics Warnings**: Automatically warn about untracked displayed/injected widgets, too many widgets per slot, missing modules, or missing slots.
@@ -333,7 +334,7 @@ Themes can declare named layout slots in their manifests and view templates, all
 
 - **Named Slots**: Layout regions (such as `hero`, `main`, `cast`, `world`, `story`, `tools`) are registered with widget counts, limits, and descriptions.
 - **Widgets**: Movable module instances rendered inside slots. They are automatically grouped and sorted by `order`.
-- **Pre-rendered HTML**: Each widget's output is securely pre-rendered on the parent side as `renderedContent` and injected into the theme templates safely via Mustache-lite loops (e.g., `{{#each layout.slotsGrouped.main.widgets}} {{{renderedContent}}} {{/each}}`), keeping strict iframe sandbox/CSP rules unchanged.
+- **Pre-rendered HTML**: Each widget's output is securely pre-rendered on the parent side as `renderedContent` and injected into the theme templates safely via Mustache-lite loops (e.g., `{{#each layout.slotsGrouped.main.widgets}} {{{renderedContent}}} {{/each}}`), keeping strict iframe sandbox/CSP rules unchanged. Note: raw widget rendering is restricted to trusted slot widget content (`renderedContent`) and layout widget path fields only; other arbitrary model variables placed in triple braces will remain HTML-escaped for safety.
 - **Theme Backward Compatibility**: Themes without slots continue rendering exactly as monolithic layouts as before. If no slots are defined, the system automatically falls back to standard monolithic views.
 
 ### Tracker Blueprint

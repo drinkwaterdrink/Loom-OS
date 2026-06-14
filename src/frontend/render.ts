@@ -1803,7 +1803,7 @@ export function enrichViewerModelWithLayout(
     let renderedContent = "";
     if (widget.track && widget.display && widget.slot !== "hidden") {
       if (widget.source === "stock") {
-        renderedContent = renderStockModuleWidget(widget.id, stateObj, settings);
+        renderedContent = renderStockModuleWidget(widget.moduleId, stateObj, settings);
       } else {
         const cm = settings.customModules?.find((c) => c.id === widget.moduleId);
         const compiled = stateObj.customModuleData?.find((m) => m.moduleId === widget.moduleId);
@@ -1819,11 +1819,11 @@ export function enrichViewerModelWithLayout(
     if (widget.source === "stock") {
       moduleMetadata = {
         label: widget.label,
-        summary: getStockModuleSummary(widget.id, stateObj),
-        items: getStockModuleItems(widget.id, stateObj),
+        summary: getStockModuleSummary(widget.moduleId, stateObj),
+        items: getStockModuleItems(widget.moduleId, stateObj),
       };
     } else {
-      const m = model.modules[widget.id];
+      const m = model.modules[widget.moduleId];
       if (m) {
         moduleMetadata = {
           label: m.label,

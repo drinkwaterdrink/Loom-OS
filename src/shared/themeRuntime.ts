@@ -55,10 +55,30 @@ function truthy(value: unknown): boolean {
   return Boolean(value);
 }
 
-function renderHelper(expression: string, scope: TemplateScope): string {
+function isApprovedRawPath(path: string): boolean {
+  const clean = path.trim().replace(/^(@root\.|this\.|.\/)/, "");
+  if (clean === "renderedContent") {
+    return true;
+  }
+  if (/^layout\.widgets\.\d+\.renderedContent$/.test(clean)) {
+    return true;
+  }
+  if (/^layout\.slotsGrouped\.[A-Za-z0-9_-]+\.widgets\.\d+\.renderedContent$/.test(clean)) {
+    return true;
+  }
+  return false;
+}
+
+function renderHelper(expression: string, scope: TemplateScope, isTripleBrace = false): string {
   const [name, ...args] = expression.trim().split(/\s+/);
   if (!name) return "";
-  if (args.length === 0) return escapeHtml(resolvePath(scope, name));
+  if (args.length === 0) {
+    const rawValue = resolvePath(scope, name);
+    if (isTripleBrace && isApprovedRawPath(name)) {
+      return String(rawValue ?? "");
+    }
+    return escapeHtml(rawValue);
+  }
   const value = resolvePath(scope, args[0] ?? "");
   if (name === "count") {
     return escapeHtml(Array.isArray(value) ? value.length : isRecord(value) ? Object.keys(value).length : 0);
@@ -158,10 +178,10 @@ function renderTemplateInternal(source: string, scope: TemplateScope): string {
   const withBlocks = renderBlocks(source, scope);
   return withBlocks
     .replace(/\{\{\{\s*([^{}]+?)\s*\}\}\}/g, (_match, expression: string) =>
-      renderHelper(expression, scope)
+      renderHelper(expression, scope, true)
     )
     .replace(/\{\{\s*([^{}#/][^{}]*?)\s*\}\}/g, (_match, expression: string) =>
-      renderHelper(expression, scope)
+      renderHelper(expression, scope, false)
     )
     .replace(/\{\{[^{}]+\}\}/g, "");
 }

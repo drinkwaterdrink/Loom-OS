@@ -2,6 +2,13 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.19] - 2026-06-14
+
+### Fixed
+
+- **Raw Widget Rendering**: Fixed template escaping on triple braces. Slot-aware layouts can now render pre-rendered widget HTML raw using `{{{renderedContent}}}` (restricted only to approved layout and widget path fields, preventing safety bypasses on arbitrary data).
+- **Stock Module Indexing**: Fixed the stock widget renderer in `enrichViewerModelWithLayout` and stock metadata helpers to use `widget.moduleId` rather than `widget.id` for rendering and lookup, allowing custom widget instance IDs.
+
 ## [0.1.18] - 2026-06-14
 
 ### Added
