@@ -2,6 +2,7 @@ import type {
   LoomOSSettings,
   LoomOSState,
   StateHistoryItem,
+  TrackerLayout,
 } from "./types";
 import { VIEWER_MODEL_VERSION } from "./artifacts";
 
@@ -48,6 +49,64 @@ export interface ViewerModelV1 {
     fields: Record<string, unknown>;
     items: LoomOSState["customModuleData"][number]["items"];
   }>;
+  layout?: {
+    slots: Array<{
+      id: string;
+      label: string;
+      description: string;
+      accepts: string[];
+      maxWidgets: number;
+      defaultDisplayMode: string;
+      activeWidgetCount: number;
+    }>;
+    widgets: Array<{
+      id: string;
+      moduleId: string;
+      source: "stock" | "custom" | "artifact";
+      label: string;
+      slot: string;
+      order: number;
+      track: boolean;
+      display: boolean;
+      inject: boolean;
+      displayMode: string;
+      tokenPriority: number;
+      localOverrides: Record<string, unknown>;
+      renderedContent: string;
+      moduleMetadata?: {
+        label?: string;
+        summary?: string;
+        fields?: Record<string, unknown>;
+        items?: any[];
+      };
+    }>;
+    slotsGrouped: Record<string, {
+      id: string;
+      label: string;
+      widgets: Array<{
+        id: string;
+        moduleId: string;
+        source: "stock" | "custom" | "artifact";
+        label: string;
+        slot: string;
+        order: number;
+        track: boolean;
+        display: boolean;
+        inject: boolean;
+        displayMode: string;
+        tokenPriority: number;
+        localOverrides: Record<string, unknown>;
+        renderedContent: string;
+        moduleMetadata?: {
+          label?: string;
+          summary?: string;
+          fields?: Record<string, unknown>;
+          items?: any[];
+        };
+      }>;
+    }>;
+    responsiveMode: "single-column" | "adaptive-grid" | "desktop-split";
+  };
 }
 
 function emptyState(): Pick<

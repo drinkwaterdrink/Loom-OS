@@ -71,6 +71,8 @@ import {
   renderHistoryTab,
   renderInjectionPreview,
   renderWhatChangedModal,
+  enrichViewerModelWithLayout,
+  inspectLayoutDiagnostics,
 } from "./frontend/render";
 import { LOOMOS_STYLES } from "./frontend/styles";
 import {
@@ -1213,8 +1215,11 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   }
 
   function diagnosticText(): string {
+    const layoutIssues = settings.layout
+      ? inspectLayoutDiagnostics(settings.layout, settings, activeTheme())
+      : [];
     const lines = [
-      `version: 0.1.17`,
+      `version: 0.1.18`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -1226,6 +1231,9 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       `fallbackSaved: ${pipeline?.fallbackSaved === undefined ? "-" : pipeline.fallbackSaved ? "yes" : "no"}`,
       ...(pipeline?.issues?.length
         ? ["issues:", ...pipeline.issues.slice(0, 8).map((issue) => `- ${issue}`)]
+        : []),
+      ...(layoutIssues.length
+        ? ["layout issues:", ...layoutIssues.map((issue) => `- [${issue.severity.toUpperCase()}] ${issue.message}`)]
         : []),
     ];
     return lines.join("\n");
@@ -1432,7 +1440,11 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       if (iframe) {
         iframe.srcdoc = buildThemeDocument(
           theme,
-          buildViewerModel(state, settings, historyItems, status, viewerTab),
+          enrichViewerModelWithLayout(
+            buildViewerModel(state, settings, historyItems, status, viewerTab),
+            state,
+            settings
+          ),
           {
             nonce: activeThemeNonce,
             developerModeEnabled: settings.developerMode,
@@ -1615,11 +1627,13 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function applyModulePreset(preset: string): void {
     let nextSettings: Record<ModuleKey, ModuleControl>;
+    let nextLayout: any = undefined;
     if (preset.startsWith("custom:")) {
       const presetId = preset.substring(7);
       const custom = settings.customModulePresets?.find(p => p.id === presetId);
       if (custom) {
-        nextSettings = custom.moduleSettings;
+        nextSettings = { ...custom.moduleSettings };
+        nextLayout = custom.layout ? JSON.parse(JSON.stringify(custom.layout)) : undefined;
       } else {
         return;
       }
@@ -1638,6 +1652,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       ...settings,
       modulePreset: preset,
       moduleSettings: nextSettings,
+      ...(nextLayout ? { layout: nextLayout } : {}),
     });
     status = `Preset applied`;
     send({ type: "save_settings", requestId: requestId("preset"), settings });
@@ -1868,7 +1883,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           description: desc,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          moduleSettings: { ...settings.moduleSettings }
+          moduleSettings: { ...settings.moduleSettings },
+          layout: settings.layout ? JSON.parse(JSON.stringify(settings.layout)) : undefined,
         };
         
         settings.customModulePresets = [...presets, newPreset];
@@ -1891,6 +1907,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         presets[idx] = {
           ...presets[idx]!,
           moduleSettings: { ...settings.moduleSettings },
+          layout: settings.layout ? JSON.parse(JSON.stringify(settings.layout)) : undefined,
           updatedAt: new Date().toISOString()
         };
         settings.customModulePresets = [...presets];
@@ -1911,7 +1928,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           description: original.description,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          moduleSettings: { ...original.moduleSettings }
+          moduleSettings: { ...original.moduleSettings },
+          layout: original.layout ? JSON.parse(JSON.stringify(original.layout)) : undefined,
         };
         settings.customModulePresets = [...presets, duplicatePreset];
         settings.modulePreset = "custom:" + newId;

@@ -6844,18 +6844,679 @@ function renderWhatChangedModal(state) {
           <span class="loomos-subhead">Newly established (${delta.newlyEstablished.length})</span>
           ${chips(delta.newlyEstablished, "Nothing newly established")}
         </div>
-      </div>
-      
       <div class="loomos-what-changed-scene">
         <span class="loomos-subhead">Scene</span>
         <dl class="loomos-facts">
           <div><dt>Location</dt><dd>${escapeHtml(state.kernel?.location || "N/A")}</dd></div>
           <div><dt>Time</dt><dd>${escapeHtml(state.kernel?.timeframe || state.kernel?.time || "N/A")}</dd></div>
-          <div><dt>Focus</dt><dd>${clampProse(state.kernel?.currentFocus || "N/A", 100)}</dd></div>
         </dl>
       </div>
     </div>
   `;
+}
+function inspectLayoutDiagnostics(layout, settings, theme2) {
+  const diagnostics = [];
+  const customModuleIds = new Set((settings.customModules || []).map((cm) => cm.id));
+  const activeStockKeys = new Set(MODULE_KEYS);
+  for (const widget of layout.widgets) {
+    if (widget.source === "stock") {
+      if (!activeStockKeys.has(widget.moduleId)) {
+        diagnostics.push({
+          severity: "warning",
+          message: `Widget "${widget.label}" references missing stock module "${widget.moduleId}".`
+        });
+      }
+    } else {
+      if (!customModuleIds.has(widget.moduleId)) {
+        diagnostics.push({
+          severity: "warning",
+          message: `Widget "${widget.label}" references missing custom module "${widget.moduleId}".`
+        });
+      }
+    }
+  }
+  const slotCount = /* @__PURE__ */ new Map();
+  for (const widget of layout.widgets) {
+    if (widget.track && widget.display && widget.slot !== "hidden") {
+      slotCount.set(widget.slot, (slotCount.get(widget.slot) || 0) + 1);
+    }
+  }
+  for (const slot of layout.slots) {
+    const count = slotCount.get(slot.id) || 0;
+    if (count > slot.maxWidgets) {
+      diagnostics.push({
+        severity: "warning",
+        message: `Slot "${slot.label}" has ${count} widgets, which exceeds its limit of ${slot.maxWidgets}.`
+      });
+    }
+  }
+  for (const widget of layout.widgets) {
+    if (widget.display && !widget.track) {
+      diagnostics.push({
+        severity: "warning",
+        message: `Widget "${widget.label}" is set to display but is untracked. It will not receive updates.`
+      });
+    }
+    if (widget.inject && !widget.track) {
+      diagnostics.push({
+        severity: "warning",
+        message: `Widget "${widget.label}" is set to inject but is untracked. It cannot inject tokens.`
+      });
+    }
+    if (widget.slot === "hidden" && widget.inject) {
+      diagnostics.push({
+        severity: "warning",
+        message: `Widget "${widget.label}" is set to hidden but is injected. Hidden widgets should generally not inject tokens.`
+      });
+    }
+  }
+  if (theme2) {
+    const layoutSlotIds = new Set(layout.slots.map((s) => s.id));
+    const themeSlots = theme2.manifest.slots || [];
+    for (const ts of themeSlots) {
+      if (!layoutSlotIds.has(ts)) {
+        diagnostics.push({
+          severity: "warning",
+          message: `Active theme references slot "${ts}" which is not defined in the workspace layout.`
+        });
+      }
+    }
+    const htmlMatches = theme2.view.html.matchAll(/layout\.slotsGrouped\.(\w+)/g);
+    for (const match of htmlMatches) {
+      const slotName = match[1];
+      if (slotName && !layoutSlotIds.has(slotName)) {
+        diagnostics.push({
+          severity: "warning",
+          message: `Theme HTML template references slot "${slotName}" which is not defined in the workspace layout.`
+        });
+      }
+    }
+  }
+  let visibleCount = 0;
+  for (const widget of layout.widgets) {
+    if (widget.track && widget.display && widget.slot !== "hidden") {
+      visibleCount++;
+    }
+  }
+  if (visibleCount === 0) {
+    diagnostics.push({
+      severity: "warning",
+      message: "No visible tracking widgets are enabled. The dashboard will be empty."
+    });
+  }
+  return diagnostics;
+}
+function renderStockModuleWidget(key, state, settings) {
+  switch (key) {
+    case "sceneKernel":
+      return renderKernel(state, settings);
+    case "deltas":
+      return renderDelta(state, settings);
+    case "meters":
+      return renderMeters(state, settings);
+    case "castCore":
+      return renderCast(state, settings);
+    case "appearance":
+      return renderAppearanceStandAlone(state);
+    case "clothing":
+      return renderClothingStandAlone(state);
+    case "relationships":
+      return renderRelationshipsStandAlone(state);
+    case "inventory":
+      return renderInventoryStandAlone(state);
+    case "worldSpace":
+      return renderWorldSpaceStandAlone(state, settings);
+    case "secretsRumors":
+      return renderSecretsRumorsStandAlone(state);
+    case "storyThreads":
+      return renderStoryThreadsStandAlone(state, settings);
+    case "continuity":
+      return renderContinuity(state, settings);
+    case "auditLog":
+      return renderAudit(state, settings);
+    case "castVisuals":
+      return renderCastVisualsStandAlone(state);
+    case "actionResolver":
+    case "dialogueState":
+    case "directorStyle":
+    case "closenessState":
+    case "imagePrompt":
+      return renderToolModuleWidget(key, state, settings);
+    default:
+      return "";
+  }
+}
+function renderAppearanceStandAlone(state) {
+  const members = state.castMatrix.filter((m) => m.appearance.fullDescription || m.appearance.immutableTraits && m.appearance.immutableTraits.length > 0);
+  if (members.length === 0) return `<div class="loomos-muted">No appearance profiles.</div>`;
+  return `
+    <div class="loomos-list">
+      ${members.map((m) => `
+        <article class="loomos-card">
+          <div class="loomos-card-heading">
+            <strong>${escapeHtml(m.name)}</strong>
+            <span class="loomos-badge">Appearance</span>
+          </div>
+          ${renderAppearanceProfile(m.appearance)}
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+function renderClothingStandAlone(state) {
+  const members = state.castMatrix.filter((m) => m.clothingSummary || m.clothing.layers && m.clothing.layers.length > 0);
+  if (members.length === 0) return `<div class="loomos-muted">No clothing records.</div>`;
+  return `
+    <div class="loomos-list">
+      ${members.map((m) => `
+        <article class="loomos-card">
+          <div class="loomos-card-heading">
+            <strong>${escapeHtml(m.name)}'s Attire</strong>
+          </div>
+          ${renderClothingProfile(m.clothing, m.clothingSummary || "")}
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+function renderRelationshipsStandAlone(state) {
+  const members = state.castMatrix.filter((m) => m.relationships.length > 0);
+  if (members.length === 0) return `<div class="loomos-muted">No relationships recorded.</div>`;
+  return `
+    <div class="loomos-list">
+      ${members.map((m) => `
+        <article class="loomos-card">
+          <div class="loomos-card-heading">
+            <strong>${escapeHtml(m.name)}'s Relationships</strong>
+          </div>
+          ${chips(m.relationships.map((r) => `${r.target}: ${r.axis}=${r.value}${r.evidence ? ` (${r.evidence.slice(0, 60)})` : ""}`))}
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+function renderInventoryStandAlone(state) {
+  const members = state.castMatrix.filter((m) => m.pockets.length > 0);
+  if (members.length === 0) return `<div class="loomos-muted">No character inventory recorded.</div>`;
+  return `
+    <div class="loomos-list">
+      ${members.map((m) => `
+        <article class="loomos-card">
+          <div class="loomos-card-heading">
+            <strong>${escapeHtml(m.name)}'s Pockets</strong>
+          </div>
+          ${chips(m.pockets.map((item) => `${item.name} x${item.qty}${item.known ? "" : " (unknown)"}`))}
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+function renderWorldSpaceStandAlone(state, settings) {
+  const scene = state.scene;
+  const world = state.worldState;
+  const itemCount = scene?.items.length ?? 0;
+  return section("worldSpace", "World & Space", `${itemCount} scene items`, `
+    ${scene ? `<dl class="loomos-facts">
+          <div><dt>Privacy</dt><dd>${escapeHtml(scene.privacy)}</dd></div>
+          <div><dt>Observers</dt><dd>${scene.observerCount} | ${escapeHtml(scene.observerPressure.band)}</dd></div>
+          <div><dt>Crowd</dt><dd>${escapeHtml(scene.crowdNoise)} / ${escapeHtml(scene.crowdFlow)}</dd></div>
+          <div><dt>Light</dt><dd>${escapeHtml(scene.light.primary)} | ${escapeHtml(scene.light.quality)}</dd></div>
+          <div><dt>Exit</dt><dd>${escapeHtml(scene.access.exit)}</dd></div>
+          <div><dt>Sightline</dt><dd>${clampProse(scene.access.lineOfSight, 100)}</dd></div>
+        </dl>
+        <div class="loomos-subhead">Spatial facts</div>${chips(scene.spatial)}
+        <div class="loomos-subhead">Carryover</div>${chips([
+    ...scene.carryover.body,
+    ...scene.carryover.room,
+    ...scene.carryover.social
+  ])}
+        ${visible(settings, "inventory") ? `<div class="loomos-subhead">Scene items</div>${chips(scene.items.map(
+    (item) => `${item.name}: ${item.location}; ${item.condition}`
+  ))}` : ""}` : `<p class="loomos-muted">World and space tracking was not active for this snapshot.</p>`}
+    ${world ? `<div class="loomos-two-column">
+          <div><div class="loomos-subhead">Environmental changes</div>${chips(world.recentEnvironmentalChanges)}</div>
+          <div><div class="loomos-subhead">Hazards</div>${chips(world.activeHazards)}</div>
+        </div>` : ""}
+  `, true, settings, "worldSpace");
+}
+function renderSecretsRumorsStandAlone(state) {
+  const world = state.worldState;
+  if (!world) return `<p class="loomos-muted">No world state recorded.</p>`;
+  return section("secretsRumors", "Secrets & Rumors", `${world.rumors.length} rumors`, `
+    <div class="loomos-two-column">
+      <div><div class="loomos-subhead">Rumors</div>${chips(world.rumors.map(
+    (item) => `${item.rumor} (${item.credibility}/10)`
+  ))}</div>
+      <div><div class="loomos-subhead">Loaded signs</div>${chips(world.loadedSigns.map(
+    (item) => `${item.thing}: ${item.state}`
+  ))}</div>
+    </div>
+  `, true);
+}
+function renderStoryThreadsStandAlone(state, settings) {
+  const story = state.storyState;
+  const live = story.threadLoom.filter((thread) => thread.status !== "resolved");
+  return section("storyThreads", "Thread Loom", `${live.length} live threads`, `
+    <div class="loomos-list">
+      ${story.threadLoom.length === 0 ? `<p class="loomos-muted">No story threads recorded.</p>` : story.threadLoom.map((thread) => `
+          <article class="loomos-row loomos-priority-${thread.priority}">
+            <div class="loomos-row-title">
+              <strong>${escapeHtml(thread.title)}</strong>
+              <span>${escapeHtml(thread.status)} | ${thread.urgency}/5</span>
+            </div>
+            <p>${clampProse(thread.summary, 120)}</p>
+            <div class="loomos-meter-track"><i style="width:${Math.max(0, Math.min(100, thread.progress * 10))}%"></i></div>
+            <small>Next pressure: ${clampProse(thread.nextPressure, 100)}</small>
+          </article>
+        `).join("")}
+    </div>
+    <div class="loomos-two-column">
+      <div><div class="loomos-subhead">Goals</div>${chips(story.goals.map(
+    (goal) => `${goal.who}: ${goal.goal} [${goal.status}]`
+  ))}</div>
+      <div><div class="loomos-subhead">Stakes</div>${chips(story.stakes.map(
+    (stake) => `${stake.who}: ${stake.win} / ${stake.lose}`
+  ))}</div>
+      <div><div class="loomos-subhead">Countdowns</div>${chips(story.countdowns.map(
+    (item) => `${item.title}: ${item.left} ${item.unit}`
+  ))}</div>
+      <div><div class="loomos-subhead">Autonomy queue</div>${chips(story.autonomyQueue.map(
+    (item) => `${item.who}: ${item.action}`
+  ))}</div>
+    </div>
+  `, true, settings, "storyThreads");
+}
+function renderCastVisualsStandAlone(state) {
+  const members = state.castMatrix.filter((m) => m.visualAnchor);
+  if (members.length === 0) return `<div class="loomos-muted">No visual profiles recorded.</div>`;
+  return `
+    <div class="loomos-list">
+      ${members.map((m) => `
+        <article class="loomos-card">
+          <div class="loomos-card-heading">
+            <strong>${escapeHtml(m.name)}</strong>
+            <span class="loomos-badge">Visuals</span>
+          </div>
+          <p>${escapeHtml(m.visualAnchor)}</p>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+function renderToolModuleWidget(key, state, settings) {
+  const tools = state.tools;
+  const control2 = settings.moduleSettings[key];
+  const generatedWithModule = state.activeModules.includes(key);
+  if (control2 && control2.track && tools[key]) {
+    if (key === "actionResolver" && tools.actionResolver) {
+      return `<article class="loomos-card loomos-tool-card" data-section="tool_actionResolver">
+        <div class="loomos-tool-card-heading">
+          <div><span class="loomos-kicker">Tool</span><strong>Action Resolver</strong></div>
+          <span class="loomos-tool-state is-ready">Ready</span>
+        </div>
+        <p class="loomos-tool-lead">${clampProse(tools.actionResolver.userAction, 160)}</p>
+        <p>${clampProse(tools.actionResolver.worldResponse, 120)}</p>
+        <small>Risk: ${clampProse(tools.actionResolver.risk, 100)}</small>
+        ${chips(tools.actionResolver.blockers)}
+      </article>`;
+    }
+    if (key === "dialogueState" && tools.dialogueState) {
+      return `<article class="loomos-card loomos-tool-card" data-section="tool_dialogueState">
+        <div class="loomos-tool-card-heading">
+          <div><span class="loomos-kicker">Tool</span><strong>Dialogue State</strong></div>
+          <span class="loomos-tool-state is-ready">Ready</span>
+        </div>
+        <p class="loomos-tool-lead">${clampProse(tools.dialogueState.openThread, 140)}</p>
+        <p>${clampProse(tools.dialogueState.socialMask, 120)}</p>
+        ${chips(tools.dialogueState.levers)}
+      </article>`;
+    }
+    if (key === "directorStyle" && tools.directorStyle) {
+      return `<article class="loomos-card loomos-tool-card" data-section="tool_directorStyle">
+        <div class="loomos-tool-card-heading">
+          <div><span class="loomos-kicker">Tool</span><strong>Director Style</strong></div>
+          <span class="loomos-tool-state is-ready">Ready</span>
+        </div>
+        <p class="loomos-tool-lead">${clampProse(tools.directorStyle.primary, 140)}</p>
+        <p>${clampProse(tools.directorStyle.push, 120)}</p>
+        ${chips(tools.directorStyle.voiceCues)}
+      </article>`;
+    }
+    if (key === "closenessState" && tools.closenessState) {
+      return `<article class="loomos-card loomos-tool-card" data-section="tool_closenessState">
+        <div class="loomos-tool-card-heading">
+          <div><span class="loomos-kicker">Tool</span><strong>Closeness State</strong></div>
+          <span class="loomos-tool-state is-ready">Ready</span>
+        </div>
+        <p class="loomos-tool-lead">${clampProse(tools.closenessState.emotional, 140)}</p>
+        <p>${clampProse(tools.closenessState.physical, 120)}</p>
+        ${chips(tools.closenessState.boundaries)}
+      </article>`;
+    }
+    if (key === "imagePrompt" && tools.imagePrompt) {
+      const fullPrompt = tools.imagePrompt.full || [tools.imagePrompt.subject, tools.imagePrompt.positive].filter(Boolean).join(", ");
+      const blueprintFields = [
+        ["Intent", tools.imagePrompt.intent],
+        ["Composition", tools.imagePrompt.composition],
+        ["Camera", tools.imagePrompt.camera],
+        ["Lighting", tools.imagePrompt.lighting],
+        ["Color palette", tools.imagePrompt.colorPalette],
+        ["Environment", tools.imagePrompt.environment],
+        ["Character continuity", tools.imagePrompt.characterContinuity],
+        ["Action", tools.imagePrompt.action],
+        ["Materials", tools.imagePrompt.materials],
+        ["Mood", tools.imagePrompt.mood],
+        ["Text rendering", tools.imagePrompt.textRendering]
+      ].filter((entry) => Boolean(entry[1]));
+      return `<article class="loomos-card loomos-tool-card loomos-image-prompt-card" data-section="tool_imagePrompt">
+        <div class="loomos-tool-card-heading">
+          <div><span class="loomos-kicker">GPT Image production brief</span><strong>Image Prompt</strong></div>
+          <span class="loomos-tool-state is-ready">Ready</span>
+        </div>
+        <div class="loomos-tool-meta">
+          <span><b>Aspect</b>${escapeHtml(tools.imagePrompt.aspect || "Not set")}</span>
+          <span><b>Shot</b>${escapeHtml(tools.imagePrompt.shot || "Not set")}</span>
+          <span><b>Medium</b>${escapeHtml(tools.imagePrompt.medium || "Not set")}</span>
+        </div>
+        <p class="loomos-tool-lead">${clampProse(tools.imagePrompt.subject, 260)}</p>
+        ${blueprintFields.length > 0 ? `
+          <details class="loomos-image-blueprint">
+            <summary>Structured art direction</summary>
+            <dl class="loomos-facts">
+              ${blueprintFields.map(([label, value]) => `
+                <div><dt>${escapeHtml(label)}</dt><dd>${clampProse(value, 320)}</dd></div>
+              `).join("")}
+            </dl>
+          </details>
+        ` : ""}
+        <div class="loomos-prompt-output">
+          <div class="loomos-prompt-output-heading">
+            <span>Full prompt</span>
+            <button class="loomos-button loomos-btn-sm" data-action="copy-image-prompt">Copy prompt</button>
+          </div>
+          <pre>${escapeHtml(fullPrompt)}</pre>
+        </div>
+        <div class="loomos-prompt-details">
+          <details>
+            <summary>Positive guidance</summary>
+            <p>${escapeHtml(tools.imagePrompt.positive || "None generated.")}</p>
+          </details>
+          <details>
+            <summary>Negative guidance</summary>
+            <p>${escapeHtml(tools.imagePrompt.negative || "None generated.")}</p>
+          </details>
+        </div>
+        ${tools.imagePrompt.constraints.length > 0 ? `<div><div class="loomos-subhead">Hard constraints</div>${chips(tools.imagePrompt.constraints)}</div>` : ""}
+        ${tools.imagePrompt.hint ? `<small>${clampProse(tools.imagePrompt.hint, 400)}</small>` : ""}
+      </article>`;
+    }
+  }
+  return toolStateCard(state, settings, key, key);
+}
+function renderSingleCustomModule(cm, compiled) {
+  const itemCount = compiled?.items?.length ?? 0;
+  const fieldEntries = Object.entries(compiled?.fields ?? {});
+  let body = "";
+  if (cm.outputMode === "template" && cm.allowHtmlTemplate) {
+    const rendered = renderCustomTemplate(cm, compiled);
+    body = `
+      <style>${rendered.css}</style>
+      <section class="loomos-custom-template ${rendered.wrapperClass}">
+        ${rendered.html}
+      </section>
+    `;
+  } else if (itemCount === 0 && fieldEntries.length === 0) {
+    body = `<p class="loomos-muted">No evidence compiled for this custom module.</p>`;
+  } else {
+    const fieldsHtml = fieldEntries.length > 0 ? `<dl class="loomos-custom-fields">${fieldEntries.map(([key, value]) => `
+          <div>
+            <dt>${escapeHtml(cm.schemaFields.find((field) => field.key === key)?.label ?? key)}</dt>
+            <dd>${escapeHtml(
+      Array.isArray(value) ? value.join(", ") : typeof value === "object" ? JSON.stringify(value) : value
+    )}</dd>
+          </div>
+        `).join("")}</dl>` : "";
+    if (cm.outputMode === "bullets") {
+      body = `${fieldsHtml}
+        <ul class="loomos-bullet-list">
+          ${compiled.items.map((it) => `
+            <li>
+              <strong>${escapeHtml(it.title)}</strong>: ${clampProse(it.text, 100)}
+              <span class="loomos-badge loomos-badge-severity-${it.importance}" style="font-size: 7px; vertical-align: middle; margin-left: 4px;">${it.importance}</span>
+            </li>
+          `).join("")}
+        </ul>
+      `;
+    } else if (cm.outputMode === "chips") {
+      body = `${fieldsHtml}
+        <div class="loomos-chip-row" style="margin-top: 4px;">
+          ${compiled.items.map((it) => `
+            <span class="loomos-chip" style="${it.color ? `border-color:${escapeHtml(it.color)}` : ""}">
+              <strong>${escapeHtml(it.title)}</strong>: ${clampProse(it.text, 80)}
+              <span class="loomos-badge loomos-badge-severity-${it.importance}" style="font-size: 7px; margin-left: 2px;">${it.importance}</span>
+            </span>
+          `).join("")}
+        </div>
+      `;
+    } else if (cm.outputMode === "gauge") {
+      body = `${fieldsHtml}
+        <div class="loomos-meter-grid">
+          ${compiled.items.map((it) => {
+        const match = it.text.match(/(\d+)%/);
+        const pctValue = match ? Number(match[1]) : 50;
+        const colorStyle = it.color ? `background-color: ${escapeHtml(it.color)}` : "";
+        return `
+              <div class="loomos-meter">
+                <div class="loomos-row-title">
+                  <strong>${escapeHtml(it.title)}</strong>
+                  <span>${escapeHtml(it.text)}</span>
+                </div>
+                <div class="loomos-meter-track"><i style="width:${pctValue}%; ${colorStyle}"></i></div>
+                <small>Importance: <strong>${it.importance}</strong></small>
+              </div>
+            `;
+      }).join("")}
+        </div>
+      `;
+    } else {
+      body = `${fieldsHtml}
+        <div class="loomos-card-grid">
+          ${compiled.items.map((it) => `
+            <div class="loomos-card" style="${it.color ? `border-left: 3px solid ${escapeHtml(it.color)}` : ""}">
+              <div class="loomos-card-heading">
+                <strong>${escapeHtml(it.title)}</strong>
+                <span class="loomos-badge loomos-badge-severity-${it.importance}">${it.importance}</span>
+              </div>
+              <p>${clampProse(it.text, 120)}</p>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+  }
+  return section("cmod_" + cm.id, cm.label, compiled?.summary || `${itemCount} items`, body, false);
+}
+function getStockModuleSummary(id2, state) {
+  switch (id2) {
+    case "sceneKernel":
+      return state.kernel.summary || "";
+    case "deltas":
+      return state.delta.headline || "";
+    case "meters":
+      return `${state.meters.length} meters`;
+    case "castCore":
+      return `${state.castMatrix.length} characters`;
+    case "appearance":
+      return "Detailed appearance";
+    case "clothing":
+      return "Clothing ledger";
+    case "relationships":
+      return "Relationships matrix";
+    case "inventory":
+      return "Character pockets";
+    case "worldSpace":
+      return `${state.scene?.items.length ?? 0} scene items`;
+    case "secretsRumors":
+      return `${state.worldState?.rumors.length ?? 0} rumors`;
+    case "storyThreads":
+      return `${state.storyState.threadLoom.filter((t2) => t2.status !== "resolved").length} live threads`;
+    case "continuity":
+      return `${state.continuityFirewall.risks.length} risks`;
+    case "dialogueState":
+      return "Dialogue state";
+    case "directorStyle":
+      return "Director style";
+    case "closenessState":
+      return "Closeness state";
+    case "imagePrompt":
+      return "Image prompt brief";
+    case "actionResolver":
+      return "Action resolver";
+    case "auditLog":
+      return "Audit log";
+    case "castVisuals":
+      return "Visual profiles";
+    default:
+      return "";
+  }
+}
+function getStockModuleItems(id2, state) {
+  switch (id2) {
+    case "sceneKernel":
+      return state.kernel.constraints || [];
+    case "deltas":
+      return state.delta.changes || [];
+    case "meters":
+      return state.meters || [];
+    case "castCore":
+      return state.castMatrix || [];
+    case "appearance":
+      return state.castMatrix.map((c) => c.appearance);
+    case "clothing":
+      return state.castMatrix.map((c) => c.clothing);
+    case "relationships":
+      return state.castMatrix.map((c) => c.relationships);
+    case "inventory":
+      return state.castMatrix.map((c) => c.pockets);
+    case "worldSpace":
+      return state.scene?.items || [];
+    case "secretsRumors":
+      return state.worldState?.rumors || [];
+    case "storyThreads":
+      return state.storyState.threadLoom || [];
+    case "continuity":
+      return state.continuityFirewall.risks || [];
+    case "dialogueState":
+      return state.tools.dialogueState ? [state.tools.dialogueState] : [];
+    case "directorStyle":
+      return state.tools.directorStyle ? [state.tools.directorStyle] : [];
+    case "closenessState":
+      return state.tools.closenessState ? [state.tools.closenessState] : [];
+    case "imagePrompt":
+      return state.tools.imagePrompt ? [state.tools.imagePrompt] : [];
+    case "actionResolver":
+      return state.tools.actionResolver ? [state.tools.actionResolver] : [];
+    case "auditLog":
+      return state.auditLog || [];
+    case "castVisuals":
+      return state.castMatrix.map((c) => ({ name: c.name, anchor: c.visualAnchor }));
+    default:
+      return [];
+  }
+}
+function enrichViewerModelWithLayout(model, state, settings) {
+  const layout = settings.layout;
+  if (!layout) return model;
+  const stateObj = state || {
+    schemaVersion: 2,
+    identity: { chatId: "", messageId: "", swipeId: 0 },
+    generatedAt: "",
+    source: {
+      messageCount: 0,
+      repaired: false,
+      seedIdentity: null,
+      connectionId: ""
+    },
+    kernel: { scene: "", location: "", timeframe: "", date: "", time: "", elapsed: "", weather: "", pov: "", tone: "", topic: "", theme: "", objective: "", summary: "", currentFocus: "", nextFocus: "", currentRisk: "", stopMode: "", stopWhy: "", constraints: [] },
+    delta: { headline: "", changedModules: [], changes: [], carriedForward: [], newlyEstablished: [] },
+    meters: [],
+    scene: null,
+    castMatrix: [],
+    worldState: null,
+    storyState: { goals: [], conflicts: [], threadLoom: [], stakes: [], countdowns: [], autonomyQueue: [], spotlightQueue: [] },
+    continuityFirewall: { establishedFacts: [], antiRetconAnchors: [], pendingConsequences: [], offscreenState: [], bannedNext: [], impossibleNext: [], risks: [], terms: [] },
+    tools: { actionResolver: null, dialogueState: null, directorStyle: null, closenessState: null, imagePrompt: null },
+    auditLog: [],
+    activeModules: [],
+    customModuleData: []
+  };
+  const enrichedWidgets = layout.widgets.map((widget) => {
+    let renderedContent = "";
+    if (widget.track && widget.display && widget.slot !== "hidden") {
+      if (widget.source === "stock") {
+        renderedContent = renderStockModuleWidget(widget.id, stateObj, settings);
+      } else {
+        const cm = settings.customModules?.find((c) => c.id === widget.moduleId);
+        const compiled = stateObj.customModuleData?.find((m) => m.moduleId === widget.moduleId);
+        if (cm && compiled) {
+          renderedContent = renderSingleCustomModule(cm, compiled);
+        } else if (cm) {
+          renderedContent = `<p class="loomos-muted">No evidence compiled for this custom module.</p>`;
+        }
+      }
+    }
+    let moduleMetadata = void 0;
+    if (widget.source === "stock") {
+      moduleMetadata = {
+        label: widget.label,
+        summary: getStockModuleSummary(widget.id, stateObj),
+        items: getStockModuleItems(widget.id, stateObj)
+      };
+    } else {
+      const m = model.modules[widget.id];
+      if (m) {
+        moduleMetadata = {
+          label: m.label,
+          summary: m.summary,
+          fields: m.fields,
+          items: m.items
+        };
+      }
+    }
+    return {
+      ...widget,
+      localOverrides: widget.localOverrides || {},
+      renderedContent,
+      moduleMetadata
+    };
+  });
+  const slotCounts = /* @__PURE__ */ new Map();
+  for (const w of enrichedWidgets) {
+    if (w.track && w.display && w.slot !== "hidden") {
+      slotCounts.set(w.slot, (slotCounts.get(w.slot) || 0) + 1);
+    }
+  }
+  const enrichedSlots = layout.slots.map((slot) => ({
+    ...slot,
+    activeWidgetCount: slotCounts.get(slot.id) || 0
+  }));
+  const slotsGrouped = {};
+  for (const slot of layout.slots) {
+    slotsGrouped[slot.id] = {
+      id: slot.id,
+      label: slot.label,
+      widgets: enrichedWidgets.filter((w) => w.slot === slot.id && w.track && w.display && slot.id !== "hidden").sort((a, b) => a.order - b.order)
+    };
+  }
+  return {
+    ...model,
+    layout: {
+      slots: enrichedSlots,
+      widgets: enrichedWidgets,
+      slotsGrouped,
+      responsiveMode: layout.responsiveMode
+    }
+  };
 }
 
 // src/frontend/styles.ts
@@ -9832,6 +10493,163 @@ var LOOMOS_STYLES = `
       padding-bottom: calc(14px + env(safe-area-inset-bottom)) !important;
     }
   }
+
+  /* Layout Studio CSS Rules */
+  .loomos-layout-studio {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .loomos-layout-diagnostics {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: rgba(223, 82, 89, 0.12);
+    border: 1px solid rgba(223, 82, 89, 0.3);
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 8px;
+  }
+  .loomos-layout-diag-item {
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .loomos-layout-diag-item.is-warning { color: #f0ad4e; }
+  .loomos-layout-diag-item.is-error { color: #df5259; }
+  .loomos-layout-diag-item.is-info { color: #4cd27e; }
+  
+  .loomos-layout-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .loomos-layout-search-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+  .loomos-layout-search {
+    flex: 1;
+    min-width: 200px;
+    min-height: 44px;
+  }
+  .loomos-layout-responsive-mode {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .loomos-layout-responsive-mode select {
+    min-height: 44px;
+    min-width: 140px;
+  }
+  .loomos-layout-builder-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .loomos-layout-slots-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .loomos-layout-slot-card {
+    background: var(--loomos-panel);
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .loomos-layout-slot-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .loomos-layout-slot-desc {
+    font-size: 10px;
+    color: var(--loomos-muted);
+    margin: 0;
+  }
+  .loomos-layout-slot-widgets {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .loomos-layout-widgets-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .loomos-widget-editor-card {
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 6px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .loomos-widget-card-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+  }
+  .loomos-widget-card-id-row {
+    font-size: 9px;
+    color: var(--loomos-muted);
+  }
+  .loomos-widget-card-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .loomos-widget-control-switches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .loomos-widget-switch {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 11px;
+    min-height: 44px;
+  }
+  .loomos-widget-switch input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+  }
+  .loomos-widget-selectors {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .loomos-widget-selectors > label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 10px;
+    color: var(--loomos-muted);
+  }
+  .loomos-widget-selectors select,
+  .loomos-widget-selectors input {
+    width: 100%;
+    min-height: 44px;
+    font-size: 11px;
+  }
+  
+  .loomos-badge-source-stock { background: rgba(0, 123, 255, 0.15); color: #007bff; }
+  .loomos-badge-source-custom { background: rgba(40, 167, 69, 0.15); color: #28a745; }
+  .loomos-badge-source-artifact { background: rgba(23, 162, 184, 0.15); color: #17a2b8; }
 `;
 
 // src/shared/artifacts.ts
@@ -10036,7 +10854,8 @@ var ThemeArtifactSchema = ArtifactBaseSchema.extend({
     developerMode: external_exports.boolean().default(false),
     capabilities: external_exports.array(ThemeCapabilitySchema).max(8).default([]),
     minWidth: external_exports.number().int().min(280).max(2400).default(320),
-    preferredColorScheme: external_exports.enum(["auto", "dark", "light"]).default("auto")
+    preferredColorScheme: external_exports.enum(["auto", "dark", "light"]).default("auto"),
+    slots: external_exports.array(external_exports.string()).optional()
   }).strict(),
   view: ArtifactViewSchema,
   sampleData: external_exports.unknown().default({})
@@ -10411,7 +11230,8 @@ var LoomPackPresetSchema = external_exports.object({
     compilerSeedTokenBudget: external_exports.number().int().min(200).max(1e4).optional(),
     historyRetentionLimit: external_exports.number().int().min(1).max(1e3).optional(),
     developerMode: external_exports.boolean().optional()
-  }).strict().optional()
+  }).strict().optional(),
+  layout: TrackerLayoutSchema.optional()
 }).strict();
 var LoomPackSchema = external_exports.object({
   format: external_exports.literal("loomos-pack"),
@@ -38795,6 +39615,8 @@ function openCreatorWorkshop(options) {
   let autosaveTimer = null;
   let destroyed = false;
   let modalDismissed = false;
+  let layoutQuery = "";
+  let layoutGroupBySlot = false;
   const modal = options.ctx.ui.showModal({
     title: "LoomOS Creator Workshop",
     width: Math.max(320, Math.min(1280, window.innerWidth - 4)),
@@ -38991,7 +39813,11 @@ function openCreatorWorkshop(options) {
     if (!previewTheme) {
       return `<!doctype html><body style="font-family:system-ui;background:#111;color:#eee;padding:20px"><h2>This Blueprint has no theme to preview.</h2></body>`;
     }
-    const baseModel = buildViewerModel(state, settings, history2, "Workshop preview");
+    const baseModel = enrichViewerModelWithLayout(
+      buildViewerModel(state, settings, history2, "Workshop preview"),
+      state,
+      settings
+    );
     const model = artifact.kind === "module" ? {
       ...baseModel,
       data: sampleForArtifact(artifact),
@@ -39006,6 +39832,218 @@ function openCreatorWorkshop(options) {
       developerModeEnabled: settings.developerMode
     };
     return buildThemeDocument(previewTheme, model, runtime);
+  }
+  function saveLayoutFromDOM() {
+    const container = modal.root.querySelector(".loomos-workshop-content");
+    if (!container) return;
+    const widgetCards = container.querySelectorAll(".loomos-widget-editor-card");
+    const nextWidgets = settings.layout ? JSON.parse(JSON.stringify(settings.layout.widgets)) : [];
+    widgetCards.forEach((card) => {
+      const widgetId = card.dataset.widgetId;
+      const widget = nextWidgets.find((w) => w.id === widgetId);
+      if (!widget) return;
+      const trackInput = card.querySelector("[data-widget-property='track']");
+      const displayInput = card.querySelector("[data-widget-property='display']");
+      const injectInput = card.querySelector("[data-widget-property='inject']");
+      const slotSelect = card.querySelector("[data-widget-property='slot']");
+      const displayModeSelect = card.querySelector("[data-widget-property='displayMode']");
+      const priorityInput = card.querySelector("[data-widget-property='tokenPriority']");
+      const orderInput = card.querySelector("[data-widget-property='order']");
+      if (trackInput) widget.track = trackInput.checked;
+      if (displayInput) widget.display = displayInput.checked;
+      if (injectInput) widget.inject = injectInput.checked;
+      if (slotSelect) widget.slot = slotSelect.value;
+      if (displayModeSelect) widget.displayMode = displayModeSelect.value;
+      if (priorityInput) widget.tokenPriority = Number(priorityInput.value);
+      if (orderInput) widget.order = Number(orderInput.value);
+    });
+    nextWidgets.sort((a, b) => a.order - b.order);
+    const responsiveModeSelect = container.querySelector("[data-layout-input='responsive-mode']");
+    const responsiveMode = responsiveModeSelect ? responsiveModeSelect.value : settings.layout?.responsiveMode || "single-column";
+    const layout = {
+      slots: settings.layout?.slots || [],
+      widgets: nextWidgets,
+      responsiveMode
+    };
+    const moduleSettings = { ...settings.moduleSettings };
+    for (const w of nextWidgets) {
+      if (w.source === "stock") {
+        moduleSettings[w.id] = {
+          track: w.track,
+          display: w.display,
+          inject: w.inject
+        };
+      } else {
+        const cmIndex = settings.customModules.findIndex((c) => c.id === w.id);
+        if (cmIndex >= 0) {
+          settings.customModules[cmIndex] = {
+            ...settings.customModules[cmIndex],
+            enabled: w.track,
+            display: w.display,
+            inject: w.inject
+          };
+        }
+      }
+    }
+    const nextSettings = LoomOSSettingsSchema.parse({
+      ...settings,
+      moduleSettings,
+      layout
+    });
+    settings.layout = nextSettings.layout;
+    settings.moduleSettings = nextSettings.moduleSettings;
+    settings.customModules = nextSettings.customModules;
+    options.send({
+      type: "save_settings",
+      requestId: options.requestId("layout-save"),
+      settings
+    });
+    options.onStatus("Dashboard layout saved");
+    render();
+  }
+  function renderWidgetEditorCard(w, slots) {
+    const slotsOptions = slots.map((s) => `
+      <option value="${s.id}" ${w.slot === s.id ? "selected" : ""}>${escapeHtml(s.label)}</option>
+    `).join("");
+    const displayModes = ["hero", "card", "compact", "rail", "timeline", "hidden"];
+    const modeOptions = displayModes.map((m) => `
+      <option value="${m}" ${w.displayMode === m ? "selected" : ""}>${m}</option>
+    `).join("");
+    return `
+      <div class="loomos-widget-editor-card" data-widget-id="${w.id}">
+        <div class="loomos-widget-card-heading">
+          <strong>${escapeHtml(w.label)}</strong>
+          <span class="loomos-badge loomos-badge-source-${w.source}">${w.source}</span>
+        </div>
+        <div class="loomos-widget-card-id-row">
+          <code>id: ${escapeHtml(w.id)}</code>
+        </div>
+        
+        <div class="loomos-widget-card-controls">
+          <div class="loomos-widget-control-switches">
+            <label class="loomos-widget-switch">
+              <input type="checkbox" data-widget-property="track" ${w.track ? "checked" : ""}>
+              <span>Track</span>
+            </label>
+            <label class="loomos-widget-switch">
+              <input type="checkbox" data-widget-property="display" ${w.display ? "checked" : ""}>
+              <span>Display</span>
+            </label>
+            <label class="loomos-widget-switch">
+              <input type="checkbox" data-widget-property="inject" ${w.inject ? "checked" : ""}>
+              <span>Inject</span>
+            </label>
+          </div>
+
+          <div class="loomos-widget-selectors">
+            <label>
+              <span>Slot</span>
+              <select data-widget-property="slot" class="loomos-select">
+                ${slotsOptions}
+              </select>
+            </label>
+
+            <label>
+              <span>Display Mode</span>
+              <select data-widget-property="displayMode" class="loomos-select">
+                ${modeOptions}
+              </select>
+            </label>
+
+            <label class="loomos-widget-priority">
+              <span>Priority</span>
+              <input type="number" data-widget-property="tokenPriority" class="loomos-input" value="${w.tokenPriority}">
+            </label>
+
+            <label class="loomos-widget-order">
+              <span>Order</span>
+              <input type="number" data-widget-property="order" class="loomos-input" value="${w.order}">
+            </label>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  function layoutHtml() {
+    const layout = settings.layout;
+    if (!layout) {
+      return `<div class="loomos-empty"><h3>No layout settings found</h3></div>`;
+    }
+    const theme2 = selectedRecord()?.artifact.kind === "theme" ? selectedRecord()?.artifact : null;
+    const diagnostics = inspectLayoutDiagnostics(layout, settings, theme2);
+    const activeWidgets = layout.widgets;
+    const queryLower = layoutQuery.toLowerCase().trim();
+    const filteredWidgets = activeWidgets.filter(
+      (w) => w.label.toLowerCase().includes(queryLower) || w.moduleId.toLowerCase().includes(queryLower)
+    );
+    const slots = layout.slots;
+    return `
+      <section class="loomos-workshop-panel loomos-layout-studio">
+        <div class="loomos-workshop-heading">
+          <div><span class="loomos-kicker">Interactive slot builder</span><h2>Dashboard Layout</h2></div>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="loomos-button loomos-btn-sm" data-layout-action="reset-layout" title="Reset layout to default settings">Reset Layout</button>
+            <button type="button" class="loomos-button loomos-button-primary loomos-btn-sm" data-layout-action="save-layout">Save Layout</button>
+          </div>
+        </div>
+
+        ${diagnostics.length > 0 ? `
+          <div class="loomos-layout-diagnostics">
+            ${diagnostics.map((d) => `
+              <div class="loomos-layout-diag-item is-${d.severity}">
+                <strong>${d.severity.toUpperCase()}:</strong> ${escapeHtml(d.message)}
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
+
+        <div class="loomos-layout-controls">
+          <div class="loomos-layout-search-row">
+            <input type="text" placeholder="Search widgets..." class="loomos-input loomos-layout-search" value="${escapeHtml(layoutQuery)}" data-layout-input="search">
+            <label class="loomos-checkbox-label" style="user-select:none; cursor:pointer;">
+              <input type="checkbox" data-layout-input="group-by-slot" ${layoutGroupBySlot ? "checked" : ""}>
+              <span>Group by slot</span>
+            </label>
+            <label class="loomos-layout-responsive-mode">
+              <span>Responsive:</span>
+              <select data-layout-input="responsive-mode" class="loomos-select">
+                <option value="single-column" ${layout.responsiveMode === "single-column" ? "selected" : ""}>Single Column</option>
+                <option value="adaptive-grid" ${layout.responsiveMode === "adaptive-grid" ? "selected" : ""}>Adaptive Grid</option>
+                <option value="desktop-split" ${layout.responsiveMode === "desktop-split" ? "selected" : ""}>Desktop Split</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="loomos-layout-builder-container">
+          ${layoutGroupBySlot ? `
+            <div class="loomos-layout-slots-grid">
+              ${slots.map((slot) => {
+      const slotWidgets = filteredWidgets.filter((w) => w.slot === slot.id);
+      return `
+                  <div class="loomos-layout-slot-card" data-slot-id="${slot.id}">
+                    <div class="loomos-layout-slot-header">
+                      <strong>${escapeHtml(slot.label)}</strong>
+                      <span class="loomos-badge">${slotWidgets.length}</span>
+                    </div>
+                    <p class="loomos-layout-slot-desc">${escapeHtml(slot.description)}</p>
+                    <div class="loomos-layout-slot-widgets">
+                      ${slotWidgets.length === 0 ? `<p class="loomos-muted" style="font-size:11px; padding:8px;">No widgets in this slot.</p>` : ""}
+                      ${slotWidgets.map((w) => renderWidgetEditorCard(w, slots)).join("")}
+                    </div>
+                  </div>
+                `;
+    }).join("")}
+            </div>
+          ` : `
+            <div class="loomos-layout-widgets-list">
+              ${filteredWidgets.length === 0 ? `<div class="loomos-empty"><h3>No widgets match search</h3></div>` : ""}
+              ${filteredWidgets.map((w) => renderWidgetEditorCard(w, slots)).join("")}
+            </div>
+          `}
+        </div>
+      </section>
+    `;
   }
   function previewHtml() {
     const artifact = stagedArtifact ?? workingArtifact;
@@ -39101,6 +40139,7 @@ function openCreatorWorkshop(options) {
       ["library", "Library"],
       ["ai", "AI Creator"],
       ["code", "Code"],
+      ["layout", "Layout"],
       ["preview", "Preview"],
       ["diagnostics", "Diagnostics"],
       ["revisions", "Revisions"]
@@ -39109,7 +40148,7 @@ function openCreatorWorkshop(options) {
           `).join("")}
         </nav>
         <main class="loomos-workshop-content">
-          ${activeView === "library" ? libraryHtml() : activeView === "ai" ? aiHtml() : activeView === "code" ? codeHtml() : activeView === "preview" ? previewHtml() : activeView === "diagnostics" ? diagnosticsHtml() : revisionsHtml()}
+          ${activeView === "library" ? libraryHtml() : activeView === "ai" ? aiHtml() : activeView === "code" ? codeHtml() : activeView === "layout" ? layoutHtml() : activeView === "preview" ? previewHtml() : activeView === "diagnostics" ? diagnosticsHtml() : revisionsHtml()}
         </main>
       </div>`;
     if (activeView === "code" && workingArtifact) {
@@ -39604,18 +40643,75 @@ function openCreatorWorkshop(options) {
       return;
     }
     const actionButton = target?.closest("[data-workshop-action]");
-    if (actionButton) void handleAction(actionButton);
+    if (actionButton) {
+      void handleAction(actionButton);
+      return;
+    }
+    const layoutActionButton = target?.closest("[data-layout-action]");
+    if (layoutActionButton) {
+      const action = layoutActionButton.dataset.layoutAction;
+      if (action === "reset-layout") {
+        const nextSettings = LoomOSSettingsSchema.parse({
+          ...settings,
+          layout: void 0
+        });
+        settings.layout = nextSettings.layout;
+        settings.moduleSettings = nextSettings.moduleSettings;
+        settings.customModules = nextSettings.customModules;
+        options.send({
+          type: "save_settings",
+          requestId: options.requestId("layout-reset"),
+          settings
+        });
+        options.onStatus("Dashboard layout reset to defaults");
+        render();
+      } else if (action === "save-layout") {
+        saveLayoutFromDOM();
+      }
+      return;
+    }
   };
   const onInput = (event) => {
     const input = event.target;
-    if (!input?.matches("[data-workshop-search]")) return;
-    const query = input.value.trim().toLowerCase();
-    modal.root.querySelectorAll("[data-artifact-row]").forEach((row) => {
-      row.hidden = Boolean(query) && !(row.dataset.search ?? "").includes(query);
-    });
+    if (input?.matches("[data-workshop-search]")) {
+      const query = input.value.trim().toLowerCase();
+      modal.root.querySelectorAll("[data-artifact-row]").forEach((row) => {
+        row.hidden = Boolean(query) && !(row.dataset.search ?? "").includes(query);
+      });
+      return;
+    }
+    if (input?.matches("[data-layout-input='search']")) {
+      const query = input.value.trim().toLowerCase();
+      layoutQuery = input.value;
+      modal.root.querySelectorAll(".loomos-widget-editor-card").forEach((card) => {
+        const label = card.querySelector("strong")?.textContent?.toLowerCase() ?? "";
+        const id2 = card.dataset.widgetId?.toLowerCase() ?? "";
+        const matches = label.includes(query) || id2.includes(query);
+        card.style.display = matches ? "" : "none";
+      });
+      return;
+    }
+  };
+  const onChange = (event) => {
+    const target = event.target;
+    if (target?.matches("[data-layout-input='group-by-slot']")) {
+      const checkbox = target;
+      layoutGroupBySlot = checkbox.checked;
+      render();
+      return;
+    }
+    if (target?.matches("[data-layout-input='responsive-mode']")) {
+      const select = target;
+      if (settings.layout) {
+        settings.layout.responsiveMode = select.value;
+      }
+      render();
+      return;
+    }
   };
   modal.root.addEventListener("click", onClick);
   modal.root.addEventListener("input", onInput);
+  modal.root.addEventListener("change", onChange);
   const removeDismiss = modal.onDismiss(() => {
     modalDismissed = true;
     handle.destroy();
@@ -40710,8 +41806,9 @@ function setup(ctx) {
       </section>`;
   }
   function diagnosticText() {
+    const layoutIssues = settings.layout ? inspectLayoutDiagnostics(settings.layout, settings, activeTheme()) : [];
     const lines = [
-      `version: 0.1.17`,
+      `version: 0.1.18`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -40721,7 +41818,8 @@ function setup(ctx) {
       `elapsed: ${pipeline ? `${Math.round(pipeline.elapsedMs / 100) / 10}s` : "-"}`,
       `normalized: ${pipeline?.normalized === void 0 ? "-" : pipeline.normalized ? "yes" : "no"}`,
       `fallbackSaved: ${pipeline?.fallbackSaved === void 0 ? "-" : pipeline.fallbackSaved ? "yes" : "no"}`,
-      ...pipeline?.issues?.length ? ["issues:", ...pipeline.issues.slice(0, 8).map((issue) => `- ${issue}`)] : []
+      ...pipeline?.issues?.length ? ["issues:", ...pipeline.issues.slice(0, 8).map((issue) => `- ${issue}`)] : [],
+      ...layoutIssues.length ? ["layout issues:", ...layoutIssues.map((issue) => `- [${issue.severity.toUpperCase()}] ${issue.message}`)] : []
     ];
     return lines.join("\n");
   }
@@ -40890,7 +41988,11 @@ function setup(ctx) {
       if (iframe) {
         iframe.srcdoc = buildThemeDocument(
           theme2,
-          buildViewerModel(state, settings, historyItems, status, viewerTab),
+          enrichViewerModelWithLayout(
+            buildViewerModel(state, settings, historyItems, status, viewerTab),
+            state,
+            settings
+          ),
           {
             nonce: activeThemeNonce,
             developerModeEnabled: settings.developerMode
@@ -41056,11 +42158,13 @@ function setup(ctx) {
   }
   function applyModulePreset(preset) {
     let nextSettings;
+    let nextLayout = void 0;
     if (preset.startsWith("custom:")) {
       const presetId = preset.substring(7);
       const custom2 = settings.customModulePresets?.find((p) => p.id === presetId);
       if (custom2) {
-        nextSettings = custom2.moduleSettings;
+        nextSettings = { ...custom2.moduleSettings };
+        nextLayout = custom2.layout ? JSON.parse(JSON.stringify(custom2.layout)) : void 0;
       } else {
         return;
       }
@@ -41076,7 +42180,8 @@ function setup(ctx) {
     settings = LoomOSSettingsSchema.parse({
       ...settings,
       modulePreset: preset,
-      moduleSettings: nextSettings
+      moduleSettings: nextSettings,
+      ...nextLayout ? { layout: nextLayout } : {}
     });
     status = `Preset applied`;
     send({ type: "save_settings", requestId: requestId("preset"), settings });
@@ -41287,7 +42392,8 @@ function setup(ctx) {
           description: desc,
           createdAt: (/* @__PURE__ */ new Date()).toISOString(),
           updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-          moduleSettings: { ...settings.moduleSettings }
+          moduleSettings: { ...settings.moduleSettings },
+          layout: settings.layout ? JSON.parse(JSON.stringify(settings.layout)) : void 0
         };
         settings.customModulePresets = [...presets, newPreset];
         settings.modulePreset = "custom:" + newId;
@@ -41306,6 +42412,7 @@ function setup(ctx) {
         presets[idx] = {
           ...presets[idx],
           moduleSettings: { ...settings.moduleSettings },
+          layout: settings.layout ? JSON.parse(JSON.stringify(settings.layout)) : void 0,
           updatedAt: (/* @__PURE__ */ new Date()).toISOString()
         };
         settings.customModulePresets = [...presets];
@@ -41325,7 +42432,8 @@ function setup(ctx) {
           description: original.description,
           createdAt: (/* @__PURE__ */ new Date()).toISOString(),
           updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-          moduleSettings: { ...original.moduleSettings }
+          moduleSettings: { ...original.moduleSettings },
+          layout: original.layout ? JSON.parse(JSON.stringify(original.layout)) : void 0
         };
         settings.customModulePresets = [...presets, duplicatePreset];
         settings.modulePreset = "custom:" + newId;

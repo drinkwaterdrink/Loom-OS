@@ -2,6 +2,23 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.18] - 2026-06-14
+
+### Added
+
+- Added additive slot-based layout and widget system to support named layout slots (`hero`, `main`, `cast`, `world`, `story`, `tools`) and movable widgets.
+- Added a dedicated "Layout" tab to the Creator Workshop.
+- Added mobile-friendly stacked widget editor cards with 44px tap targets, search filters, slot assignments, display modes, ordering, and token priority settings.
+- Added layout diagnostic warnings for untracked displayed/injected widgets, too many widgets per slot, missing custom/stock modules, or theme referencing missing slots.
+- Added `enrichViewerModelWithLayout` and layout-aware renderer functions in `src/frontend/render.ts`.
+- Added a comprehensive automated test suite `tests/layout.test.ts` covering normalization, backward compatibility, preset imports, slot ordering, diagnostics, and synchronization.
+
+### Changed
+
+- Updated `LoomOSSettingsSchema` and preprocessor to initialize layout with default settings when layout is undefined/reset.
+- Extended `ViewerModelV1` and `LoomPackPresetSchema` with layout schema structures.
+- Integrated preset copies, duplicate, and save-as handlers in the frontend and backend to preserve layout fields.
+
 ## [0.1.17] - 2026-06-14
 
 ### Added

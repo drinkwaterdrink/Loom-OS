@@ -952,6 +952,7 @@ async function installLoomPack(
         ...settings.moduleSettings,
         ...(pack.preset.moduleSettings || {}),
       },
+      layout: pack.preset.layout,
     };
     if (existingIndex >= 0) {
       nextPresets[existingIndex] = presetVal;
@@ -981,6 +982,7 @@ async function installLoomPack(
         ...settings.moduleSettings,
         ...(pack.preset.moduleSettings || {}),
       },
+      layout: pack.preset.layout || settings.layout,
       ...(pack.preset.activeThemeId && selected.has(pack.preset.activeThemeId) && activateTheme ? { activeThemeId: pack.preset.activeThemeId } : {}),
       ...(pack.preset.settings || {}),
     });

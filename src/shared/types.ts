@@ -13,6 +13,9 @@ import type {
   CustomModuleDataSchema,
   CustomModuleFieldSchema,
   StateHistoryItemSchema,
+  LayoutSlotSchema,
+  WidgetInstanceSchema,
+  TrackerLayoutSchema,
 } from "./schemas";
 export type {
   ModuleCatalogEntry,
@@ -35,6 +38,9 @@ export type CustomModuleItem = z.infer<typeof CustomModuleItemSchema>;
 export type CustomModuleData = z.infer<typeof CustomModuleDataSchema>;
 export type CustomModuleField = z.infer<typeof CustomModuleFieldSchema>;
 export type StateHistoryItem = z.infer<typeof StateHistoryItemSchema>;
+export type LayoutSlot = z.infer<typeof LayoutSlotSchema>;
+export type WidgetInstance = z.infer<typeof WidgetInstanceSchema>;
+export type TrackerLayout = z.infer<typeof TrackerLayoutSchema>;
 
 export interface PermissionSnapshot {
   generation: boolean;

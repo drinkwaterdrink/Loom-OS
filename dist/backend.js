@@ -5538,7 +5538,8 @@ var ThemeArtifactSchema = ArtifactBaseSchema.extend({
     developerMode: external_exports.boolean().default(false),
     capabilities: external_exports.array(ThemeCapabilitySchema).max(8).default([]),
     minWidth: external_exports.number().int().min(280).max(2400).default(320),
-    preferredColorScheme: external_exports.enum(["auto", "dark", "light"]).default("auto")
+    preferredColorScheme: external_exports.enum(["auto", "dark", "light"]).default("auto"),
+    slots: external_exports.array(external_exports.string()).optional()
   }).strict(),
   view: ArtifactViewSchema,
   sampleData: external_exports.unknown().default({})
@@ -6033,7 +6034,8 @@ var LoomPackPresetSchema = external_exports.object({
     compilerSeedTokenBudget: external_exports.number().int().min(200).max(1e4).optional(),
     historyRetentionLimit: external_exports.number().int().min(1).max(1e3).optional(),
     developerMode: external_exports.boolean().optional()
-  }).strict().optional()
+  }).strict().optional(),
+  layout: TrackerLayoutSchema.optional()
 }).strict();
 var LoomPackSchema = external_exports.object({
   format: external_exports.literal("loomos-pack"),
@@ -9057,7 +9059,8 @@ async function installLoomPack(packValue, selectedArtifactIds, installMode, acti
       moduleSettings: {
         ...settings.moduleSettings,
         ...pack.preset.moduleSettings || {}
-      }
+      },
+      layout: pack.preset.layout
     };
     if (existingIndex >= 0) {
       nextPresets[existingIndex] = presetVal;
@@ -9085,6 +9088,7 @@ async function installLoomPack(packValue, selectedArtifactIds, installMode, acti
         ...settings.moduleSettings,
         ...pack.preset.moduleSettings || {}
       },
+      layout: pack.preset.layout || settings.layout,
       ...pack.preset.activeThemeId && selected.has(pack.preset.activeThemeId) && activateTheme ? { activeThemeId: pack.preset.activeThemeId } : {},
       ...pack.preset.settings || {}
     });

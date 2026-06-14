@@ -35,6 +35,7 @@ import type {
   StateHistoryItem,
 } from "../shared/types";
 import { buildViewerModel } from "../shared/viewerModel";
+import { LoomOSSettingsSchema } from "../shared/schemas";
 import {
   buildThemeDocument,
   inspectThemeComplexity,
@@ -45,9 +46,9 @@ import {
   type CodeEditorHandle,
   type CodeEditorLanguage,
 } from "./codeEditor";
-import { escapeHtml } from "./render";
+import { escapeHtml, enrichViewerModelWithLayout, inspectLayoutDiagnostics } from "./render";
 
-type WorkshopView = "library" | "ai" | "code" | "preview" | "diagnostics" | "revisions";
+type WorkshopView = "library" | "ai" | "code" | "layout" | "preview" | "diagnostics" | "revisions";
 
 export interface CreatorWorkshopOptions {
   ctx: SpindleFrontendContext;
@@ -370,6 +371,8 @@ export function openCreatorWorkshop(
   let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
   let destroyed = false;
   let modalDismissed = false;
+  let layoutQuery = "";
+  let layoutGroupBySlot = false;
 
   const modal: SpindleModalHandle = options.ctx.ui.showModal({
     title: "LoomOS Creator Workshop",
@@ -586,7 +589,11 @@ export function openCreatorWorkshop(
     if (!previewTheme) {
       return `<!doctype html><body style="font-family:system-ui;background:#111;color:#eee;padding:20px"><h2>This Blueprint has no theme to preview.</h2></body>`;
     }
-    const baseModel = buildViewerModel(state, settings, history, "Workshop preview");
+    const baseModel = enrichViewerModelWithLayout(
+      buildViewerModel(state, settings, history, "Workshop preview"),
+      state,
+      settings
+    );
     const model = artifact.kind === "module"
       ? {
           ...baseModel,
@@ -603,6 +610,240 @@ export function openCreatorWorkshop(
       developerModeEnabled: settings.developerMode,
     };
     return buildThemeDocument(previewTheme, model as typeof baseModel, runtime);
+  }
+
+  function saveLayoutFromDOM() {
+    const container = modal.root.querySelector(".loomos-workshop-content");
+    if (!container) return;
+
+    const widgetCards = container.querySelectorAll(".loomos-widget-editor-card");
+    const nextWidgets = settings.layout ? JSON.parse(JSON.stringify(settings.layout.widgets)) : [];
+
+    widgetCards.forEach((card: any) => {
+      const widgetId = card.dataset.widgetId;
+      const widget = nextWidgets.find((w: any) => w.id === widgetId);
+      if (!widget) return;
+
+      const trackInput = card.querySelector("[data-widget-property='track']") as HTMLInputElement;
+      const displayInput = card.querySelector("[data-widget-property='display']") as HTMLInputElement;
+      const injectInput = card.querySelector("[data-widget-property='inject']") as HTMLInputElement;
+      const slotSelect = card.querySelector("[data-widget-property='slot']") as HTMLSelectElement;
+      const displayModeSelect = card.querySelector("[data-widget-property='displayMode']") as HTMLSelectElement;
+      const priorityInput = card.querySelector("[data-widget-property='tokenPriority']") as HTMLInputElement;
+      const orderInput = card.querySelector("[data-widget-property='order']") as HTMLInputElement;
+
+      if (trackInput) widget.track = trackInput.checked;
+      if (displayInput) widget.display = displayInput.checked;
+      if (injectInput) widget.inject = injectInput.checked;
+      if (slotSelect) widget.slot = slotSelect.value;
+      if (displayModeSelect) widget.displayMode = displayModeSelect.value as any;
+      if (priorityInput) widget.tokenPriority = Number(priorityInput.value);
+      if (orderInput) widget.order = Number(orderInput.value);
+    });
+
+    nextWidgets.sort((a: any, b: any) => a.order - b.order);
+
+    const responsiveModeSelect = container.querySelector("[data-layout-input='responsive-mode']") as HTMLSelectElement;
+    const responsiveMode = responsiveModeSelect ? responsiveModeSelect.value : (settings.layout?.responsiveMode || "single-column");
+
+    const layout = {
+      slots: settings.layout?.slots || [],
+      widgets: nextWidgets,
+      responsiveMode: responsiveMode as any,
+    };
+
+    const moduleSettings = { ...settings.moduleSettings };
+    for (const w of nextWidgets) {
+      if (w.source === "stock") {
+        moduleSettings[w.id as keyof typeof settings.moduleSettings] = {
+          track: w.track,
+          display: w.display,
+          inject: w.inject,
+        };
+      } else {
+        const cmIndex = settings.customModules.findIndex(c => c.id === w.id);
+        if (cmIndex >= 0) {
+          settings.customModules[cmIndex] = {
+            ...settings.customModules[cmIndex]!,
+            enabled: w.track,
+            display: w.display,
+            inject: w.inject,
+          };
+        }
+      }
+    }
+
+    const nextSettings = LoomOSSettingsSchema.parse({
+      ...settings,
+      moduleSettings,
+      layout,
+    });
+
+    settings.layout = nextSettings.layout;
+    settings.moduleSettings = nextSettings.moduleSettings;
+    settings.customModules = nextSettings.customModules;
+
+    options.send({
+      type: "save_settings",
+      requestId: options.requestId("layout-save"),
+      settings,
+    });
+
+    options.onStatus("Dashboard layout saved");
+    render();
+  }
+
+  function renderWidgetEditorCard(w: any, slots: any[]): string {
+    const slotsOptions = slots.map(s => `
+      <option value="${s.id}" ${w.slot === s.id ? "selected" : ""}>${escapeHtml(s.label)}</option>
+    `).join("");
+
+    const displayModes = ["hero", "card", "compact", "rail", "timeline", "hidden"];
+    const modeOptions = displayModes.map(m => `
+      <option value="${m}" ${w.displayMode === m ? "selected" : ""}>${m}</option>
+    `).join("");
+
+    return `
+      <div class="loomos-widget-editor-card" data-widget-id="${w.id}">
+        <div class="loomos-widget-card-heading">
+          <strong>${escapeHtml(w.label)}</strong>
+          <span class="loomos-badge loomos-badge-source-${w.source}">${w.source}</span>
+        </div>
+        <div class="loomos-widget-card-id-row">
+          <code>id: ${escapeHtml(w.id)}</code>
+        </div>
+        
+        <div class="loomos-widget-card-controls">
+          <div class="loomos-widget-control-switches">
+            <label class="loomos-widget-switch">
+              <input type="checkbox" data-widget-property="track" ${w.track ? "checked" : ""}>
+              <span>Track</span>
+            </label>
+            <label class="loomos-widget-switch">
+              <input type="checkbox" data-widget-property="display" ${w.display ? "checked" : ""}>
+              <span>Display</span>
+            </label>
+            <label class="loomos-widget-switch">
+              <input type="checkbox" data-widget-property="inject" ${w.inject ? "checked" : ""}>
+              <span>Inject</span>
+            </label>
+          </div>
+
+          <div class="loomos-widget-selectors">
+            <label>
+              <span>Slot</span>
+              <select data-widget-property="slot" class="loomos-select">
+                ${slotsOptions}
+              </select>
+            </label>
+
+            <label>
+              <span>Display Mode</span>
+              <select data-widget-property="displayMode" class="loomos-select">
+                ${modeOptions}
+              </select>
+            </label>
+
+            <label class="loomos-widget-priority">
+              <span>Priority</span>
+              <input type="number" data-widget-property="tokenPriority" class="loomos-input" value="${w.tokenPriority}">
+            </label>
+
+            <label class="loomos-widget-order">
+              <span>Order</span>
+              <input type="number" data-widget-property="order" class="loomos-input" value="${w.order}">
+            </label>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function layoutHtml(): string {
+    const layout = settings.layout;
+    if (!layout) {
+      return `<div class="loomos-empty"><h3>No layout settings found</h3></div>`;
+    }
+
+    const theme = selectedRecord()?.artifact.kind === "theme" ? selectedRecord()?.artifact as ThemeArtifact : null;
+    const diagnostics = inspectLayoutDiagnostics(layout, settings, theme);
+    const activeWidgets = layout.widgets;
+
+    const queryLower = layoutQuery.toLowerCase().trim();
+    const filteredWidgets = activeWidgets.filter((w) =>
+      w.label.toLowerCase().includes(queryLower) ||
+      w.moduleId.toLowerCase().includes(queryLower)
+    );
+
+    const slots = layout.slots;
+
+    return `
+      <section class="loomos-workshop-panel loomos-layout-studio">
+        <div class="loomos-workshop-heading">
+          <div><span class="loomos-kicker">Interactive slot builder</span><h2>Dashboard Layout</h2></div>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="loomos-button loomos-btn-sm" data-layout-action="reset-layout" title="Reset layout to default settings">Reset Layout</button>
+            <button type="button" class="loomos-button loomos-button-primary loomos-btn-sm" data-layout-action="save-layout">Save Layout</button>
+          </div>
+        </div>
+
+        ${diagnostics.length > 0 ? `
+          <div class="loomos-layout-diagnostics">
+            ${diagnostics.map(d => `
+              <div class="loomos-layout-diag-item is-${d.severity}">
+                <strong>${d.severity.toUpperCase()}:</strong> ${escapeHtml(d.message)}
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
+
+        <div class="loomos-layout-controls">
+          <div class="loomos-layout-search-row">
+            <input type="text" placeholder="Search widgets..." class="loomos-input loomos-layout-search" value="${escapeHtml(layoutQuery)}" data-layout-input="search">
+            <label class="loomos-checkbox-label" style="user-select:none; cursor:pointer;">
+              <input type="checkbox" data-layout-input="group-by-slot" ${layoutGroupBySlot ? "checked" : ""}>
+              <span>Group by slot</span>
+            </label>
+            <label class="loomos-layout-responsive-mode">
+              <span>Responsive:</span>
+              <select data-layout-input="responsive-mode" class="loomos-select">
+                <option value="single-column" ${layout.responsiveMode === "single-column" ? "selected" : ""}>Single Column</option>
+                <option value="adaptive-grid" ${layout.responsiveMode === "adaptive-grid" ? "selected" : ""}>Adaptive Grid</option>
+                <option value="desktop-split" ${layout.responsiveMode === "desktop-split" ? "selected" : ""}>Desktop Split</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="loomos-layout-builder-container">
+          ${layoutGroupBySlot ? `
+            <div class="loomos-layout-slots-grid">
+              ${slots.map(slot => {
+                const slotWidgets = filteredWidgets.filter(w => w.slot === slot.id);
+                return `
+                  <div class="loomos-layout-slot-card" data-slot-id="${slot.id}">
+                    <div class="loomos-layout-slot-header">
+                      <strong>${escapeHtml(slot.label)}</strong>
+                      <span class="loomos-badge">${slotWidgets.length}</span>
+                    </div>
+                    <p class="loomos-layout-slot-desc">${escapeHtml(slot.description)}</p>
+                    <div class="loomos-layout-slot-widgets">
+                      ${slotWidgets.length === 0 ? `<p class="loomos-muted" style="font-size:11px; padding:8px;">No widgets in this slot.</p>` : ""}
+                      ${slotWidgets.map(w => renderWidgetEditorCard(w, slots)).join("")}
+                    </div>
+                  </div>
+                `;
+              }).join("")}
+            </div>
+          ` : `
+            <div class="loomos-layout-widgets-list">
+              ${filteredWidgets.length === 0 ? `<div class="loomos-empty"><h3>No widgets match search</h3></div>` : ""}
+              ${filteredWidgets.map(w => renderWidgetEditorCard(w, slots)).join("")}
+            </div>
+          `}
+        </div>
+      </section>
+    `;
   }
 
   function previewHtml(): string {
@@ -702,6 +943,7 @@ export function openCreatorWorkshop(
             ["library", "Library"],
             ["ai", "AI Creator"],
             ["code", "Code"],
+            ["layout", "Layout"],
             ["preview", "Preview"],
             ["diagnostics", "Diagnostics"],
             ["revisions", "Revisions"],
@@ -713,6 +955,7 @@ export function openCreatorWorkshop(
           ${activeView === "library" ? libraryHtml()
             : activeView === "ai" ? aiHtml()
             : activeView === "code" ? codeHtml()
+            : activeView === "layout" ? layoutHtml()
             : activeView === "preview" ? previewHtml()
             : activeView === "diagnostics" ? diagnosticsHtml()
             : revisionsHtml()}
@@ -1243,20 +1486,78 @@ export function openCreatorWorkshop(
       return;
     }
     const actionButton = target?.closest<HTMLElement>("[data-workshop-action]");
-    if (actionButton) void handleAction(actionButton);
+    if (actionButton) {
+      void handleAction(actionButton);
+      return;
+    }
+    const layoutActionButton = target?.closest<HTMLElement>("[data-layout-action]");
+    if (layoutActionButton) {
+      const action = layoutActionButton.dataset.layoutAction;
+      if (action === "reset-layout") {
+        const nextSettings = LoomOSSettingsSchema.parse({
+          ...settings,
+          layout: undefined,
+        });
+        settings.layout = nextSettings.layout;
+        settings.moduleSettings = nextSettings.moduleSettings;
+        settings.customModules = nextSettings.customModules;
+        options.send({
+          type: "save_settings",
+          requestId: options.requestId("layout-reset"),
+          settings,
+        });
+        options.onStatus("Dashboard layout reset to defaults");
+        render();
+      } else if (action === "save-layout") {
+        saveLayoutFromDOM();
+      }
+      return;
+    }
   };
 
   const onInput = (event: Event): void => {
     const input = event.target as HTMLInputElement | null;
-    if (!input?.matches("[data-workshop-search]")) return;
-    const query = input.value.trim().toLowerCase();
-    modal.root.querySelectorAll<HTMLElement>("[data-artifact-row]").forEach((row) => {
-      row.hidden = Boolean(query) && !(row.dataset.search ?? "").includes(query);
-    });
+    if (input?.matches("[data-workshop-search]")) {
+      const query = input.value.trim().toLowerCase();
+      modal.root.querySelectorAll<HTMLElement>("[data-artifact-row]").forEach((row) => {
+        row.hidden = Boolean(query) && !(row.dataset.search ?? "").includes(query);
+      });
+      return;
+    }
+    if (input?.matches("[data-layout-input='search']")) {
+      const query = input.value.trim().toLowerCase();
+      layoutQuery = input.value;
+      modal.root.querySelectorAll<HTMLElement>(".loomos-widget-editor-card").forEach((card) => {
+        const label = card.querySelector("strong")?.textContent?.toLowerCase() ?? "";
+        const id = card.dataset.widgetId?.toLowerCase() ?? "";
+        const matches = label.includes(query) || id.includes(query);
+        card.style.display = matches ? "" : "none";
+      });
+      return;
+    }
+  };
+
+  const onChange = (event: Event): void => {
+    const target = event.target as HTMLElement | null;
+    if (target?.matches("[data-layout-input='group-by-slot']")) {
+      const checkbox = target as HTMLInputElement;
+      layoutGroupBySlot = checkbox.checked;
+      render();
+      return;
+    }
+    if (target?.matches("[data-layout-input='responsive-mode']")) {
+      const select = target as HTMLSelectElement;
+      if (settings.layout) {
+        settings.layout.responsiveMode = select.value as any;
+      }
+      render();
+      return;
+    }
   };
 
   modal.root.addEventListener("click", onClick);
   modal.root.addEventListener("input", onInput);
+  modal.root.addEventListener("change", onChange);
   const removeDismiss = modal.onDismiss(() => {
     modalDismissed = true;
     handle.destroy();

@@ -1,13 +1,16 @@
 # LoomOS Command Deck
 
-Current release: **0.1.17**
+Current release: **0.1.18**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.17
+## Key Features & Upgrades in 0.1.18
 
+- **Phase 2 Slot-Based Layout & Widget Overhaul**: Added additive slot-based layout system. Themes can define named layout regions, and stock or custom modules render as movable widgets inside them, preserving compatibility with monolithic themes.
+- **Minimal Layout Studio UI**: Added a dedicated Layout view in Creator Workshop with stacked cards, search filters, slot assignments, display modes, ordering, and token priority, optimized for mobile (min 44px tap targets).
+- **Layout Diagnostics Warnings**: Automatically warn about untracked displayed/injected widgets, too many widgets per slot, missing modules, or missing slots.
 - **Phase 1.1 Loom Pack Installation Pass**: Overhauled the pack installation path to be transaction-safe and fully atomic on the backend, preventing database overwrite races, adding clear installation mode selectors, and supporting blueprint nested part selection.
 - **Loom Pack Package Format**: Bundle multiple library artifacts and preset settings into a single `.loompack` file.
 - **Unified Preset Control**: Import preset configs to settings dynamically during pack installation.
@@ -322,6 +325,16 @@ A Theme contains a manifest and a complete tracker-stage view. The manifest decl
 - Counts for modules, cast, threads, risks, history, and custom modules.
 - Scene Context, Recent Changes, meters, scene, cast, world, story, continuity, tools, and audit data.
 - Artifact-backed custom module data keyed by module ID.
+- Layout metadata containing slots (with active widget counts), widgets (with pre-rendered sanitized HTML and metadata), slots grouped by layout regions, and responsive mode settings.
+
+#### Slot-Based Layouts and Widget Rendering
+
+Themes can declare named layout slots in their manifests and view templates, allowing modules and custom trackers to render as movable widgets inside those regions. 
+
+- **Named Slots**: Layout regions (such as `hero`, `main`, `cast`, `world`, `story`, `tools`) are registered with widget counts, limits, and descriptions.
+- **Widgets**: Movable module instances rendered inside slots. They are automatically grouped and sorted by `order`.
+- **Pre-rendered HTML**: Each widget's output is securely pre-rendered on the parent side as `renderedContent` and injected into the theme templates safely via Mustache-lite loops (e.g., `{{#each layout.slotsGrouped.main.widgets}} {{{renderedContent}}} {{/each}}`), keeping strict iframe sandbox/CSP rules unchanged.
+- **Theme Backward Compatibility**: Themes without slots continue rendering exactly as monolithic layouts as before. If no slots are defined, the system automatically falls back to standard monolithic views.
 
 ### Tracker Blueprint
 

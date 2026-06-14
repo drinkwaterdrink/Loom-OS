@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { parseModuleBundle } from "./moduleBundles";
-import { CustomModuleSchema, ModuleControlSchema } from "./schemas";
+import { CustomModuleSchema, ModuleControlSchema, TrackerLayoutSchema } from "./schemas";
 import type { CustomModule } from "./types";
 
 export const ARTIFACT_FORMAT = "loomos-artifact" as const;
@@ -299,6 +299,7 @@ export const ThemeArtifactSchema = ArtifactBaseSchema.extend({
     capabilities: z.array(ThemeCapabilitySchema).max(8).default([]),
     minWidth: z.number().int().min(280).max(2400).default(320),
     preferredColorScheme: z.enum(["auto", "dark", "light"]).default("auto"),
+    slots: z.array(z.string()).optional(),
   }).strict(),
   view: ArtifactViewSchema,
   sampleData: z.unknown().default({}),
@@ -875,6 +876,7 @@ export const LoomPackPresetSchema = z.object({
     historyRetentionLimit: z.number().int().min(1).max(1000).optional(),
     developerMode: z.boolean().optional(),
   }).strict().optional(),
+  layout: TrackerLayoutSchema.optional(),
 }).strict();
 
 export const LoomPackSchema = z.object({
