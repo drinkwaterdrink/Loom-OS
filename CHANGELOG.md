@@ -2,6 +2,21 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.15] - 2026-06-14
+
+### Added
+
+- Exposed `activeTab` and active tab boolean flags (`activeTabOverview`, `activeTabCast`, etc.) inside the `meta` field of the `ViewerModelV1` theme data contract. This enables conditional rendering of custom tabs directly in Mustache-lite templates without JavaScript.
+
+### Changed
+
+- Rebuilt the mobile tracker viewer modal to take up the full screen (`100vw` width and `100vh` height) on mobile/tablet viewports (<= 768px wide) to maximize readability and eliminate unnecessary scrolling.
+- Enforced a default viewport-based height (`80vh`) on desktop to prevent custom theme templates inside sandboxed iframe containers from collapsing to the default browser height.
+
+### Fixed
+
+- Prevented custom themes from reverting back to the native tracker layout when a custom tab select action (`select-tab`) is triggered inside the theme document.
+
 ## [0.1.14] - 2026-06-14
 
 ### Added

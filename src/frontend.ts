@@ -314,7 +314,9 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     }
     if (action === "select-tab" && typeof event.data.payload === "string") {
       viewerTab = event.data.payload;
-      viewerUtilityMode = "native";
+      if (!activeTheme()) {
+        viewerUtilityMode = "native";
+      }
       renderViewer();
     }
   }
@@ -1212,7 +1214,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function diagnosticText(): string {
     const lines = [
-      `version: 0.1.14`,
+      `version: 0.1.15`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -1430,7 +1432,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       if (iframe) {
         iframe.srcdoc = buildThemeDocument(
           theme,
-          buildViewerModel(state, settings, historyItems, status),
+          buildViewerModel(state, settings, historyItems, status, viewerTab),
           {
             nonce: activeThemeNonce,
             developerModeEnabled: settings.developerMode,

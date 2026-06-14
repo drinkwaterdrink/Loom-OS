@@ -13,6 +13,15 @@ export interface ViewerModelV1 {
     exactLabel: string;
     status: string;
     activeThemeId: string;
+    activeTab: string;
+    activeTabOverview: boolean;
+    activeTabCast: boolean;
+    activeTabWorld: boolean;
+    activeTabStory: boolean;
+    activeTabContinuity: boolean;
+    activeTabTools: boolean;
+    activeTabHistory: boolean;
+    activeTabSettings: boolean;
   };
   counts: {
     modules: number;
@@ -113,6 +122,7 @@ export function buildViewerModel(
   settings: LoomOSSettings,
   history: StateHistoryItem[] = [],
   status = "",
+  activeTab = "overview",
 ): ViewerModelV1 {
   const fallback = emptyState();
   const modules = Object.fromEntries(
@@ -137,6 +147,15 @@ export function buildViewerModel(
         : "No exact-swipe tracker",
       status,
       activeThemeId: settings.activeThemeId,
+      activeTab,
+      activeTabOverview: activeTab === "overview",
+      activeTabCast: activeTab === "cast",
+      activeTabWorld: activeTab === "world",
+      activeTabStory: activeTab === "story",
+      activeTabContinuity: activeTab === "continuity",
+      activeTabTools: activeTab === "tools",
+      activeTabHistory: activeTab === "history",
+      activeTabSettings: activeTab === "settings",
     },
     counts: {
       modules: state?.activeModules.length ?? 0,

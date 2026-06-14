@@ -9107,20 +9107,21 @@ var LOOMOS_STYLES = `
     overflow: auto;
     padding: 6px;
   }
-
   /* Full-screen tracker runtime */
   .loomos-root[data-view="modal"] {
     align-content: stretch;
     align-items: stretch;
     container: loomos-viewer / inline-size;
     grid-auto-rows: minmax(0, 1fr);
-    height: 100%;
-    max-height: 100%;
+    height: 80vh;
+    min-height: 520px;
+    max-height: 90vh;
     max-width: 100vw;
     overflow: hidden;
     padding: 0 !important;
     width: 100%;
   }
+
   .loomos-viewer-app {
     background: var(--loomos-canvas, #101114);
     display: grid;
@@ -9599,6 +9600,34 @@ var LOOMOS_STYLES = `
     .loomos-studio-hero {
       align-items: stretch;
       flex-direction: column;
+    }
+  }
+
+  @media (max-width: 768px) {
+    div:has(> .loomos-root[data-view="modal"]),
+    div:has(> * > .loomos-root[data-view="modal"]),
+    div:has(> * > * > .loomos-root[data-view="modal"]) {
+      width: 100vw !important;
+      max-width: 100vw !important;
+      height: 100vh !important;
+      max-height: 100vh !important;
+      min-height: 100vh !important;
+      margin: 0 !important;
+      top: 0 !important;
+      left: 0 !important;
+      transform: none !important;
+      border-radius: 0 !important;
+      position: fixed !important;
+      z-index: 9999 !important;
+    }
+    .loomos-root[data-view="modal"] {
+      height: 100vh !important;
+      max-height: 100vh !important;
+      min-height: 100vh !important;
+      width: 100vw !important;
+      max-width: 100vw !important;
+      border-radius: 0 !important;
+      padding-bottom: calc(14px + env(safe-area-inset-bottom)) !important;
     }
   }
 `;
@@ -10237,7 +10266,7 @@ function emptyState() {
     audit: []
   };
 }
-function buildViewerModel(state, settings, history2 = [], status = "") {
+function buildViewerModel(state, settings, history2 = [], status = "", activeTab = "overview") {
   const fallback = emptyState();
   const modules = Object.fromEntries(
     (state?.customModuleData ?? []).map((module) => [
@@ -10258,7 +10287,16 @@ function buildViewerModel(state, settings, history2 = [], status = "") {
       identity: state?.identity ?? null,
       exactLabel: state ? `${state.identity.messageId.slice(0, 8)} | swipe ${state.identity.swipeId}` : "No exact-swipe tracker",
       status,
-      activeThemeId: settings.activeThemeId
+      activeThemeId: settings.activeThemeId,
+      activeTab,
+      activeTabOverview: activeTab === "overview",
+      activeTabCast: activeTab === "cast",
+      activeTabWorld: activeTab === "world",
+      activeTabStory: activeTab === "story",
+      activeTabContinuity: activeTab === "continuity",
+      activeTabTools: activeTab === "tools",
+      activeTabHistory: activeTab === "history",
+      activeTabSettings: activeTab === "settings"
     },
     counts: {
       modules: state?.activeModules.length ?? 0,
@@ -39385,7 +39423,9 @@ function setup(ctx) {
     }
     if (action === "select-tab" && typeof event.data.payload === "string") {
       viewerTab = event.data.payload;
-      viewerUtilityMode = "native";
+      if (!activeTheme()) {
+        viewerUtilityMode = "native";
+      }
       renderViewer();
     }
   }
@@ -40212,7 +40252,7 @@ function setup(ctx) {
   }
   function diagnosticText() {
     const lines = [
-      `version: 0.1.14`,
+      `version: 0.1.15`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -40391,7 +40431,7 @@ function setup(ctx) {
       if (iframe) {
         iframe.srcdoc = buildThemeDocument(
           theme2,
-          buildViewerModel(state, settings, historyItems, status),
+          buildViewerModel(state, settings, historyItems, status, viewerTab),
           {
             nonce: activeThemeNonce,
             developerModeEnabled: settings.developerMode
