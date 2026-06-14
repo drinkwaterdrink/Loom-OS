@@ -840,90 +840,133 @@ export function openCreatorWorkshop(
       maxHeight: Math.min(780, window.innerHeight - 20),
     });
     installModal.root.className = "loomos-root";
+    
+    let artifactsHtml = "";
+    if (pack.artifacts.length === 0) {
+      artifactsHtml = `<p class="loomos-muted">This package contains no artifacts.</p>`;
+    } else {
+      artifactsHtml = pack.artifacts.map((art) => {
+        let html = `
+        <div class="loomos-pack-artifact-group" style="margin-bottom: 8px;">
+          <label class="loomos-check" style="font-weight: 600;">
+            <input type="checkbox" data-pack-part="${escapeHtml(art.id)}" data-pack-kind="${escapeHtml(art.kind)}" checked>
+            <span><strong>${escapeHtml(art.meta.name)}</strong> <small class="loomos-badge">${escapeHtml(art.kind)}</small></span>
+          </label>`;
+        if (art.kind === "blueprint") {
+          if (art.modules.length > 0 || art.theme) {
+            html += `<div class="loomos-blueprint-subparts" style="padding-left: 20px; display: flex; flex-direction: column; gap: 6px; border-left: 2px solid var(--loomos-border, rgba(255,255,255,0.1)); margin-left: 8px; margin-top: 4px;">`;
+            for (const subMod of art.modules) {
+              html += `
+              <label class="loomos-check">
+                <input type="checkbox" data-pack-part="${escapeHtml(subMod.id)}" data-pack-parent="${escapeHtml(art.id)}" data-pack-kind="module" checked>
+                <span>${escapeHtml(subMod.meta.name)} <small class="loomos-badge">module</small></span>
+              </label>`;
+            }
+            if (art.theme) {
+              html += `
+              <label class="loomos-check">
+                <input type="checkbox" data-pack-part="${escapeHtml(art.theme.id)}" data-pack-parent="${escapeHtml(art.id)}" data-pack-kind="theme" checked>
+                <span>${escapeHtml(art.theme.meta.name)} <small class="loomos-badge">theme</small></span>
+              </label>`;
+            }
+            html += `</div>`;
+          }
+        }
+        html += `</div>`;
+        return html;
+      }).join("");
+    }
+
     installModal.root.innerHTML = `
-      <div class="loomos-prompt-dialog">
-        <p class="loomos-kicker">Loom Pack: ${escapeHtml(pack.meta.name)}</p>
-        <p class="loomos-hint">${escapeHtml(pack.meta.description || "No description provided.")}</p>
-        <div class="loomos-blueprint-parts" style="max-height: 240px; overflow-y: auto;">
-          ${pack.artifacts.map((art) => `
-            <label class="loomos-check">
-              <input type="checkbox" data-pack-part="${escapeHtml(art.id)}" checked>
-              <span><strong>${escapeHtml(art.meta.name)}</strong><small>${escapeHtml(art.kind)}</small></span>
-            </label>
-          `).join("") || `<p class="loomos-muted">This package contains no artifacts.</p>`}
+      <div class="loomos-prompt-dialog" style="display: flex; flex-direction: column; gap: 16px; padding: 16px;">
+        <div>
+          <p class="loomos-kicker" style="margin-bottom: 4px; font-weight: bold;">Loom Pack: ${escapeHtml(pack.meta.name)}</p>
+          <p class="loomos-hint" style="color: var(--loomos-muted);">${escapeHtml(pack.meta.description || "No description provided.")}</p>
         </div>
-        ${pack.preset ? `
+        
+        <div class="loomos-blueprint-parts" style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
+          ${artifactsHtml}
+        </div>
+
+        <div class="loomos-form-group" style="display: flex; flex-direction: column; gap: 6px;">
+          <label class="loomos-label" style="font-weight: 600;">Installation Mode</label>
+          <select class="loomos-input" data-pack-install-mode style="width: 100%; padding: 8px; border-radius: 4px; background: var(--loomos-bg-alt); border: 1px solid var(--loomos-border); color: var(--loomos-ink);">
+            <option value="install_all" selected>Install Selected</option>
+            <option value="library_only">Save to Library Only</option>
+            <option value="modules_only">Install Modules Only</option>
+            <option value="theme_only">Install Theme Only</option>
+          </select>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          ${pack.preset ? `
+            <label class="loomos-check">
+              <input type="checkbox" data-pack-apply-settings checked>
+              <span>Apply Bundled Settings Preset</span>
+            </label>
+          ` : ""}
           <label class="loomos-check">
-            <input type="checkbox" data-pack-presetchecked checked>
-            <span>Import settings preset & configuration</span>
+            <input type="checkbox" data-pack-activate-theme checked>
+            <span>Activate Pack Theme</span>
           </label>
-        ` : ""}
-        <div class="loomos-dialog-buttons">
+        </div>
+
+        <div class="loomos-dialog-buttons" style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
           <button type="button" class="loomos-button loomos-button-primary" data-pack-confirm>Install Package</button>
           <button type="button" class="loomos-button" data-pack-cancel>Cancel</button>
         </div>
       </div>`;
 
+    installModal.root.querySelector(".loomos-blueprint-parts")?.addEventListener("change", (e) => {
+      const target = e.target as HTMLInputElement;
+      if (target && target.dataset.packPart && !target.dataset.packParent) {
+        const parentId = target.dataset.packPart;
+        installModal.root.querySelectorAll<HTMLInputElement>(`input[data-pack-parent="${parentId}"]`).forEach((sub) => {
+          sub.checked = target.checked;
+        });
+      }
+    });
+
+    const modeSelect = installModal.root.querySelector<HTMLSelectElement>("[data-pack-install-mode]");
+    const presetCheckbox = installModal.root.querySelector<HTMLInputElement>("[data-pack-apply-settings]");
+    const activateThemeCheckbox = installModal.root.querySelector<HTMLInputElement>("[data-pack-activate-theme]");
+
+    const updateVisibility = () => {
+      const mode = modeSelect?.value;
+      const libraryOnly = mode === "library_only";
+      if (presetCheckbox) {
+        presetCheckbox.disabled = libraryOnly;
+        presetCheckbox.parentElement!.style.opacity = libraryOnly ? "0.5" : "1";
+      }
+      if (activateThemeCheckbox) {
+        activateThemeCheckbox.disabled = libraryOnly || mode === "modules_only";
+        activateThemeCheckbox.parentElement!.style.opacity = (libraryOnly || mode === "modules_only") ? "0.5" : "1";
+      }
+    };
+    modeSelect?.addEventListener("change", updateVisibility);
+    updateVisibility();
+
     installModal.root.querySelector("[data-pack-confirm]")?.addEventListener("click", () => {
-      const selectedIds = [...installModal.root.querySelectorAll<HTMLInputElement>("[data-pack-part]:checked")]
+      const selectedIds = [...installModal.root.querySelectorAll<HTMLInputElement>("input[data-pack-part]:checked")]
         .map((input) => input.dataset.packPart!)
         .filter(Boolean);
 
-      const importPreset = installModal.root.querySelector<HTMLInputElement>("[data-pack-presetchecked]")?.checked ?? false;
+      const installMode = modeSelect?.value as "library_only" | "install_all" | "modules_only" | "theme_only";
+      const applyPreset = presetCheckbox ? (!presetCheckbox.disabled && presetCheckbox.checked) : false;
+      const activateTheme = activateThemeCheckbox ? (!activateThemeCheckbox.disabled && activateThemeCheckbox.checked) : false;
 
-      // 1. Install all selected artifacts
-      const artifactsToInstall = pack.artifacts.filter((art) => selectedIds.includes(art.id));
-      for (const art of artifactsToInstall) {
-        options.send({
-          type: "save_artifact",
-          requestId: options.requestId("artifact-import-save"),
-          artifact: art,
-        });
-      }
+      options.send({
+        type: "install_loom_pack",
+        requestId: options.requestId("loompack-install"),
+        pack,
+        selectedArtifactIds: selectedIds,
+        installMode,
+        activateTheme,
+        applyPreset,
+      });
 
-      // 2. If preset import requested, prepare settings save request
-      if (importPreset && pack.preset) {
-        const nextPresets = [...(settings.customModulePresets || [])];
-        const existingIndex = nextPresets.findIndex((p) => p.id === pack.id);
-        const presetId = pack.id;
-        const presetVal = {
-          id: presetId,
-          name: pack.preset.name,
-          description: pack.preset.description,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          moduleSettings: {
-            ...settings.moduleSettings,
-            ...(pack.preset.moduleSettings || {}),
-          },
-        };
-        if (existingIndex >= 0) {
-          nextPresets[existingIndex] = presetVal;
-        } else {
-          nextPresets.push(presetVal);
-        }
-
-        const newSettings = {
-          ...settings,
-          customModulePresets: nextPresets,
-          modulePreset: `custom:${presetId}`,
-          moduleSettings: {
-            ...settings.moduleSettings,
-            ...(pack.preset.moduleSettings || {}),
-          },
-          ...(pack.preset.activeThemeId && selectedIds.includes(pack.preset.activeThemeId) ? { activeThemeId: pack.preset.activeThemeId } : {}),
-          ...(pack.preset.settings || {}),
-        };
-        options.send({
-          type: "save_settings",
-          requestId: options.requestId("settings-import-save"),
-          settings: newSettings,
-        });
-      }
-
-      options.onStatus(`Installed Loom Pack "${pack.meta.name}"`);
+      options.onStatus(`Installing Loom Pack "${pack.meta.name}"...`);
       installModal.dismiss();
-      render();
     });
 
     installModal.root.querySelector("[data-pack-cancel]")?.addEventListener("click", () => installModal.dismiss());

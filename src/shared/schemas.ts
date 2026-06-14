@@ -47,6 +47,48 @@ const PresetModuleSettingsSchema = z.preprocess(
   ModuleSettingsSchema,
 );
 
+export const LayoutSlotSchema = z.object({
+  id: z.string().min(1).max(160),
+  label: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(500).default(""),
+  accepts: z.array(z.string()).default([]),
+  maxWidgets: z.number().int().min(1).max(100).default(20),
+  defaultDisplayMode: z.enum(["hero", "card", "compact", "rail", "timeline", "hidden"]).default("card"),
+}).strict();
+
+export const WidgetInstanceSchema = z.object({
+  id: z.string().min(1).max(160),
+  moduleId: z.string().min(1).max(160),
+  source: z.enum(["stock", "custom", "artifact"]),
+  label: z.string().trim().min(1).max(160),
+  slot: z.string().max(160),
+  order: z.number().int().default(0),
+  track: z.boolean().default(true),
+  display: z.boolean().default(true),
+  inject: z.boolean().default(false),
+  displayMode: z.enum(["hero", "card", "compact", "rail", "timeline", "hidden"]).default("card"),
+  tokenPriority: z.number().int().default(0),
+  localOverrides: z.record(z.unknown()).optional(),
+}).strict();
+
+export const TrackerLayoutSchema = z.object({
+  slots: z.array(LayoutSlotSchema).default([]),
+  widgets: z.array(WidgetInstanceSchema).default([]),
+  responsiveMode: z.enum(["single-column", "adaptive-grid", "desktop-split"]).default("single-column"),
+}).strict();
+
+export const DEFAULT_LAYOUT_SLOTS = [
+  { id: "hero", label: "Hero Region", description: "Top summary section", accepts: [], maxWidgets: 10, defaultDisplayMode: "hero" as const },
+  { id: "main", label: "Main Region", description: "Primary details grid", accepts: [], maxWidgets: 20, defaultDisplayMode: "card" as const },
+  { id: "cast", label: "Cast Region", description: "Character ledger & details", accepts: [], maxWidgets: 20, defaultDisplayMode: "card" as const },
+  { id: "world", label: "World Region", description: "Locations, signposts & inventory", accepts: [], maxWidgets: 20, defaultDisplayMode: "card" as const },
+  { id: "story", label: "Story Region", description: "Threads & stakes countdowns", accepts: [], maxWidgets: 20, defaultDisplayMode: "card" as const },
+  { id: "tools", label: "Tools Region", description: "Dialogue, images & resolver utilities", accepts: [], maxWidgets: 20, defaultDisplayMode: "card" as const },
+  { id: "sidebar", label: "Sidebar Region", description: "Secondary vertical layout", accepts: [], maxWidgets: 20, defaultDisplayMode: "compact" as const },
+  { id: "footer", label: "Footer Region", description: "Bottom details & audit logs", accepts: [], maxWidgets: 20, defaultDisplayMode: "compact" as const },
+  { id: "hidden", label: "Hidden Region", description: "Deactivated tracking widgets", accepts: [], maxWidgets: 100, defaultDisplayMode: "hidden" as const },
+];
+
 export const CustomModulePresetSchema = z.object({
   id: z.string().min(1).max(160),
   name: z.string().trim().min(1).max(160),
@@ -54,6 +96,7 @@ export const CustomModulePresetSchema = z.object({
   createdAt: z.string().datetime().default(() => new Date().toISOString()),
   updatedAt: z.string().datetime().default(() => new Date().toISOString()),
   moduleSettings: PresetModuleSettingsSchema,
+  layout: TrackerLayoutSchema.optional(),
 }).strict();
 
 export const CustomModuleFieldTypeSchema = z.enum([
@@ -194,6 +237,7 @@ const RawSettingsSchema = z.object({
   stockModuleOverrides: z.record(z.string(), StockModuleOverrideSchema).default({}),
   customModulePresets: z.array(CustomModulePresetSchema).default([]),
   customModules: z.array(CustomModuleSchema).default([]),
+  layout: TrackerLayoutSchema.optional(),
 }).strict();
 
 function settingsInput(value: unknown): unknown {
@@ -202,6 +246,68 @@ function settingsInput(value: unknown): unknown {
   const legacyPanels = typeof source.panels === "object" && source.panels !== null
     ? source.panels as Record<string, unknown>
     : {};
+
+  let layout = (source.layout && typeof source.layout === "object") ? JSON.parse(JSON.stringify(source.layout)) : undefined;
+  if (!layout) {
+    layout = {
+      slots: DEFAULT_LAYOUT_SLOTS,
+      widgets: [],
+      responsiveMode: "single-column",
+    };
+  } else {
+    if (!Array.isArray(layout.slots) || layout.slots.length === 0) {
+      layout.slots = DEFAULT_LAYOUT_SLOTS;
+    }
+    if (!Array.isArray(layout.widgets)) {
+      layout.widgets = [];
+    }
+    if (!layout.responsiveMode) {
+      layout.responsiveMode = "single-column";
+    }
+  }
+
+  const existingWidgets = new Map<string, any>();
+  for (const w of (layout.widgets || [])) {
+    if (w && typeof w.id === "string") {
+      existingWidgets.set(w.id, w);
+    }
+  }
+
+  const getStockDefaultSlot = (key: string): string => {
+    if (["sceneKernel", "deltas"].includes(key)) return "hero";
+    if (["meters", "actionResolver"].includes(key)) return "main";
+    if (["castCore", "appearance", "castVisuals", "clothing", "relationships"].includes(key)) return "cast";
+    if (["inventory", "worldSpace", "secretsRumors"].includes(key)) return "world";
+    if (["storyThreads", "continuity"].includes(key)) return "story";
+    if (["dialogueState", "directorStyle", "closenessState", "imagePrompt", "auditLog"].includes(key)) return "tools";
+    return "main";
+  };
+
+  const getStockDefaultLabel = (key: string): string => {
+    const labels: Record<string, string> = {
+      sceneKernel: "Scene Context",
+      deltas: "Recent Changes",
+      meters: "Meters",
+      actionResolver: "Action Resolver",
+      castCore: "Cast Matrix",
+      appearance: "Detailed Appearance",
+      castVisuals: "Visual Profiles",
+      clothing: "Garment Ledger",
+      relationships: "Relationships",
+      inventory: "Inventory",
+      worldSpace: "Scene Items",
+      secretsRumors: "Secrets & Rumors",
+      storyThreads: "Thread Loom",
+      continuity: "Memory Diagnostics",
+      dialogueState: "Dialogue State",
+      directorStyle: "Director Style",
+      closenessState: "Closeness State",
+      imagePrompt: "Image Prompt",
+      auditLog: "Audit Log",
+    };
+    return labels[key] || key;
+  };
+
   const suppliedModules = typeof source.moduleSettings === "object"
     && source.moduleSettings !== null
     ? source.moduleSettings as Partial<Record<typeof MODULE_KEYS[number], Record<string, unknown>>>
@@ -220,9 +326,105 @@ function settingsInput(value: unknown): unknown {
     }
   }
 
+  let orderCounter = 0;
+  const nextWidgets: any[] = [];
+
+  for (const key of MODULE_KEYS) {
+    const existing = existingWidgets.get(key);
+    const control = moduleSettings[key];
+    const track = control ? !!control.track : (existing ? !!existing.track : true);
+    const display = control ? !!control.display : (existing ? !!existing.display : true);
+    const inject = control ? !!control.inject : (existing ? !!existing.inject : false);
+
+    moduleSettings[key] = { track, display, inject };
+
+    if (existing) {
+      nextWidgets.push({
+        id: existing.id,
+        moduleId: existing.moduleId || key,
+        source: "stock",
+        label: existing.label || getStockDefaultLabel(key),
+        slot: existing.slot || getStockDefaultSlot(key),
+        order: typeof existing.order === "number" ? existing.order : orderCounter++,
+        track,
+        display,
+        inject,
+        displayMode: existing.displayMode || "card",
+        tokenPriority: existing.tokenPriority || 0,
+        localOverrides: existing.localOverrides || {},
+      });
+    } else {
+      nextWidgets.push({
+        id: key,
+        moduleId: key,
+        source: "stock",
+        label: getStockDefaultLabel(key),
+        slot: getStockDefaultSlot(key),
+        order: orderCounter++,
+        track,
+        display,
+        inject,
+        displayMode: (key === "sceneKernel" || key === "deltas") ? "hero" : "card",
+        tokenPriority: 0,
+        localOverrides: {},
+      });
+    }
+  }
+
+  const customModulesList = Array.isArray(source.customModules)
+    ? JSON.parse(JSON.stringify(source.customModules))
+    : [];
+
+  const nextCustomModules = customModulesList.map((cm: any) => {
+    if (!cm || typeof cm.id !== "string") return cm;
+    const existing = existingWidgets.get(cm.id) || existingWidgets.get(cm.artifactId || "");
+    const track = cm.enabled !== undefined ? !!cm.enabled : (existing ? !!existing.track : true);
+    const display = cm.display !== undefined ? !!cm.display : (existing ? !!existing.display : true);
+    const inject = cm.inject !== undefined ? !!cm.inject : (existing ? !!existing.inject : false);
+
+    cm.enabled = track;
+    cm.display = display;
+    cm.inject = inject;
+
+    if (existing) {
+      nextWidgets.push({
+        id: cm.id,
+        moduleId: cm.id,
+        source: cm.artifactId ? "artifact" : "custom",
+        label: existing.label || cm.label || "Custom Module",
+        slot: existing.slot || "main",
+        order: typeof existing.order === "number" ? existing.order : orderCounter++,
+        track,
+        display,
+        inject,
+        displayMode: existing.displayMode || "card",
+        tokenPriority: existing.tokenPriority || 0,
+        localOverrides: existing.localOverrides || {},
+      });
+    } else {
+      nextWidgets.push({
+        id: cm.id,
+        moduleId: cm.id,
+        source: cm.artifactId ? "artifact" : "custom",
+        label: cm.label || "Custom Module",
+        slot: "main",
+        order: orderCounter++,
+        track,
+        display,
+        inject,
+        displayMode: "card",
+        tokenPriority: 0,
+        localOverrides: {},
+      });
+    }
+    return cm;
+  });
+
   for (const key of CORE_TRACKING_MODULES) {
     moduleSettings[key].track = true;
   }
+
+  layout.widgets = nextWidgets.sort((a, b) => a.order - b.order);
 
   return {
     schemaVersion: 2,
@@ -245,7 +447,8 @@ function settingsInput(value: unknown): unknown {
     moduleSettings,
     stockModuleOverrides: source.stockModuleOverrides,
     customModulePresets: source.customModulePresets,
-    customModules: source.customModules,
+    customModules: nextCustomModules,
+    layout,
   };
 }
 

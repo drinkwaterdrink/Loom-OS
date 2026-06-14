@@ -4414,13 +4414,52 @@ var PresetModuleSettingsSchema = external_exports.preprocess(
   ),
   ModuleSettingsSchema
 );
+var LayoutSlotSchema = external_exports.object({
+  id: external_exports.string().min(1).max(160),
+  label: external_exports.string().trim().min(1).max(160),
+  description: external_exports.string().trim().max(500).default(""),
+  accepts: external_exports.array(external_exports.string()).default([]),
+  maxWidgets: external_exports.number().int().min(1).max(100).default(20),
+  defaultDisplayMode: external_exports.enum(["hero", "card", "compact", "rail", "timeline", "hidden"]).default("card")
+}).strict();
+var WidgetInstanceSchema = external_exports.object({
+  id: external_exports.string().min(1).max(160),
+  moduleId: external_exports.string().min(1).max(160),
+  source: external_exports.enum(["stock", "custom", "artifact"]),
+  label: external_exports.string().trim().min(1).max(160),
+  slot: external_exports.string().max(160),
+  order: external_exports.number().int().default(0),
+  track: external_exports.boolean().default(true),
+  display: external_exports.boolean().default(true),
+  inject: external_exports.boolean().default(false),
+  displayMode: external_exports.enum(["hero", "card", "compact", "rail", "timeline", "hidden"]).default("card"),
+  tokenPriority: external_exports.number().int().default(0),
+  localOverrides: external_exports.record(external_exports.unknown()).optional()
+}).strict();
+var TrackerLayoutSchema = external_exports.object({
+  slots: external_exports.array(LayoutSlotSchema).default([]),
+  widgets: external_exports.array(WidgetInstanceSchema).default([]),
+  responsiveMode: external_exports.enum(["single-column", "adaptive-grid", "desktop-split"]).default("single-column")
+}).strict();
+var DEFAULT_LAYOUT_SLOTS = [
+  { id: "hero", label: "Hero Region", description: "Top summary section", accepts: [], maxWidgets: 10, defaultDisplayMode: "hero" },
+  { id: "main", label: "Main Region", description: "Primary details grid", accepts: [], maxWidgets: 20, defaultDisplayMode: "card" },
+  { id: "cast", label: "Cast Region", description: "Character ledger & details", accepts: [], maxWidgets: 20, defaultDisplayMode: "card" },
+  { id: "world", label: "World Region", description: "Locations, signposts & inventory", accepts: [], maxWidgets: 20, defaultDisplayMode: "card" },
+  { id: "story", label: "Story Region", description: "Threads & stakes countdowns", accepts: [], maxWidgets: 20, defaultDisplayMode: "card" },
+  { id: "tools", label: "Tools Region", description: "Dialogue, images & resolver utilities", accepts: [], maxWidgets: 20, defaultDisplayMode: "card" },
+  { id: "sidebar", label: "Sidebar Region", description: "Secondary vertical layout", accepts: [], maxWidgets: 20, defaultDisplayMode: "compact" },
+  { id: "footer", label: "Footer Region", description: "Bottom details & audit logs", accepts: [], maxWidgets: 20, defaultDisplayMode: "compact" },
+  { id: "hidden", label: "Hidden Region", description: "Deactivated tracking widgets", accepts: [], maxWidgets: 100, defaultDisplayMode: "hidden" }
+];
 var CustomModulePresetSchema = external_exports.object({
   id: external_exports.string().min(1).max(160),
   name: external_exports.string().trim().min(1).max(160),
   description: external_exports.string().trim().max(500).default(""),
   createdAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
   updatedAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
-  moduleSettings: PresetModuleSettingsSchema
+  moduleSettings: PresetModuleSettingsSchema,
+  layout: TrackerLayoutSchema.optional()
 }).strict();
 var CustomModuleFieldTypeSchema = external_exports.enum([
   "text",
@@ -4553,12 +4592,70 @@ var RawSettingsSchema = external_exports.object({
   moduleSettings: ModuleSettingsSchema.default(BALANCED_MODULE_SETTINGS),
   stockModuleOverrides: external_exports.record(external_exports.string(), StockModuleOverrideSchema).default({}),
   customModulePresets: external_exports.array(CustomModulePresetSchema).default([]),
-  customModules: external_exports.array(CustomModuleSchema).default([])
+  customModules: external_exports.array(CustomModuleSchema).default([]),
+  layout: TrackerLayoutSchema.optional()
 }).strict();
 function settingsInput(value) {
   if (typeof value !== "object" || value === null) return value;
   const source = value;
   const legacyPanels = typeof source.panels === "object" && source.panels !== null ? source.panels : {};
+  let layout = source.layout && typeof source.layout === "object" ? JSON.parse(JSON.stringify(source.layout)) : void 0;
+  if (!layout) {
+    layout = {
+      slots: DEFAULT_LAYOUT_SLOTS,
+      widgets: [],
+      responsiveMode: "single-column"
+    };
+  } else {
+    if (!Array.isArray(layout.slots) || layout.slots.length === 0) {
+      layout.slots = DEFAULT_LAYOUT_SLOTS;
+    }
+    if (!Array.isArray(layout.widgets)) {
+      layout.widgets = [];
+    }
+    if (!layout.responsiveMode) {
+      layout.responsiveMode = "single-column";
+    }
+  }
+  const existingWidgets = /* @__PURE__ */ new Map();
+  for (const w of layout.widgets || []) {
+    if (w && typeof w.id === "string") {
+      existingWidgets.set(w.id, w);
+    }
+  }
+  const getStockDefaultSlot = (key) => {
+    if (["sceneKernel", "deltas"].includes(key)) return "hero";
+    if (["meters", "actionResolver"].includes(key)) return "main";
+    if (["castCore", "appearance", "castVisuals", "clothing", "relationships"].includes(key)) return "cast";
+    if (["inventory", "worldSpace", "secretsRumors"].includes(key)) return "world";
+    if (["storyThreads", "continuity"].includes(key)) return "story";
+    if (["dialogueState", "directorStyle", "closenessState", "imagePrompt", "auditLog"].includes(key)) return "tools";
+    return "main";
+  };
+  const getStockDefaultLabel = (key) => {
+    const labels = {
+      sceneKernel: "Scene Context",
+      deltas: "Recent Changes",
+      meters: "Meters",
+      actionResolver: "Action Resolver",
+      castCore: "Cast Matrix",
+      appearance: "Detailed Appearance",
+      castVisuals: "Visual Profiles",
+      clothing: "Garment Ledger",
+      relationships: "Relationships",
+      inventory: "Inventory",
+      worldSpace: "Scene Items",
+      secretsRumors: "Secrets & Rumors",
+      storyThreads: "Thread Loom",
+      continuity: "Memory Diagnostics",
+      dialogueState: "Dialogue State",
+      directorStyle: "Director Style",
+      closenessState: "Closeness State",
+      imagePrompt: "Image Prompt",
+      auditLog: "Audit Log"
+    };
+    return labels[key] || key;
+  };
   const suppliedModules = typeof source.moduleSettings === "object" && source.moduleSettings !== null ? source.moduleSettings : void 0;
   const moduleSettings = normalizeModuleSettings(suppliedModules);
   const panelMap = {
@@ -4572,9 +4669,94 @@ function settingsInput(value) {
       moduleSettings[newKey].display = legacyPanels[oldKey];
     }
   }
+  let orderCounter = 0;
+  const nextWidgets = [];
+  for (const key of MODULE_KEYS) {
+    const existing = existingWidgets.get(key);
+    const control2 = moduleSettings[key];
+    const track = control2 ? !!control2.track : existing ? !!existing.track : true;
+    const display = control2 ? !!control2.display : existing ? !!existing.display : true;
+    const inject = control2 ? !!control2.inject : existing ? !!existing.inject : false;
+    moduleSettings[key] = { track, display, inject };
+    if (existing) {
+      nextWidgets.push({
+        id: existing.id,
+        moduleId: existing.moduleId || key,
+        source: "stock",
+        label: existing.label || getStockDefaultLabel(key),
+        slot: existing.slot || getStockDefaultSlot(key),
+        order: typeof existing.order === "number" ? existing.order : orderCounter++,
+        track,
+        display,
+        inject,
+        displayMode: existing.displayMode || "card",
+        tokenPriority: existing.tokenPriority || 0,
+        localOverrides: existing.localOverrides || {}
+      });
+    } else {
+      nextWidgets.push({
+        id: key,
+        moduleId: key,
+        source: "stock",
+        label: getStockDefaultLabel(key),
+        slot: getStockDefaultSlot(key),
+        order: orderCounter++,
+        track,
+        display,
+        inject,
+        displayMode: key === "sceneKernel" || key === "deltas" ? "hero" : "card",
+        tokenPriority: 0,
+        localOverrides: {}
+      });
+    }
+  }
+  const customModulesList = Array.isArray(source.customModules) ? JSON.parse(JSON.stringify(source.customModules)) : [];
+  const nextCustomModules = customModulesList.map((cm) => {
+    if (!cm || typeof cm.id !== "string") return cm;
+    const existing = existingWidgets.get(cm.id) || existingWidgets.get(cm.artifactId || "");
+    const track = cm.enabled !== void 0 ? !!cm.enabled : existing ? !!existing.track : true;
+    const display = cm.display !== void 0 ? !!cm.display : existing ? !!existing.display : true;
+    const inject = cm.inject !== void 0 ? !!cm.inject : existing ? !!existing.inject : false;
+    cm.enabled = track;
+    cm.display = display;
+    cm.inject = inject;
+    if (existing) {
+      nextWidgets.push({
+        id: cm.id,
+        moduleId: cm.id,
+        source: cm.artifactId ? "artifact" : "custom",
+        label: existing.label || cm.label || "Custom Module",
+        slot: existing.slot || "main",
+        order: typeof existing.order === "number" ? existing.order : orderCounter++,
+        track,
+        display,
+        inject,
+        displayMode: existing.displayMode || "card",
+        tokenPriority: existing.tokenPriority || 0,
+        localOverrides: existing.localOverrides || {}
+      });
+    } else {
+      nextWidgets.push({
+        id: cm.id,
+        moduleId: cm.id,
+        source: cm.artifactId ? "artifact" : "custom",
+        label: cm.label || "Custom Module",
+        slot: "main",
+        order: orderCounter++,
+        track,
+        display,
+        inject,
+        displayMode: "card",
+        tokenPriority: 0,
+        localOverrides: {}
+      });
+    }
+    return cm;
+  });
   for (const key of CORE_TRACKING_MODULES) {
     moduleSettings[key].track = true;
   }
+  layout.widgets = nextWidgets.sort((a, b) => a.order - b.order);
   return {
     schemaVersion: 2,
     skin: source.skin,
@@ -4596,7 +4778,8 @@ function settingsInput(value) {
     moduleSettings,
     stockModuleOverrides: source.stockModuleOverrides,
     customModulePresets: source.customModulePresets,
-    customModules: source.customModules
+    customModules: nextCustomModules,
+    layout
   };
 }
 var LoomOSSettingsSchema = external_exports.preprocess(settingsInput, RawSettingsSchema);
@@ -8800,6 +8983,123 @@ async function installArtifact(artifactValue, selectedArtifactIds, applySettings
     message: installedIds.length === 0 ? "Blueprint saved to the library without activating any parts." : `Installed ${installedIds.length} artifact${installedIds.length === 1 ? "" : "s"}.`
   };
 }
+async function installLoomPack(packValue, selectedArtifactIds, installMode, activateTheme, applyPreset, userId) {
+  const pack = LoomPackSchema.parse(packValue);
+  const selected = new Set(selectedArtifactIds ?? []);
+  const installedIds = [];
+  let settings = await getSettings(userId);
+  const artifactsToInstall = pack.artifacts.filter((art) => selected.has(art.id));
+  for (const art of artifactsToInstall) {
+    await saveArtifact(spindle, userId, art);
+    installedIds.push(art.id);
+    if (installMode === "library_only") {
+      continue;
+    }
+    if (art.kind === "module") {
+      if (installMode === "install_all" || installMode === "modules_only") {
+        settings = LoomOSSettingsSchema.parse({
+          ...settings,
+          customModules: mergeInstalledModule(settings.customModules, art)
+        });
+      }
+    } else if (art.kind === "theme") {
+      if (installMode === "install_all" || installMode === "theme_only") {
+        if (activateTheme) {
+          settings = LoomOSSettingsSchema.parse({
+            ...settings,
+            activeThemeId: art.id
+          });
+        }
+      }
+    } else if (art.kind === "blueprint") {
+      for (const subMod of art.modules) {
+        if (selected.has(subMod.id)) {
+          await saveArtifact(spindle, userId, subMod);
+          installedIds.push(subMod.id);
+          if (installMode === "install_all" || installMode === "modules_only") {
+            settings = LoomOSSettingsSchema.parse({
+              ...settings,
+              customModules: mergeInstalledModule(settings.customModules, subMod)
+            });
+          }
+        }
+      }
+      if (art.theme && selected.has(art.theme.id)) {
+        await saveArtifact(spindle, userId, art.theme);
+        installedIds.push(art.theme.id);
+        if (installMode === "install_all" || installMode === "theme_only") {
+          if (activateTheme) {
+            settings = LoomOSSettingsSchema.parse({
+              ...settings,
+              activeThemeId: art.theme.id
+            });
+          }
+        }
+      }
+      if (applyPreset && art.settings) {
+        settings = LoomOSSettingsSchema.parse({
+          ...settings,
+          ...art.settings
+        });
+      }
+    }
+  }
+  if (applyPreset && pack.preset && installMode !== "library_only") {
+    const nextPresets = [...settings.customModulePresets || []];
+    const existingIndex = nextPresets.findIndex((p) => p.id === pack.id);
+    const presetId = pack.id;
+    const presetVal = {
+      id: presetId,
+      name: pack.preset.name,
+      description: pack.preset.description,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      moduleSettings: {
+        ...settings.moduleSettings,
+        ...pack.preset.moduleSettings || {}
+      }
+    };
+    if (existingIndex >= 0) {
+      nextPresets[existingIndex] = presetVal;
+    } else {
+      nextPresets.push(presetVal);
+    }
+    const nextCustomModules = settings.customModules.map((cm) => {
+      const control2 = pack.preset.moduleSettings?.[cm.id] || pack.preset.moduleSettings?.[cm.artifactId || ""];
+      if (control2) {
+        return {
+          ...cm,
+          enabled: control2.track,
+          display: control2.display,
+          inject: control2.inject
+        };
+      }
+      return cm;
+    });
+    settings = LoomOSSettingsSchema.parse({
+      ...settings,
+      customModules: nextCustomModules,
+      customModulePresets: nextPresets,
+      modulePreset: `custom:${presetId}`,
+      moduleSettings: {
+        ...settings.moduleSettings,
+        ...pack.preset.moduleSettings || {}
+      },
+      ...pack.preset.activeThemeId && selected.has(pack.preset.activeThemeId) && activateTheme ? { activeThemeId: pack.preset.activeThemeId } : {},
+      ...pack.preset.settings || {}
+    });
+  }
+  settings = await saveSettings(settings, userId);
+  let message = `Imported Loom Pack "${pack.meta.name}". Saved ${installedIds.length} artifact(s) to library.`;
+  if (installMode !== "library_only") {
+    message = `Installed Loom Pack "${pack.meta.name}" with ${installedIds.length} artifact(s).`;
+  }
+  return {
+    settings,
+    installedIds,
+    message
+  };
+}
 function parseFrontendRequest(payload) {
   if (!isRecord4(payload) || typeof payload.type !== "string") {
     throw new Error("Invalid LoomOS frontend request.");
@@ -9001,6 +9301,25 @@ async function handleFrontendRequest(payload, userId) {
           request.selectedArtifactIds,
           request.applySettings ?? false,
           request.activateTheme ?? true,
+          userId
+        );
+        send({
+          type: "artifact_installed",
+          requestId: request.requestId,
+          settings: installed.settings,
+          library: await loadArtifactLibrary(spindle, userId),
+          installedIds: installed.installedIds,
+          message: installed.message
+        }, userId);
+        return;
+      }
+      case "install_loom_pack": {
+        const installed = await installLoomPack(
+          request.pack,
+          request.selectedArtifactIds,
+          request.installMode,
+          request.activateTheme,
+          request.applyPreset,
           userId
         );
         send({

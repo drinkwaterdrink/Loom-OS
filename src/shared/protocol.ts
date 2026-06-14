@@ -12,6 +12,7 @@ import type {
   ArtifactLibrary,
   ArtifactRecord,
   LoomOSArtifact,
+  LoomPack,
 } from "./artifacts";
 
 export interface IdentityRequest {
@@ -56,6 +57,15 @@ export type FrontendRequest =
       selectedArtifactIds?: string[];
       applySettings?: boolean;
       activateTheme?: boolean;
+    }
+  | {
+      type: "install_loom_pack";
+      requestId: string;
+      pack: LoomPack;
+      selectedArtifactIds: string[];
+      installMode: "library_only" | "install_all" | "modules_only" | "theme_only";
+      activateTheme: boolean;
+      applyPreset: boolean;
     };
 
 export type BackendResponse =

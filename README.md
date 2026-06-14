@@ -1,13 +1,14 @@
 # LoomOS Command Deck
 
-Current release: **0.1.16**
+Current release: **0.1.17**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.16
+## Key Features & Upgrades in 0.1.17
 
+- **Phase 1.1 Loom Pack Installation Pass**: Overhauled the pack installation path to be transaction-safe and fully atomic on the backend, preventing database overwrite races, adding clear installation mode selectors, and supporting blueprint nested part selection.
 - **Loom Pack Package Format**: Bundle multiple library artifacts and preset settings into a single `.loompack` file.
 - **Unified Preset Control**: Import preset configs to settings dynamically during pack installation.
 - **Dual compatibility parsing**: Seamlessly handle legacy module bundles and v2 artifacts separately.

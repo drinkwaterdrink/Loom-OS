@@ -52,10 +52,12 @@ import type {
 } from "./shared/types";
 import {
   LoomOSArtifactSchema,
+  LoomPackSchema,
   artifactToCustomModule,
   type LoomOSArtifact,
   type ModuleCapsuleArtifact,
   type ThemeArtifact,
+  type LoomPack,
 } from "./shared/artifacts";
 
 declare const spindle: import("lumiverse-spindle-types").SpindleAPI;
@@ -856,6 +858,148 @@ async function installArtifact(
   };
 }
 
+async function installLoomPack(
+  packValue: LoomPack,
+  selectedArtifactIds: string[] | undefined,
+  installMode: "library_only" | "install_all" | "modules_only" | "theme_only",
+  activateTheme: boolean,
+  applyPreset: boolean,
+  userId: string,
+): Promise<{
+  settings: LoomOSSettings;
+  installedIds: string[];
+  message: string;
+}> {
+  const pack = LoomPackSchema.parse(packValue);
+  const selected = new Set(selectedArtifactIds ?? []);
+  const installedIds: string[] = [];
+  let settings = await getSettings(userId);
+
+  const artifactsToInstall = pack.artifacts.filter((art) => selected.has(art.id));
+
+  for (const art of artifactsToInstall) {
+    await saveArtifact(spindle, userId, art);
+    installedIds.push(art.id);
+
+    if (installMode === "library_only") {
+      continue;
+    }
+
+    if (art.kind === "module") {
+      if (installMode === "install_all" || installMode === "modules_only") {
+        settings = LoomOSSettingsSchema.parse({
+          ...settings,
+          customModules: mergeInstalledModule(settings.customModules, art),
+        });
+      }
+    } else if (art.kind === "theme") {
+      if (installMode === "install_all" || installMode === "theme_only") {
+        if (activateTheme) {
+          settings = LoomOSSettingsSchema.parse({
+            ...settings,
+            activeThemeId: art.id,
+          });
+        }
+      }
+    } else if (art.kind === "blueprint") {
+      // Install selected modules inside blueprint
+      for (const subMod of art.modules) {
+        if (selected.has(subMod.id)) {
+          await saveArtifact(spindle, userId, subMod);
+          installedIds.push(subMod.id);
+          if (installMode === "install_all" || installMode === "modules_only") {
+            settings = LoomOSSettingsSchema.parse({
+              ...settings,
+              customModules: mergeInstalledModule(settings.customModules, subMod),
+            });
+          }
+        }
+      }
+      // Install selected theme inside blueprint
+      if (art.theme && selected.has(art.theme.id)) {
+        await saveArtifact(spindle, userId, art.theme);
+        installedIds.push(art.theme.id);
+        if (installMode === "install_all" || installMode === "theme_only") {
+          if (activateTheme) {
+            settings = LoomOSSettingsSchema.parse({
+              ...settings,
+              activeThemeId: art.theme.id,
+            });
+          }
+        }
+      }
+      // Apply blueprint settings
+      if (applyPreset && art.settings) {
+        settings = LoomOSSettingsSchema.parse({
+          ...settings,
+          ...art.settings,
+        });
+      }
+    }
+  }
+
+  if (applyPreset && pack.preset && installMode !== "library_only") {
+    const nextPresets = [...(settings.customModulePresets || [])];
+    const existingIndex = nextPresets.findIndex((p) => p.id === pack.id);
+    const presetId = pack.id;
+    const presetVal = {
+      id: presetId,
+      name: pack.preset.name,
+      description: pack.preset.description,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      moduleSettings: {
+        ...settings.moduleSettings,
+        ...(pack.preset.moduleSettings || {}),
+      },
+    };
+    if (existingIndex >= 0) {
+      nextPresets[existingIndex] = presetVal;
+    } else {
+      nextPresets.push(presetVal);
+    }
+
+    const nextCustomModules = settings.customModules.map((cm) => {
+      const control = pack.preset!.moduleSettings?.[cm.id] || pack.preset!.moduleSettings?.[cm.artifactId || ""];
+      if (control) {
+        return {
+          ...cm,
+          enabled: control.track,
+          display: control.display,
+          inject: control.inject,
+        };
+      }
+      return cm;
+    });
+
+    settings = LoomOSSettingsSchema.parse({
+      ...settings,
+      customModules: nextCustomModules,
+      customModulePresets: nextPresets,
+      modulePreset: `custom:${presetId}`,
+      moduleSettings: {
+        ...settings.moduleSettings,
+        ...(pack.preset.moduleSettings || {}),
+      },
+      ...(pack.preset.activeThemeId && selected.has(pack.preset.activeThemeId) && activateTheme ? { activeThemeId: pack.preset.activeThemeId } : {}),
+      ...(pack.preset.settings || {}),
+    });
+  }
+
+  settings = await saveSettings(settings, userId);
+
+  let message = `Imported Loom Pack "${pack.meta.name}". Saved ${installedIds.length} artifact(s) to library.`;
+  if (installMode !== "library_only") {
+    message = `Installed Loom Pack "${pack.meta.name}" with ${installedIds.length} artifact(s).`;
+  }
+
+  return {
+    settings,
+    installedIds,
+    message,
+  };
+}
+
 function parseFrontendRequest(payload: unknown): FrontendRequest {
   if (!isRecord(payload) || typeof payload.type !== "string") {
     throw new Error("Invalid LoomOS frontend request.");
@@ -1066,6 +1210,25 @@ async function handleFrontendRequest(payload: unknown, userId: string): Promise<
           request.selectedArtifactIds,
           request.applySettings ?? false,
           request.activateTheme ?? true,
+          userId,
+        );
+        send({
+          type: "artifact_installed",
+          requestId: request.requestId,
+          settings: installed.settings,
+          library: await loadArtifactLibrary(spindle, userId),
+          installedIds: installed.installedIds,
+          message: installed.message,
+        }, userId);
+        return;
+      }
+      case "install_loom_pack": {
+        const installed = await installLoomPack(
+          request.pack,
+          request.selectedArtifactIds,
+          request.installMode,
+          request.activateTheme,
+          request.applyPreset,
           userId,
         );
         send({

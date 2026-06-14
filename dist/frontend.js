@@ -4462,13 +4462,52 @@ var PresetModuleSettingsSchema = external_exports.preprocess(
   ),
   ModuleSettingsSchema
 );
+var LayoutSlotSchema = external_exports.object({
+  id: external_exports.string().min(1).max(160),
+  label: external_exports.string().trim().min(1).max(160),
+  description: external_exports.string().trim().max(500).default(""),
+  accepts: external_exports.array(external_exports.string()).default([]),
+  maxWidgets: external_exports.number().int().min(1).max(100).default(20),
+  defaultDisplayMode: external_exports.enum(["hero", "card", "compact", "rail", "timeline", "hidden"]).default("card")
+}).strict();
+var WidgetInstanceSchema = external_exports.object({
+  id: external_exports.string().min(1).max(160),
+  moduleId: external_exports.string().min(1).max(160),
+  source: external_exports.enum(["stock", "custom", "artifact"]),
+  label: external_exports.string().trim().min(1).max(160),
+  slot: external_exports.string().max(160),
+  order: external_exports.number().int().default(0),
+  track: external_exports.boolean().default(true),
+  display: external_exports.boolean().default(true),
+  inject: external_exports.boolean().default(false),
+  displayMode: external_exports.enum(["hero", "card", "compact", "rail", "timeline", "hidden"]).default("card"),
+  tokenPriority: external_exports.number().int().default(0),
+  localOverrides: external_exports.record(external_exports.unknown()).optional()
+}).strict();
+var TrackerLayoutSchema = external_exports.object({
+  slots: external_exports.array(LayoutSlotSchema).default([]),
+  widgets: external_exports.array(WidgetInstanceSchema).default([]),
+  responsiveMode: external_exports.enum(["single-column", "adaptive-grid", "desktop-split"]).default("single-column")
+}).strict();
+var DEFAULT_LAYOUT_SLOTS = [
+  { id: "hero", label: "Hero Region", description: "Top summary section", accepts: [], maxWidgets: 10, defaultDisplayMode: "hero" },
+  { id: "main", label: "Main Region", description: "Primary details grid", accepts: [], maxWidgets: 20, defaultDisplayMode: "card" },
+  { id: "cast", label: "Cast Region", description: "Character ledger & details", accepts: [], maxWidgets: 20, defaultDisplayMode: "card" },
+  { id: "world", label: "World Region", description: "Locations, signposts & inventory", accepts: [], maxWidgets: 20, defaultDisplayMode: "card" },
+  { id: "story", label: "Story Region", description: "Threads & stakes countdowns", accepts: [], maxWidgets: 20, defaultDisplayMode: "card" },
+  { id: "tools", label: "Tools Region", description: "Dialogue, images & resolver utilities", accepts: [], maxWidgets: 20, defaultDisplayMode: "card" },
+  { id: "sidebar", label: "Sidebar Region", description: "Secondary vertical layout", accepts: [], maxWidgets: 20, defaultDisplayMode: "compact" },
+  { id: "footer", label: "Footer Region", description: "Bottom details & audit logs", accepts: [], maxWidgets: 20, defaultDisplayMode: "compact" },
+  { id: "hidden", label: "Hidden Region", description: "Deactivated tracking widgets", accepts: [], maxWidgets: 100, defaultDisplayMode: "hidden" }
+];
 var CustomModulePresetSchema = external_exports.object({
   id: external_exports.string().min(1).max(160),
   name: external_exports.string().trim().min(1).max(160),
   description: external_exports.string().trim().max(500).default(""),
   createdAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
   updatedAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
-  moduleSettings: PresetModuleSettingsSchema
+  moduleSettings: PresetModuleSettingsSchema,
+  layout: TrackerLayoutSchema.optional()
 }).strict();
 var CustomModuleFieldTypeSchema = external_exports.enum([
   "text",
@@ -4601,12 +4640,70 @@ var RawSettingsSchema = external_exports.object({
   moduleSettings: ModuleSettingsSchema.default(BALANCED_MODULE_SETTINGS),
   stockModuleOverrides: external_exports.record(external_exports.string(), StockModuleOverrideSchema).default({}),
   customModulePresets: external_exports.array(CustomModulePresetSchema).default([]),
-  customModules: external_exports.array(CustomModuleSchema).default([])
+  customModules: external_exports.array(CustomModuleSchema).default([]),
+  layout: TrackerLayoutSchema.optional()
 }).strict();
 function settingsInput(value) {
   if (typeof value !== "object" || value === null) return value;
   const source = value;
   const legacyPanels = typeof source.panels === "object" && source.panels !== null ? source.panels : {};
+  let layout = source.layout && typeof source.layout === "object" ? JSON.parse(JSON.stringify(source.layout)) : void 0;
+  if (!layout) {
+    layout = {
+      slots: DEFAULT_LAYOUT_SLOTS,
+      widgets: [],
+      responsiveMode: "single-column"
+    };
+  } else {
+    if (!Array.isArray(layout.slots) || layout.slots.length === 0) {
+      layout.slots = DEFAULT_LAYOUT_SLOTS;
+    }
+    if (!Array.isArray(layout.widgets)) {
+      layout.widgets = [];
+    }
+    if (!layout.responsiveMode) {
+      layout.responsiveMode = "single-column";
+    }
+  }
+  const existingWidgets = /* @__PURE__ */ new Map();
+  for (const w of layout.widgets || []) {
+    if (w && typeof w.id === "string") {
+      existingWidgets.set(w.id, w);
+    }
+  }
+  const getStockDefaultSlot = (key) => {
+    if (["sceneKernel", "deltas"].includes(key)) return "hero";
+    if (["meters", "actionResolver"].includes(key)) return "main";
+    if (["castCore", "appearance", "castVisuals", "clothing", "relationships"].includes(key)) return "cast";
+    if (["inventory", "worldSpace", "secretsRumors"].includes(key)) return "world";
+    if (["storyThreads", "continuity"].includes(key)) return "story";
+    if (["dialogueState", "directorStyle", "closenessState", "imagePrompt", "auditLog"].includes(key)) return "tools";
+    return "main";
+  };
+  const getStockDefaultLabel = (key) => {
+    const labels = {
+      sceneKernel: "Scene Context",
+      deltas: "Recent Changes",
+      meters: "Meters",
+      actionResolver: "Action Resolver",
+      castCore: "Cast Matrix",
+      appearance: "Detailed Appearance",
+      castVisuals: "Visual Profiles",
+      clothing: "Garment Ledger",
+      relationships: "Relationships",
+      inventory: "Inventory",
+      worldSpace: "Scene Items",
+      secretsRumors: "Secrets & Rumors",
+      storyThreads: "Thread Loom",
+      continuity: "Memory Diagnostics",
+      dialogueState: "Dialogue State",
+      directorStyle: "Director Style",
+      closenessState: "Closeness State",
+      imagePrompt: "Image Prompt",
+      auditLog: "Audit Log"
+    };
+    return labels[key] || key;
+  };
   const suppliedModules = typeof source.moduleSettings === "object" && source.moduleSettings !== null ? source.moduleSettings : void 0;
   const moduleSettings = normalizeModuleSettings(suppliedModules);
   const panelMap = {
@@ -4620,9 +4717,94 @@ function settingsInput(value) {
       moduleSettings[newKey].display = legacyPanels[oldKey];
     }
   }
+  let orderCounter = 0;
+  const nextWidgets = [];
+  for (const key of MODULE_KEYS) {
+    const existing = existingWidgets.get(key);
+    const control2 = moduleSettings[key];
+    const track = control2 ? !!control2.track : existing ? !!existing.track : true;
+    const display = control2 ? !!control2.display : existing ? !!existing.display : true;
+    const inject = control2 ? !!control2.inject : existing ? !!existing.inject : false;
+    moduleSettings[key] = { track, display, inject };
+    if (existing) {
+      nextWidgets.push({
+        id: existing.id,
+        moduleId: existing.moduleId || key,
+        source: "stock",
+        label: existing.label || getStockDefaultLabel(key),
+        slot: existing.slot || getStockDefaultSlot(key),
+        order: typeof existing.order === "number" ? existing.order : orderCounter++,
+        track,
+        display,
+        inject,
+        displayMode: existing.displayMode || "card",
+        tokenPriority: existing.tokenPriority || 0,
+        localOverrides: existing.localOverrides || {}
+      });
+    } else {
+      nextWidgets.push({
+        id: key,
+        moduleId: key,
+        source: "stock",
+        label: getStockDefaultLabel(key),
+        slot: getStockDefaultSlot(key),
+        order: orderCounter++,
+        track,
+        display,
+        inject,
+        displayMode: key === "sceneKernel" || key === "deltas" ? "hero" : "card",
+        tokenPriority: 0,
+        localOverrides: {}
+      });
+    }
+  }
+  const customModulesList = Array.isArray(source.customModules) ? JSON.parse(JSON.stringify(source.customModules)) : [];
+  const nextCustomModules = customModulesList.map((cm) => {
+    if (!cm || typeof cm.id !== "string") return cm;
+    const existing = existingWidgets.get(cm.id) || existingWidgets.get(cm.artifactId || "");
+    const track = cm.enabled !== void 0 ? !!cm.enabled : existing ? !!existing.track : true;
+    const display = cm.display !== void 0 ? !!cm.display : existing ? !!existing.display : true;
+    const inject = cm.inject !== void 0 ? !!cm.inject : existing ? !!existing.inject : false;
+    cm.enabled = track;
+    cm.display = display;
+    cm.inject = inject;
+    if (existing) {
+      nextWidgets.push({
+        id: cm.id,
+        moduleId: cm.id,
+        source: cm.artifactId ? "artifact" : "custom",
+        label: existing.label || cm.label || "Custom Module",
+        slot: existing.slot || "main",
+        order: typeof existing.order === "number" ? existing.order : orderCounter++,
+        track,
+        display,
+        inject,
+        displayMode: existing.displayMode || "card",
+        tokenPriority: existing.tokenPriority || 0,
+        localOverrides: existing.localOverrides || {}
+      });
+    } else {
+      nextWidgets.push({
+        id: cm.id,
+        moduleId: cm.id,
+        source: cm.artifactId ? "artifact" : "custom",
+        label: cm.label || "Custom Module",
+        slot: "main",
+        order: orderCounter++,
+        track,
+        display,
+        inject,
+        displayMode: "card",
+        tokenPriority: 0,
+        localOverrides: {}
+      });
+    }
+    return cm;
+  });
   for (const key of CORE_TRACKING_MODULES) {
     moduleSettings[key].track = true;
   }
+  layout.widgets = nextWidgets.sort((a, b) => a.order - b.order);
   return {
     schemaVersion: 2,
     skin: source.skin,
@@ -4644,7 +4826,8 @@ function settingsInput(value) {
     moduleSettings,
     stockModuleOverrides: source.stockModuleOverrides,
     customModulePresets: source.customModulePresets,
-    customModules: source.customModules
+    customModules: nextCustomModules,
+    layout
   };
 }
 var LoomOSSettingsSchema = external_exports.preprocess(settingsInput, RawSettingsSchema);
@@ -39043,80 +39226,122 @@ function openCreatorWorkshop(options) {
       maxHeight: Math.min(780, window.innerHeight - 20)
     });
     installModal.root.className = "loomos-root";
+    let artifactsHtml = "";
+    if (pack.artifacts.length === 0) {
+      artifactsHtml = `<p class="loomos-muted">This package contains no artifacts.</p>`;
+    } else {
+      artifactsHtml = pack.artifacts.map((art) => {
+        let html2 = `
+        <div class="loomos-pack-artifact-group" style="margin-bottom: 8px;">
+          <label class="loomos-check" style="font-weight: 600;">
+            <input type="checkbox" data-pack-part="${escapeHtml(art.id)}" data-pack-kind="${escapeHtml(art.kind)}" checked>
+            <span><strong>${escapeHtml(art.meta.name)}</strong> <small class="loomos-badge">${escapeHtml(art.kind)}</small></span>
+          </label>`;
+        if (art.kind === "blueprint") {
+          if (art.modules.length > 0 || art.theme) {
+            html2 += `<div class="loomos-blueprint-subparts" style="padding-left: 20px; display: flex; flex-direction: column; gap: 6px; border-left: 2px solid var(--loomos-border, rgba(255,255,255,0.1)); margin-left: 8px; margin-top: 4px;">`;
+            for (const subMod of art.modules) {
+              html2 += `
+              <label class="loomos-check">
+                <input type="checkbox" data-pack-part="${escapeHtml(subMod.id)}" data-pack-parent="${escapeHtml(art.id)}" data-pack-kind="module" checked>
+                <span>${escapeHtml(subMod.meta.name)} <small class="loomos-badge">module</small></span>
+              </label>`;
+            }
+            if (art.theme) {
+              html2 += `
+              <label class="loomos-check">
+                <input type="checkbox" data-pack-part="${escapeHtml(art.theme.id)}" data-pack-parent="${escapeHtml(art.id)}" data-pack-kind="theme" checked>
+                <span>${escapeHtml(art.theme.meta.name)} <small class="loomos-badge">theme</small></span>
+              </label>`;
+            }
+            html2 += `</div>`;
+          }
+        }
+        html2 += `</div>`;
+        return html2;
+      }).join("");
+    }
     installModal.root.innerHTML = `
-      <div class="loomos-prompt-dialog">
-        <p class="loomos-kicker">Loom Pack: ${escapeHtml(pack.meta.name)}</p>
-        <p class="loomos-hint">${escapeHtml(pack.meta.description || "No description provided.")}</p>
-        <div class="loomos-blueprint-parts" style="max-height: 240px; overflow-y: auto;">
-          ${pack.artifacts.map((art) => `
-            <label class="loomos-check">
-              <input type="checkbox" data-pack-part="${escapeHtml(art.id)}" checked>
-              <span><strong>${escapeHtml(art.meta.name)}</strong><small>${escapeHtml(art.kind)}</small></span>
-            </label>
-          `).join("") || `<p class="loomos-muted">This package contains no artifacts.</p>`}
+      <div class="loomos-prompt-dialog" style="display: flex; flex-direction: column; gap: 16px; padding: 16px;">
+        <div>
+          <p class="loomos-kicker" style="margin-bottom: 4px; font-weight: bold;">Loom Pack: ${escapeHtml(pack.meta.name)}</p>
+          <p class="loomos-hint" style="color: var(--loomos-muted);">${escapeHtml(pack.meta.description || "No description provided.")}</p>
         </div>
-        ${pack.preset ? `
+        
+        <div class="loomos-blueprint-parts" style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
+          ${artifactsHtml}
+        </div>
+
+        <div class="loomos-form-group" style="display: flex; flex-direction: column; gap: 6px;">
+          <label class="loomos-label" style="font-weight: 600;">Installation Mode</label>
+          <select class="loomos-input" data-pack-install-mode style="width: 100%; padding: 8px; border-radius: 4px; background: var(--loomos-bg-alt); border: 1px solid var(--loomos-border); color: var(--loomos-ink);">
+            <option value="install_all" selected>Install Selected</option>
+            <option value="library_only">Save to Library Only</option>
+            <option value="modules_only">Install Modules Only</option>
+            <option value="theme_only">Install Theme Only</option>
+          </select>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          ${pack.preset ? `
+            <label class="loomos-check">
+              <input type="checkbox" data-pack-apply-settings checked>
+              <span>Apply Bundled Settings Preset</span>
+            </label>
+          ` : ""}
           <label class="loomos-check">
-            <input type="checkbox" data-pack-presetchecked checked>
-            <span>Import settings preset & configuration</span>
+            <input type="checkbox" data-pack-activate-theme checked>
+            <span>Activate Pack Theme</span>
           </label>
-        ` : ""}
-        <div class="loomos-dialog-buttons">
+        </div>
+
+        <div class="loomos-dialog-buttons" style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
           <button type="button" class="loomos-button loomos-button-primary" data-pack-confirm>Install Package</button>
           <button type="button" class="loomos-button" data-pack-cancel>Cancel</button>
         </div>
       </div>`;
+    installModal.root.querySelector(".loomos-blueprint-parts")?.addEventListener("change", (e) => {
+      const target = e.target;
+      if (target && target.dataset.packPart && !target.dataset.packParent) {
+        const parentId = target.dataset.packPart;
+        installModal.root.querySelectorAll(`input[data-pack-parent="${parentId}"]`).forEach((sub) => {
+          sub.checked = target.checked;
+        });
+      }
+    });
+    const modeSelect = installModal.root.querySelector("[data-pack-install-mode]");
+    const presetCheckbox = installModal.root.querySelector("[data-pack-apply-settings]");
+    const activateThemeCheckbox = installModal.root.querySelector("[data-pack-activate-theme]");
+    const updateVisibility = () => {
+      const mode = modeSelect?.value;
+      const libraryOnly = mode === "library_only";
+      if (presetCheckbox) {
+        presetCheckbox.disabled = libraryOnly;
+        presetCheckbox.parentElement.style.opacity = libraryOnly ? "0.5" : "1";
+      }
+      if (activateThemeCheckbox) {
+        activateThemeCheckbox.disabled = libraryOnly || mode === "modules_only";
+        activateThemeCheckbox.parentElement.style.opacity = libraryOnly || mode === "modules_only" ? "0.5" : "1";
+      }
+    };
+    modeSelect?.addEventListener("change", updateVisibility);
+    updateVisibility();
     installModal.root.querySelector("[data-pack-confirm]")?.addEventListener("click", () => {
-      const selectedIds = [...installModal.root.querySelectorAll("[data-pack-part]:checked")].map((input) => input.dataset.packPart).filter(Boolean);
-      const importPreset = installModal.root.querySelector("[data-pack-presetchecked]")?.checked ?? false;
-      const artifactsToInstall = pack.artifacts.filter((art) => selectedIds.includes(art.id));
-      for (const art of artifactsToInstall) {
-        options.send({
-          type: "save_artifact",
-          requestId: options.requestId("artifact-import-save"),
-          artifact: art
-        });
-      }
-      if (importPreset && pack.preset) {
-        const nextPresets = [...settings.customModulePresets || []];
-        const existingIndex = nextPresets.findIndex((p) => p.id === pack.id);
-        const presetId = pack.id;
-        const presetVal = {
-          id: presetId,
-          name: pack.preset.name,
-          description: pack.preset.description,
-          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-          updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-          moduleSettings: {
-            ...settings.moduleSettings,
-            ...pack.preset.moduleSettings || {}
-          }
-        };
-        if (existingIndex >= 0) {
-          nextPresets[existingIndex] = presetVal;
-        } else {
-          nextPresets.push(presetVal);
-        }
-        const newSettings = {
-          ...settings,
-          customModulePresets: nextPresets,
-          modulePreset: `custom:${presetId}`,
-          moduleSettings: {
-            ...settings.moduleSettings,
-            ...pack.preset.moduleSettings || {}
-          },
-          ...pack.preset.activeThemeId && selectedIds.includes(pack.preset.activeThemeId) ? { activeThemeId: pack.preset.activeThemeId } : {},
-          ...pack.preset.settings || {}
-        };
-        options.send({
-          type: "save_settings",
-          requestId: options.requestId("settings-import-save"),
-          settings: newSettings
-        });
-      }
-      options.onStatus(`Installed Loom Pack "${pack.meta.name}"`);
+      const selectedIds = [...installModal.root.querySelectorAll("input[data-pack-part]:checked")].map((input) => input.dataset.packPart).filter(Boolean);
+      const installMode = modeSelect?.value;
+      const applyPreset = presetCheckbox ? !presetCheckbox.disabled && presetCheckbox.checked : false;
+      const activateTheme = activateThemeCheckbox ? !activateThemeCheckbox.disabled && activateThemeCheckbox.checked : false;
+      options.send({
+        type: "install_loom_pack",
+        requestId: options.requestId("loompack-install"),
+        pack,
+        selectedArtifactIds: selectedIds,
+        installMode,
+        activateTheme,
+        applyPreset
+      });
+      options.onStatus(`Installing Loom Pack "${pack.meta.name}"...`);
       installModal.dismiss();
-      render();
     });
     installModal.root.querySelector("[data-pack-cancel]")?.addEventListener("click", () => installModal.dismiss());
   }
@@ -40486,7 +40711,7 @@ function setup(ctx) {
   }
   function diagnosticText() {
     const lines = [
-      `version: 0.1.16`,
+      `version: 0.1.17`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,

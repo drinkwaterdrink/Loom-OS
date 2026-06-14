@@ -2,6 +2,19 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.17] - 2026-06-14
+
+### Added
+
+- Added `install_loom_pack` backend IPC handler to process installation atomically and prevent database overwrite race conditions.
+- Added comprehensive backend tests in `tests/loompack-install.test.ts` covering transactional modes, preset settings merging, partial installation, and keep-current theme activation.
+
+### Changed
+
+- Overhauled the Loom Pack review dialog in the Creator Workshop (`openLoomPackInstall`) to support nested blueprint module/theme selectors.
+- Added clear and responsive installation mode selectors in the frontend ("Save to Library Only", "Install Selected", "Install Modules Only", "Install Theme Only") with dynamic preset visibility.
+- Renamed the frontend settings selector from `data-pack-presetchecked` to `data-pack-apply-settings` for consistency.
+
 ## [0.1.16] - 2026-06-14
 
 ### Added
