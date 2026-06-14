@@ -8,6 +8,13 @@ import type {
 } from "lumiverse-spindle-types";
 import { compileStateWithRepair } from "./backend/compiler";
 import { runQuietGeneration } from "./backend/generation";
+import { generateArtifactWithRepair } from "./backend/artifactGeneration";
+import {
+  deleteArtifact,
+  loadArtifactLibrary,
+  restoreArtifact,
+  saveArtifact,
+} from "./backend/artifactStorage";
 import { buildCompactInjection } from "./shared/compact";
 import { migrateStateToCurrent } from "./shared/migrations";
 import { trackedModuleKeys, MODULE_KEYS } from "./shared/modules";
@@ -43,6 +50,13 @@ import type {
   StateHistoryItem,
   StateIdentity,
 } from "./shared/types";
+import {
+  LoomOSArtifactSchema,
+  artifactToCustomModule,
+  type LoomOSArtifact,
+  type ModuleCapsuleArtifact,
+  type ThemeArtifact,
+} from "./shared/artifacts";
 
 declare const spindle: import("lumiverse-spindle-types").SpindleAPI;
 
@@ -668,6 +682,180 @@ async function generateState(
   }
 }
 
+async function generateArtifactDraft(
+  requestId: string,
+  kind: LoomOSArtifact["kind"],
+  brief: string,
+  currentArtifact: LoomOSArtifact | null | undefined,
+  userId: string,
+): Promise<void> {
+  if (!spindle.permissions.has("generation")) {
+    throw new Error("PERMISSION_DENIED: generation is required to create LoomOS artifacts.");
+  }
+  if (!brief.trim()) throw new Error("Describe the module, theme, or Blueprint you want to create.");
+
+  const startedAt = Date.now();
+  const settings = await getSettings(userId);
+  const connections = await listConnections(userId);
+  const connection = chooseConnection(connections, settings.connectionId);
+  if (!connection) {
+    throw new Error("No ready Lumiverse LLM connection is available. Configure a connection, then retry.");
+  }
+
+  const controller = new AbortController();
+  const jobKey = requestJobKey(userId, requestId);
+  jobs.set(jobKey, { controller, identityKey: `artifact:${requestId}` });
+  send({
+    type: "artifact_generation_status",
+    requestId,
+    status: "started",
+    message: `Preparing ${connection.name}.`,
+    elapsedMs: 0,
+    attempt: 1,
+  }, userId);
+
+  try {
+    const result = await generateArtifactWithRepair({
+      kind,
+      brief: brief.slice(0, 12_000),
+      currentArtifact: currentArtifact
+        ? LoomOSArtifactSchema.parse(currentArtifact)
+        : null,
+      signal: controller.signal,
+      onProgress: (attempt, message) => {
+        send({
+          type: "artifact_generation_status",
+          requestId,
+          status: "progress",
+          message,
+          elapsedMs: Date.now() - startedAt,
+          attempt,
+        }, userId);
+      },
+      generate: async (messages, signal) =>
+        runQuietGeneration(spindle, {
+          messages,
+          connectionId: connection.id,
+          userId,
+          timeoutMs: settings.generationTimeoutSeconds * 1000,
+          parentSignal: signal,
+        }),
+    });
+    if (controller.signal.aborted) throw new DOMException("Generation cancelled.", "AbortError");
+    send({
+      type: "artifact_generation_status",
+      requestId,
+      status: "completed",
+      message: result.repaired
+        ? "Artifact validated after one repair pass."
+        : "Artifact draft validated.",
+      elapsedMs: Date.now() - startedAt,
+      attempt: result.repaired ? 2 : 1,
+      artifact: result.artifact,
+      issues: result.issues.slice(0, 8),
+    }, userId);
+  } catch (error) {
+    if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
+      send({
+        type: "artifact_generation_status",
+        requestId,
+        status: "cancelled",
+        message: "Artifact generation cancelled.",
+        elapsedMs: Date.now() - startedAt,
+        attempt: 1,
+      }, userId);
+      return;
+    }
+    send({
+      type: "artifact_generation_status",
+      requestId,
+      status: "failed",
+      message: errorMessage(error),
+      elapsedMs: Date.now() - startedAt,
+      attempt: 1,
+    }, userId);
+  } finally {
+    if (jobs.get(jobKey)?.controller === controller) jobs.delete(jobKey);
+  }
+}
+
+function mergeInstalledModule(
+  modules: LoomOSSettings["customModules"],
+  artifact: ModuleCapsuleArtifact,
+): LoomOSSettings["customModules"] {
+  const compiled = artifactToCustomModule(artifact);
+  const existingIndex = modules.findIndex((module) =>
+    module.artifactId === artifact.id || module.id === artifact.id
+  );
+  if (existingIndex < 0) return [...modules, compiled];
+  return modules.map((module, index) => index === existingIndex ? compiled : module);
+}
+
+async function installArtifact(
+  artifactValue: LoomOSArtifact,
+  selectedArtifactIds: string[] | undefined,
+  applySettings: boolean,
+  activateTheme: boolean,
+  userId: string,
+): Promise<{
+  settings: LoomOSSettings;
+  installedIds: string[];
+  message: string;
+}> {
+  const artifact = LoomOSArtifactSchema.parse(artifactValue);
+  const selected = new Set(selectedArtifactIds ?? []);
+  const installedIds: string[] = [];
+  let settings = await getSettings(userId);
+  await saveArtifact(spindle, userId, artifact);
+
+  const installModule = async (module: ModuleCapsuleArtifact): Promise<void> => {
+    await saveArtifact(spindle, userId, module);
+    settings = LoomOSSettingsSchema.parse({
+      ...settings,
+      customModules: mergeInstalledModule(settings.customModules, module),
+    });
+    installedIds.push(module.id);
+  };
+  const installTheme = async (theme: ThemeArtifact): Promise<void> => {
+    await saveArtifact(spindle, userId, theme);
+    settings = LoomOSSettingsSchema.parse({
+      ...settings,
+      activeThemeId: activateTheme ? theme.id : settings.activeThemeId,
+    });
+    installedIds.push(theme.id);
+  };
+
+  if (artifact.kind === "module") {
+    await installModule(artifact);
+  } else if (artifact.kind === "theme") {
+    await installTheme(artifact);
+  } else {
+    const defaultAll = selected.size === 0;
+    for (const module of artifact.modules) {
+      if (defaultAll || selected.has(module.id)) await installModule(module);
+    }
+    if (artifact.theme && (defaultAll || selected.has(artifact.theme.id))) {
+      await installTheme(artifact.theme);
+    }
+    if (applySettings) {
+      settings = LoomOSSettingsSchema.parse({
+        ...settings,
+        ...artifact.settings,
+      });
+    }
+    installedIds.push(artifact.id);
+  }
+
+  settings = await saveSettings(settings, userId);
+  return {
+    settings,
+    installedIds,
+    message: installedIds.length === 0
+      ? "Blueprint saved to the library without activating any parts."
+      : `Installed ${installedIds.length} artifact${installedIds.length === 1 ? "" : "s"}.`,
+  };
+}
+
 function parseFrontendRequest(payload: unknown): FrontendRequest {
   if (!isRecord(payload) || typeof payload.type !== "string") {
     throw new Error("Invalid LoomOS frontend request.");
@@ -694,6 +882,7 @@ async function handleFrontendRequest(payload: unknown, userId: string): Promise<
           connections: await listConnections(userId),
           identity,
           state: identity ? await loadState(identity, userId) : null,
+          artifacts: await loadArtifactLibrary(spindle, userId),
         }, userId);
         return;
       }
@@ -790,6 +979,103 @@ async function handleFrontendRequest(payload: unknown, userId: string): Promise<
       case "preview_injection": {
         const preview = await buildInjectionPreview(request.chatId, userId);
         send({ type: "injection_preview", requestId, preview }, userId);
+        return;
+      }
+      case "get_artifacts":
+        send({
+          type: "artifacts",
+          requestId,
+          library: await loadArtifactLibrary(spindle, userId),
+        }, userId);
+        return;
+      case "save_artifact": {
+        const saved = await saveArtifact(
+          spindle,
+          userId,
+          LoomOSArtifactSchema.parse(request.artifact),
+        );
+        send({
+          type: "artifact_saved",
+          requestId: request.requestId,
+          library: saved.library,
+          record: saved.record,
+        }, userId);
+        return;
+      }
+      case "delete_artifact": {
+        let nextSettings = await getSettings(userId);
+        nextSettings = LoomOSSettingsSchema.parse({
+          ...nextSettings,
+          activeThemeId: nextSettings.activeThemeId === request.artifactId
+            ? ""
+            : nextSettings.activeThemeId,
+          customModules: nextSettings.customModules.filter((module) =>
+            module.artifactId !== request.artifactId
+          ),
+        });
+        await saveSettings(nextSettings, userId);
+        const library = await deleteArtifact(spindle, userId, request.artifactId);
+        send({
+          type: "artifact_deleted",
+          requestId: request.requestId,
+          library,
+          artifactId: request.artifactId,
+          settings: nextSettings,
+        }, userId);
+        return;
+      }
+      case "restore_artifact": {
+        const restored = await restoreArtifact(
+          spindle,
+          userId,
+          request.artifactId,
+          request.revision,
+        );
+        send({
+          type: "artifact_saved",
+          requestId: request.requestId,
+          library: restored.library,
+          record: restored.record,
+        }, userId);
+        return;
+      }
+      case "generate_artifact":
+        void generateArtifactDraft(
+          request.requestId,
+          request.kind,
+          request.brief,
+          request.currentArtifact,
+          userId,
+        ).catch((error) => {
+          send({
+            type: "artifact_generation_status",
+            requestId: request.requestId,
+            status: "failed",
+            message: errorMessage(error),
+            elapsedMs: 0,
+            attempt: 1,
+          }, userId);
+        });
+        return;
+      case "cancel_artifact_generation":
+        abortJob(requestJobKey(userId, request.requestId));
+        return;
+      case "install_artifact": {
+        const installed = await installArtifact(
+          request.artifact,
+          request.selectedArtifactIds,
+          request.applySettings ?? false,
+          request.activateTheme ?? true,
+          userId,
+        );
+        send({
+          type: "artifact_installed",
+          requestId: request.requestId,
+          settings: installed.settings,
+          library: await loadArtifactLibrary(spindle, userId),
+          installedIds: installed.installedIds,
+          message: installed.message,
+        }, userId);
         return;
       }
     }

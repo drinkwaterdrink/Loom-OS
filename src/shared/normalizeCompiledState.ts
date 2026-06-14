@@ -11,6 +11,10 @@ import type {
   LoomOSCompiledState,
   LoomOSState,
 } from "./types";
+import {
+  normalizeValueForJsonSchema,
+  type JsonSchemaSubset,
+} from "./artifacts";
 
 type RecordValue = Record<string, unknown>;
 
@@ -1139,7 +1143,12 @@ function normalizeCustomModuleData(value: unknown, customModules: CustomModule[]
       if (!moduleId) return null;
       const module = customModules.find((candidate) => candidate.id === moduleId);
       const fieldsSource = asRecord(row.fields);
-      const fields = module
+      const fields = module?.jsonSchema
+        ? normalizeValueForJsonSchema(
+            fieldsSource,
+            module.jsonSchema as JsonSchemaSubset,
+          ) as Record<string, unknown>
+        : module
         ? Object.fromEntries(module.schemaFields.map((field) => [
             field.key,
             normalizeCustomField(fieldsSource[field.key], field),

@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 import { compiledState } from "./fixtures.ts";
+import {
+  createStarterModuleArtifact,
+  createStarterThemeArtifact,
+} from "../src/shared/artifacts.ts";
 
 test("built backend compiles, repairs, and stores exact swipe State V2", async () => {
   const frontendHandlers = [];
@@ -162,6 +166,7 @@ test("built backend compiles, repairs, and stores exact swipe State V2", async (
 
   const bootstrap = frontendMessages.find(({ payload }) => payload.type === "bootstrap")?.payload;
   assert.ok(bootstrap && bootstrap.type === "bootstrap");
+  assert.deepEqual(bootstrap.artifacts.records, []);
   await frontendHandlers[0]({
     type: "save_settings",
     requestId: "settings-auto",
@@ -266,6 +271,89 @@ test("built backend compiles, repairs, and stores exact swipe State V2", async (
     && payload.requestId === "history-delete"
     && payload.items.length === 0
   ));
+
+  const waitForResponse = async (requestId, type) => {
+    const responseDeadline = Date.now() + 1000;
+    let response;
+    while (!response && Date.now() < responseDeadline) {
+      response = frontendMessages.find(({ payload }) =>
+        payload.requestId === requestId && payload.type === type
+      )?.payload;
+      if (!response) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    return response;
+  };
+
+  const moduleArtifact = createStarterModuleArtifact();
+  await frontendHandlers[0]({
+    type: "save_artifact",
+    requestId: "artifact-save",
+    artifact: moduleArtifact,
+  }, "user-1");
+  const savedArtifact = await waitForResponse("artifact-save", "artifact_saved");
+  assert.ok(
+    savedArtifact && savedArtifact.type === "artifact_saved",
+    JSON.stringify(frontendMessages
+      .map(({ payload }) => payload)
+      .filter((payload) => payload.requestId === "artifact-save" || payload.type === "error")),
+  );
+  assert.equal(savedArtifact.record.revision, 1);
+  assert.equal(
+    userFiles.get("artifacts/library-v2.json")?.records[0]?.artifact.id,
+    moduleArtifact.id,
+  );
+
+  await frontendHandlers[0]({
+    type: "install_artifact",
+    requestId: "artifact-install-module",
+    artifact: moduleArtifact,
+  }, "user-1");
+  const installedModule = await waitForResponse("artifact-install-module", "artifact_installed");
+  assert.ok(installedModule && installedModule.type === "artifact_installed");
+  assert.equal(
+    installedModule.settings.customModules.some((module) =>
+      module.artifactId === moduleArtifact.id
+    ),
+    true,
+  );
+
+  const themeArtifact = createStarterThemeArtifact();
+  await frontendHandlers[0]({
+    type: "install_artifact",
+    requestId: "artifact-install-theme",
+    artifact: themeArtifact,
+    activateTheme: true,
+  }, "user-1");
+  const installedTheme = await waitForResponse("artifact-install-theme", "artifact_installed");
+  assert.ok(installedTheme && installedTheme.type === "artifact_installed");
+  assert.equal(installedTheme.settings.activeThemeId, themeArtifact.id);
+
+  await frontendHandlers[0]({
+    type: "delete_artifact",
+    requestId: "artifact-delete-theme",
+    artifactId: themeArtifact.id,
+  }, "user-1");
+  const deletedTheme = await waitForResponse("artifact-delete-theme", "artifact_deleted");
+  assert.ok(deletedTheme && deletedTheme.type === "artifact_deleted");
+  assert.equal(deletedTheme.settings.activeThemeId, "");
+  assert.equal(
+    deletedTheme.library.records.some((record) => record.artifact.id === themeArtifact.id),
+    false,
+  );
+
+  await frontendHandlers[0]({
+    type: "delete_artifact",
+    requestId: "artifact-delete-module",
+    artifactId: moduleArtifact.id,
+  }, "user-1");
+  const deletedModule = await waitForResponse("artifact-delete-module", "artifact_deleted");
+  assert.ok(deletedModule && deletedModule.type === "artifact_deleted");
+  assert.equal(
+    deletedModule.settings.customModules.some((module) =>
+      module.artifactId === moduleArtifact.id
+    ),
+    false,
+  );
 
   backend.disposeBackend();
   assert.equal(frontendHandlers.length, 0);

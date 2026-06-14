@@ -194,6 +194,14 @@ export function buildStateCompilerPrompt(
   const enabledCustom = customModules
     .filter((m) => m.enabled)
     .map((m) => {
+      if (m.jsonSchema) {
+        return [
+          `- customModuleData[moduleId=${m.id}] (${m.label}): ${m.compilerInstruction}`,
+          `  maxItems=${m.maxItems}; outputMode=${m.outputMode}; fields must match this JSON Schema subset exactly:`,
+          `  ${JSON.stringify(m.jsonSchema)}`,
+          "  Output semantic state only. Never output display counts, colors, percentages, HTML, CSS, scripts, or template markup unless they are explicit semantic schema fields.",
+        ].join("\n");
+      }
       const fields = Object.fromEntries(m.schemaFields.map((field) => {
         if (field.type === "number") return [field.key, field.defaultValue ?? field.min ?? 0];
         if (field.type === "boolean") return [field.key, field.defaultValue ?? false];
@@ -214,7 +222,7 @@ export function buildStateCompilerPrompt(
       return [
         `- customModuleData[moduleId=${m.id}] (${m.label}): ${m.compilerInstruction}`,
         `  maxItems=${m.maxItems}; outputMode=${m.outputMode}; fields=${JSON.stringify(fields)}`,
-        "  Output data only. Never output HTML, CSS, scripts, or template markup.",
+        "  Output semantic data only. Never output HTML, CSS, scripts, or template markup.",
       ].join("\n");
     })
     .join("\n");

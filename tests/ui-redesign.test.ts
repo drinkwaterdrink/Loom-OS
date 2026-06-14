@@ -17,7 +17,9 @@ test("mobile workspace uses compact navigation and a dedicated setup view", asyn
   assert.match(source, /load_history_state/);
   assert.match(source, /delete_history_state/);
   assert.match(source, /data-tab-scope/);
-  assert.match(source, /viewerCommandHtml/);
+  assert.match(source, /viewerCoreBarHtml/);
+  assert.match(source, /buildThemeDocument/);
+  assert.match(source, /openCreatorWorkshop/);
   assert.match(source, /updateLiveStatusDom/);
   assert.match(source, /updateHistorySurface/);
   assert.doesNotMatch(source, /<details class="loomos-shell loomos-settings"/);
@@ -30,9 +32,11 @@ test("responsive design layer uses full-width grid navigation and safe areas", a
   assert.match(styles, /align-content:\s*start/);
   assert.match(styles, /grid-auto-rows:\s*max-content/);
   assert.match(styles, /@container loomos-viewer/);
-  assert.match(styles, /\.loomos-viewer-command/);
-  assert.match(styles, /grid-template-columns:\s*minmax\(92px, 1\.35fr\) repeat\(2, minmax\(62px, \.8fr\)\)/);
-  assert.match(styles, /\.loomos-viewer-actions \.loomos-button[\s\S]*?min-height:\s*34px/);
+  assert.match(styles, /\.loomos-viewer-core/);
+  assert.match(styles, /\.loomos-viewer-stage/);
+  assert.match(styles, /\.loomos-theme-frame/);
+  assert.match(styles, /\.loomos-workshop/);
+  assert.match(styles, /\.loomos-code-editor-host/);
   assert.match(styles, /-webkit-line-clamp:\s*2/);
   assert.match(styles, /\.loomos-tools-grid/);
   assert.match(styles, /\.loomos-image-prompt-card/);
@@ -72,13 +76,18 @@ test("history uses a compact archive heading and search surface", () => {
   assert.match(html, /data-history-results/);
 });
 
-test("schema studio exposes viewer editing and per-module portability", async () => {
+test("creator workshop exposes portable artifacts, code editing, and isolated preview", async () => {
   const source = await readFile("src/frontend.ts", "utf8");
-  assert.match(source, /Schema & Presentation Studio/);
-  assert.match(source, /data-studio-action="edit-viewer"/);
-  assert.match(source, /data-studio-action="import-module"/);
-  assert.match(source, /data-studio-action="export-stock"/);
-  assert.match(source, /data-studio-action="export-custom"/);
+  const workshop = await readFile("src/frontend/workshop.ts", "utf8");
+  assert.match(source, /Creator Workshop/);
+  assert.match(source, /activeThemeId/);
+  assert.match(source, /developerMode/);
+  assert.match(workshop, /LoomOS Creator Workshop/);
+  assert.match(workshop, /CodeMirror 6/);
+  assert.match(workshop, /sandbox="allow-scripts"/);
+  assert.match(workshop, /data-workshop-action="duplicate"/);
+  assert.match(workshop, /data-workshop-action="export"/);
+  assert.match(workshop, /data-workshop-action="install"/);
 });
 
 test("tracker updates avoid global widget and surface rebuilds", async () => {

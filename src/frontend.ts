@@ -73,6 +73,20 @@ import {
   renderWhatChangedModal,
 } from "./frontend/render";
 import { LOOMOS_STYLES } from "./frontend/styles";
+import {
+  EMPTY_ARTIFACT_LIBRARY,
+  type ArtifactLibrary,
+  type ThemeArtifact,
+} from "./shared/artifacts";
+import { buildViewerModel } from "./shared/viewerModel";
+import {
+  buildThemeDocument,
+  isAllowedThemeAction,
+} from "./shared/themeRuntime";
+import {
+  openCreatorWorkshop,
+  type CreatorWorkshopHandle,
+} from "./frontend/workshop";
 
 const ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v16H7a2 2 0 0 0-2 2V5.5A1 1 0 0 0 4 4.5Zm3-.5a1 1 0 0 0-1 1v11.17c.31-.11.65-.17 1-.17h11V4H7Zm2 3h6v2H9V7Zm0 4h6v2H9v-2Z"/></svg>`;
 
@@ -141,11 +155,15 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   let chatStates: Array<{ messageId: string; swipeId: number }> = [];
   let historyItems: StateHistoryItem[] = [];
   let injectionPreview: InjectionPreview | null = null;
+  let artifactLibrary: ArtifactLibrary = EMPTY_ARTIFACT_LIBRARY;
   let historyFilter = "";
   let modal: SpindleModalHandle | null = null;
   let modalListenerCleanup: (() => void) | null = null;
+  let workshop: CreatorWorkshopHandle | null = null;
   let activeTab = "overview";
   let viewerTab = "overview";
+  let viewerUtilityMode: "theme" | "native" | "history" | "settings" | "diagnostics" = "theme";
+  let activeThemeNonce = "";
 
   const tab = ctx.ui.registerDrawerTab({
     id: "command-deck",
@@ -232,6 +250,73 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   function elapsedLabel(): string {
     if (!activeGenerationRequestId || generationStartedAt === 0) return status;
     return `${status} | ${formatElapsed(currentElapsedMs())}`;
+  }
+
+  function activeTheme(): ThemeArtifact | null {
+    if (!settings.activeThemeId) return null;
+    const artifact = artifactLibrary.records.find((record) =>
+      record.artifact.id === settings.activeThemeId
+    )?.artifact;
+    return artifact?.kind === "theme" ? artifact : null;
+  }
+
+  function openWorkshop(): void {
+    if (workshop) return;
+    workshop = openCreatorWorkshop({
+      ctx,
+      settings,
+      state,
+      history: historyItems,
+      library: artifactLibrary,
+      send,
+      requestId,
+      onStatus: (message) => {
+        status = message;
+        updateLiveStatusDom();
+      },
+      onClose: () => {
+        workshop = null;
+      },
+    });
+  }
+
+  function handleThemeMessage(event: MessageEvent): void {
+    if (!modal || !isRecord(event.data)) return;
+    const iframe = modal.root.querySelector<HTMLIFrameElement>("[data-theme-frame]");
+    if (!iframe || event.source !== iframe.contentWindow) return;
+    if (
+      event.data.source !== "loomos-theme"
+      || event.data.channel !== activeThemeNonce
+      || typeof event.data.action !== "string"
+    ) return;
+    const action = event.data.action;
+    if (action === "runtime-error") {
+      status = `Theme error: ${String(event.data.payload ?? "Unknown runtime error").slice(0, 240)}`;
+      updateLiveStatusDom();
+      return;
+    }
+    const theme = activeTheme();
+    if (!theme || !isAllowedThemeAction(action, theme.manifest.capabilities)) return;
+    if (action === "copy") {
+      void navigator.clipboard.writeText(String(event.data.payload ?? "")).then(() => {
+        status = "Theme content copied";
+        updateLiveStatusDom();
+      });
+    }
+    if (action === "reload") reloadState();
+    if (action === "generate") startGeneration();
+    if (action === "stop" && activeGenerationRequestId) {
+      send({ type: "cancel_generation", requestId: activeGenerationRequestId });
+    }
+    if (action === "history") {
+      viewerUtilityMode = "history";
+      renderViewer();
+    }
+    if (action === "select-tab" && typeof event.data.payload === "string") {
+      viewerTab = event.data.payload;
+      viewerUtilityMode = "native";
+      renderViewer();
+    }
   }
 
   function captureUiState() {
@@ -819,84 +904,37 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   }
 
   function renderSchemaPromptStudio(): string {
-    const modules = getEffectiveModuleCatalog(settings);
-    const customModules = settings.customModules ?? [];
+    const records = artifactLibrary.records;
+    const moduleCount = records.filter((record) => record.artifact.kind === "module").length;
+    const themeCount = records.filter((record) => record.artifact.kind === "theme").length;
+    const blueprintCount = records.filter((record) => record.artifact.kind === "blueprint").length;
+    const theme = activeTheme();
     return `
       <details class="loomos-schema-studio loomos-creation-studio" data-details="schema-prompt-studio">
         <summary>
-          <span>Schema & Presentation Studio</span>
-          <small>${modules.length + customModules.length} modules</small>
+          <span>Creator Workshop</span>
+          <small>${records.length} artifacts</small>
         </summary>
         <div class="loomos-schema-studio-body">
           <div class="loomos-studio-hero">
             <div>
-              <span class="loomos-kicker">Creation workspace</span>
-              <h3>Build the tracker you want to read</h3>
-              <p>Generation contracts control what the AI tracks. Presentation templates control how the chat viewer and module output are arranged and styled. Runtime State V2 validation remains locked for storage safety.</p>
+              <span class="loomos-kicker">AI-first creation workspace</span>
+              <h3>Build complete LoomOS trackers</h3>
+              <p>Create portable modules, full-screen themes, or complete Blueprints. Every artifact exposes its schema, AI instructions, HTML, CSS, JavaScript, sample data, diagnostics, and revision history.</p>
             </div>
-            <span class="loomos-status">${settings.viewerTemplateEnabled ? "Custom viewer active" : "Native viewer active"}</span>
+            <span class="loomos-status">${theme ? escapeHtml(theme.meta.name) : "Native tracker active"}</span>
           </div>
           <div class="loomos-studio-actions">
-            <button type="button" class="loomos-button loomos-button-primary" data-studio-action="edit-viewer">Edit Viewer HTML/CSS</button>
-            <button type="button" class="loomos-button" data-studio-action="import-module">Import Module</button>
+            <button type="button" class="loomos-button loomos-button-primary" data-studio-action="open-workshop">Open Creator Workshop</button>
             <button type="button" class="loomos-button" data-action="copy-schema-catalog">Copy All Contracts</button>
           </div>
-          <section class="loomos-studio-library">
-            <div class="loomos-studio-library-heading">
-              <div><span class="loomos-kicker">Module library</span><h3>Stock modules</h3></div>
-              <span>${modules.length}</span>
-            </div>
-            ${modules.map((module) => {
-              const overridden = module.overridden;
-              const presentation = settings.stockModuleOverrides?.[module.key]?.presentationEnabled;
-              return `
-                <article class="loomos-studio-module-row">
-                  <div class="loomos-studio-module-copy">
-                    <div class="loomos-studio-module-title">
-                      <strong>${escapeHtml(module.label)}</strong>
-                      <code>${escapeHtml(module.key)}</code>
-                      ${overridden ? `<span class="loomos-badge">Customized</span>` : ""}
-                      ${presentation ? `<span class="loomos-badge loomos-badge-ok">Template</span>` : ""}
-                    </div>
-                    <p>${escapeHtml(module.description)}</p>
-                  </div>
-                  <div class="loomos-studio-module-actions">
-                    <button type="button" class="loomos-button loomos-btn-sm" data-stock-action="inspect" data-stock-key="${escapeHtml(module.key)}">Inspect</button>
-                    <button type="button" class="loomos-button loomos-btn-sm" data-stock-action="edit" data-stock-key="${escapeHtml(module.key)}">Edit</button>
-                    <button type="button" class="loomos-button loomos-btn-sm" data-studio-action="export-stock" data-stock-key="${escapeHtml(module.key)}">Export</button>
-                    ${overridden ? `<button type="button" class="loomos-button loomos-button-danger loomos-btn-sm" data-stock-action="reset" data-stock-key="${escapeHtml(module.key)}">Reset</button>` : ""}
-                  </div>
-                </article>
-              `;
-            }).join("")}
+          <section class="loomos-workshop-summary">
+            <div><strong>${moduleCount}</strong><span>Modules</span></div>
+            <div><strong>${themeCount}</strong><span>Themes</span></div>
+            <div><strong>${blueprintCount}</strong><span>Blueprints</span></div>
+            <div><strong>${settings.customModules.filter((module) => module.artifactId).length}</strong><span>Installed</span></div>
           </section>
-          <section class="loomos-studio-library">
-            <div class="loomos-studio-library-heading">
-              <div><span class="loomos-kicker">Portable modules</span><h3>Custom modules</h3></div>
-              <span>${customModules.length}</span>
-            </div>
-            ${customModules.length === 0
-              ? `<div class="loomos-empty loomos-studio-empty"><p>No custom modules yet. Import one or duplicate a stock module from the module matrix.</p></div>`
-              : customModules.map((module) => `
-                <article class="loomos-studio-module-row">
-                  <div class="loomos-studio-module-copy">
-                    <div class="loomos-studio-module-title">
-                      <strong>${escapeHtml(module.label)}</strong>
-                      <code>${escapeHtml(module.id)}</code>
-                      <span class="loomos-badge">Custom</span>
-                      ${module.allowHtmlTemplate ? `<span class="loomos-badge loomos-badge-ok">HTML/CSS</span>` : ""}
-                    </div>
-                    <p>${escapeHtml(module.description || module.compilerInstruction)}</p>
-                  </div>
-                  <div class="loomos-studio-module-actions">
-                    <button type="button" class="loomos-button loomos-btn-sm" data-custom-action="edit" data-custom-id="${escapeHtml(module.id)}">Edit</button>
-                    <button type="button" class="loomos-button loomos-btn-sm" data-custom-action="duplicate" data-custom-id="${escapeHtml(module.id)}">Duplicate</button>
-                    <button type="button" class="loomos-button loomos-btn-sm" data-studio-action="export-custom" data-custom-id="${escapeHtml(module.id)}">Export</button>
-                    <button type="button" class="loomos-button loomos-button-danger loomos-btn-sm" data-custom-action="delete" data-custom-id="${escapeHtml(module.id)}">Delete</button>
-                  </div>
-                </article>
-              `).join("")}
-          </section>
+          <p class="loomos-hint">The existing field builder remains available for legacy modules below. New work should use the Workshop's nested JSON Schema editor and portable artifact format.</p>
         </div>
       </details>
     `;
@@ -1152,6 +1190,16 @@ export function setup(ctx: SpindleFrontendContext): () => void {
                   `<option value="${skin}"${selected(skin, settings.skin)}>${skinLabel(skin)}</option>`
                 ).join("")}
               </select></label>
+              <label class="loomos-field"><span>Tracker theme</span><select class="loomos-select" data-setting="activeThemeId">
+                <option value="">Native LoomOS</option>
+                ${artifactLibrary.records
+                  .filter((record) => record.artifact.kind === "theme")
+                  .map((record) => `<option value="${escapeHtml(record.artifact.id)}"${selected(record.artifact.id, settings.activeThemeId)}>${escapeHtml(record.artifact.meta.name)}</option>`)
+                  .join("")}
+              </select></label>
+            </div>
+            <div class="loomos-settings-switches">
+              <label class="loomos-check"><input type="checkbox" data-setting="developerMode"${checked(settings.developerMode)}><span>Developer Mode for isolated theme JavaScript</span></label>
             </div>
           </section>
           
@@ -1164,7 +1212,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   function diagnosticText(): string {
     const lines = [
-      `version: 0.1.13`,
+      `version: 0.1.14`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,
@@ -1273,36 +1321,37 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       </main>`;
   }
 
-  function viewerCommandHtml(): string {
+  function viewerCoreBarHtml(): string {
     const canGenerate = permissions.generation && permissions.chatMutation;
     const busy = activeGenerationRequestId !== null;
-    const stateLabel = busy ? `Compiling ${formatElapsed(currentElapsedMs())}` : state ? "Synced" : "No state";
-    const sceneTitle = state?.kernel.scene || "Exact-swipe tracker";
-    const sceneMeta = state
-      ? [state.kernel.location, state.kernel.timeframe].filter(Boolean).join(" · ")
-      : status;
+    const theme = activeTheme();
     return `
-      <section class="loomos-viewer-command">
-        <div class="loomos-viewer-context">
-          <div class="loomos-viewer-eyebrow">
-            <span class="loomos-kicker">LoomOS tracker</span>
-            <span class="loomos-state-pill${busy ? " is-busy" : state ? " is-ready" : ""}" data-live-pill title="${escapeHtml(elapsedLabel())}">
-              <i></i><span data-live-state-label>${stateLabel}</span>
-            </span>
-          </div>
-          <h1>${escapeHtml(sceneTitle)}</h1>
-          <p>${escapeHtml(sceneMeta || exactLabel())}</p>
-          <small data-live-status>${escapeHtml(exactLabel())} | ${escapeHtml(status)}</small>
+      <header class="loomos-viewer-core">
+        <div class="loomos-viewer-core-context">
+          <strong>${escapeHtml(state?.kernel.scene || "LoomOS Tracker")}</strong>
+          <span data-live-status>${escapeHtml(busy ? status : exactLabel())}</span>
         </div>
-        <div class="loomos-viewer-actions">
+        <div class="loomos-viewer-core-actions">
+          <button type="button" class="loomos-core-icon" data-action="close-viewer" title="Exit tracker" aria-label="Exit tracker">&times;</button>
+          <button type="button" class="loomos-core-icon" data-action="reload" title="Reload exact swipe" aria-label="Reload exact swipe"${disabled(!permissions.chatMutation || busy)}>&#8635;</button>
           ${busy
-            ? `<button class="loomos-button loomos-button-danger loomos-viewer-primary" data-action="cancel">Stop <span data-live-elapsed>${formatElapsed(currentElapsedMs())}</span></button>`
-            : `<button class="loomos-button loomos-button-primary loomos-viewer-primary" data-action="generate"${disabled(!canGenerate)}>${state ? "Refresh" : "Generate"}</button>`
+            ? `<button type="button" class="loomos-core-generate is-busy" data-action="cancel" title="Stop generation" aria-label="Stop generation"><span aria-hidden="true">&#9632;</span><b data-live-elapsed>${formatElapsed(currentElapsedMs())}</b></button>`
+            : `<button type="button" class="loomos-core-generate" data-action="generate" title="${state ? "Refresh tracker" : "Generate tracker"}" aria-label="${state ? "Refresh tracker" : "Generate tracker"}"${disabled(!canGenerate)}><span aria-hidden="true">&#9654;</span><b>${state ? "Refresh" : "Generate"}</b></button>`
           }
-          <button class="loomos-button" data-action="reload"${disabled(!permissions.chatMutation || busy)}>Reload</button>
-          ${state && !busy ? `<button class="loomos-button loomos-button-danger" data-action="delete">Delete</button>` : ""}
+          <details class="loomos-viewer-more">
+            <summary class="loomos-core-icon" title="More tracker actions" aria-label="More tracker actions">&#8942;</summary>
+            <div class="loomos-viewer-menu">
+              ${theme ? `<button type="button" data-action="viewer-mode" data-viewer-mode="theme">Theme: ${escapeHtml(theme.meta.name)}</button>` : ""}
+              <button type="button" data-action="viewer-mode" data-viewer-mode="native">Native tracker</button>
+              <button type="button" data-action="viewer-mode" data-viewer-mode="history">History <span>${historyItems.length}</span></button>
+              <button type="button" data-action="viewer-mode" data-viewer-mode="settings">Settings</button>
+              <button type="button" data-action="viewer-mode" data-viewer-mode="diagnostics">Diagnostics</button>
+              <button type="button" data-action="open-workshop">Creator Workshop</button>
+              ${state && !busy ? `<button type="button" class="is-danger" data-action="delete">Delete tracker</button>` : ""}
+            </div>
+          </details>
         </div>
-      </section>`;
+      </header>`;
   }
 
   function renderViewer(): void {
@@ -1311,34 +1360,84 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     modal.root.dataset.skin = settings.skin;
     modal.root.dataset.view = "modal";
     modal.setTitle("LoomOS Tracker");
-    const command = viewerCommandHtml();
+    const theme = activeTheme();
+    if (viewerUtilityMode === "theme" && !theme) viewerUtilityMode = "native";
     const navigation = tabsNavHtml(viewerTab, false, "viewer");
-    const content = `
-      ${compileStatusCardHtml()}
-      <main class="loomos-tab-pane loomos-viewer-pane" role="tabpanel">
-        ${viewerTab === "history"
-          ? renderHistoryTab(historyItems, historyFilter, activeIdentity)
-          : viewerTab === "injection"
-          ? injectionPreview ? renderInjectionPreview(injectionPreview) : ""
-          : state
-            ? renderDashboard(state, settings, viewerTab)
-            : emptyStateHtml()
-        }
+    let content = "";
+    if (viewerUtilityMode === "history") {
+      content = `<main class="loomos-viewer-utility">${renderHistoryTab(historyItems, historyFilter, activeIdentity)}</main>`;
+    } else if (viewerUtilityMode === "diagnostics") {
+      content = `<main class="loomos-viewer-utility">
+        <section class="loomos-settings-cluster">
+          <div class="loomos-settings-cluster-heading"><strong>Pipeline diagnostics</strong><span>Current exact-swipe runtime</span></div>
+          <pre class="loomos-diagnostic">${escapeHtml(diagnosticText())}</pre>
+        </section>
       </main>`;
-    const shell = settings.viewerTemplateEnabled
-      ? renderViewerPresentation(
-          settings.viewerHtmlTemplate || STARTER_VIEWER_HTML,
-          settings.viewerCssTemplate || STARTER_VIEWER_CSS,
-          { command, navigation, content },
-        )
-      : {
-          html: `<div class="loomos-viewer-frame">${command}${navigation}${content}</div>`,
-          css: "",
-          wrapperClass: "",
-        };
+    } else if (viewerUtilityMode === "settings") {
+      content = `<main class="loomos-viewer-utility">
+        <section class="loomos-settings-cluster">
+          <div class="loomos-settings-cluster-heading"><strong>Tracker settings</strong><span>Compact viewer controls</span></div>
+          <dl class="loomos-facts">
+            <div><dt>Theme</dt><dd>${escapeHtml(theme?.meta.name || "Native LoomOS")}</dd></div>
+            <div><dt>Developer Mode</dt><dd>${settings.developerMode ? "Enabled" : "Disabled"}</dd></div>
+            <div><dt>Injection budget</dt><dd>${settings.injectionTokenBudget} tokens</dd></div>
+            <div><dt>Seed budget</dt><dd>${settings.compilerSeedTokenBudget} tokens</dd></div>
+            <div><dt>History retained</dt><dd>${settings.historyRetentionLimit}</dd></div>
+            <div><dt>Auto generation</dt><dd>${escapeHtml(settings.autoGeneration)}</dd></div>
+          </dl>
+          <div class="loomos-dialog-buttons">
+            <button type="button" class="loomos-button loomos-button-primary" data-action="open-workshop">Open Creator Workshop</button>
+            <button type="button" class="loomos-button" data-action="permissions">Review permissions</button>
+          </div>
+        </section>
+      </main>`;
+    } else if (viewerUtilityMode === "native") {
+      const nativeContent = `
+        ${compileStatusCardHtml()}
+        <main class="loomos-tab-pane loomos-viewer-pane" role="tabpanel">
+          ${state ? renderDashboard(state, settings, viewerTab) : emptyStateHtml()}
+        </main>`;
+      const legacyPresentation = settings.viewerTemplateEnabled
+        ? renderViewerPresentation(
+            settings.viewerHtmlTemplate || STARTER_VIEWER_HTML,
+            settings.viewerCssTemplate || STARTER_VIEWER_CSS,
+            {
+              command: "",
+              navigation,
+              content: nativeContent,
+            },
+          )
+        : null;
+      content = `
+        ${legacyPresentation
+          ? `<style>${legacyPresentation.css}</style>${legacyPresentation.html}`
+          : `${navigation}${nativeContent}`}`;
+    } else if (theme) {
+      activeThemeNonce = crypto.randomUUID();
+      content = `
+        ${theme.manifest.developerMode && !settings.developerMode
+          ? `<div class="loomos-theme-trust-note">Interactive JavaScript is paused until Developer Mode is enabled. The visual theme remains active.</div>`
+          : ""}
+        <iframe class="loomos-theme-frame" data-theme-frame title="${escapeHtml(theme.meta.name)} tracker theme" sandbox="allow-scripts"></iframe>`;
+    }
     modal.root.innerHTML = `
-      ${shell.css ? `<style>${shell.css}</style>` : ""}
-      <div class="loomos-viewer-shell ${shell.wrapperClass}">${shell.html}</div>`;
+      <div class="loomos-viewer-app">
+        ${viewerCoreBarHtml()}
+        <section class="loomos-viewer-stage is-${viewerUtilityMode}">${content}</section>
+      </div>`;
+    if (viewerUtilityMode === "theme" && theme) {
+      const iframe = modal.root.querySelector<HTMLIFrameElement>("[data-theme-frame]");
+      if (iframe) {
+        iframe.srcdoc = buildThemeDocument(
+          theme,
+          buildViewerModel(state, settings, historyItems, status),
+          {
+            nonce: activeThemeNonce,
+            developerModeEnabled: settings.developerMode,
+          },
+        );
+      }
+    }
   }
 
   function renderSurfaces(preserveDisclosure = true): void {
@@ -1421,6 +1520,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       renderViewer();
       return;
     }
+    viewerUtilityMode = activeTheme() ? "theme" : "native";
     modal = ctx.ui.showModal({
       title: "LoomOS Tracker",
       width: Math.min(1100, typeof window !== "undefined" ? window.innerWidth - 8 : 420),
@@ -1479,6 +1579,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       skin: root.querySelector<HTMLSelectElement>('[data-setting="skin"]')?.value,
       modulePreset: root.querySelector<HTMLSelectElement>('[data-setting="modulePreset"]')?.value,
       connectionId: root.querySelector<HTMLSelectElement>('[data-setting="connectionId"]')?.value ?? "",
+      activeThemeId: root.querySelector<HTMLSelectElement>('[data-setting="activeThemeId"]')?.value ?? settings.activeThemeId,
+      developerMode: root.querySelector<HTMLInputElement>('[data-setting="developerMode"]')?.checked ?? settings.developerMode,
       autoGeneration: root.querySelector<HTMLSelectElement>('[data-setting="autoGeneration"]')?.value,
       injectionEnabled: root.querySelector<HTMLInputElement>('[data-setting="injectionEnabled"]')?.checked,
       showInjectionPreview: root.querySelector<HTMLInputElement>('[data-setting="showInjectionPreview"]')?.checked,
@@ -2195,6 +2297,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   }
 
   function handleStudioAction(action: string, button: HTMLElement): void {
+    if (action === "open-workshop") {
+      openWorkshop();
+      return;
+    }
     if (action === "edit-viewer") {
       openViewerPresentationEditor();
       return;
@@ -2897,8 +3003,12 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         settings = response.settings;
         permissions = response.permissions;
         connections = response.connections;
+        artifactLibrary = response.artifacts;
         activeIdentity = response.identity;
         state = response.state;
+        workshop?.updateLibrary(artifactLibrary);
+        workshop?.updateSettings(settings);
+        workshop?.updateState(state, historyItems);
         status = response.identity
           ? response.state ? "Exact swipe state loaded" : "Ready to generate"
           : "No active message";
@@ -2914,6 +3024,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         break;
       case "settings":
         settings = response.settings;
+        workshop?.updateSettings(settings);
         status = "Settings saved";
         renderMode = "surfaces";
         if (activeIdentity?.chatId) {
@@ -2929,6 +3040,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       case "state":
         activeIdentity = response.identity;
         state = response.state;
+        workshop?.updateState(state, historyItems);
         status = activeGenerationRequestId
           ? "Finalizing tracker"
           : response.state ? "Exact swipe state loaded" : "No state for this swipe";
@@ -2986,6 +3098,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       case "state_history":
         if (response.chatId === ctx.getActiveChat().chatId) {
           historyItems = response.items;
+          workshop?.updateState(state, historyItems);
           renderMode = "history";
           syncWidgets = true;
         } else {
@@ -2994,6 +3107,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         break;
       case "history_state_deleted": {
         historyItems = response.items;
+        workshop?.updateState(state, historyItems);
         const deletedActive = activeIdentity?.chatId === response.identity.chatId
           && activeIdentity.messageId === response.identity.messageId
           && activeIdentity.swipeId === response.identity.swipeId;
@@ -3005,6 +3119,38 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       case "injection_preview":
         injectionPreview = response.preview;
         renderMode = "surfaces";
+        break;
+      case "artifacts":
+        artifactLibrary = response.library;
+        workshop?.updateLibrary(artifactLibrary);
+        renderMode = "surfaces";
+        break;
+      case "artifact_saved":
+        artifactLibrary = response.library;
+        workshop?.updateLibrary(artifactLibrary);
+        status = `Saved ${response.record.artifact.meta.name} revision ${response.record.revision}`;
+        renderMode = "surfaces";
+        break;
+      case "artifact_deleted":
+        artifactLibrary = response.library;
+        settings = response.settings;
+        workshop?.updateLibrary(artifactLibrary);
+        workshop?.updateSettings(settings);
+        status = "Artifact deleted";
+        renderMode = "surfaces";
+        break;
+      case "artifact_installed":
+        artifactLibrary = response.library;
+        settings = response.settings;
+        workshop?.updateLibrary(artifactLibrary);
+        workshop?.updateSettings(settings);
+        status = response.message;
+        viewerUtilityMode = activeTheme() ? "theme" : "native";
+        renderMode = "surfaces";
+        break;
+      case "artifact_generation_status":
+        workshop?.handleBackendResponse(response);
+        renderMode = "none";
         break;
       case "error":
         if (response.requestId === activeGenerationRequestId) {
@@ -3055,6 +3201,12 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     if (actionBtn) {
       const action = actionBtn.dataset.action;
       if (action === "viewer") openViewer();
+      if (action === "close-viewer") modal?.dismiss();
+      if (action === "open-workshop") openWorkshop();
+      if (action === "viewer-mode") {
+        viewerUtilityMode = (actionBtn.dataset.viewerMode ?? "native") as typeof viewerUtilityMode;
+        renderViewer();
+      }
       if (action === "generate") startGeneration();
       if (action === "reload") reloadState();
       if (action === "cancel" && activeGenerationRequestId) {
@@ -3174,6 +3326,26 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   function handleRootChange(event: Event): void {
     const target = event.target as HTMLElement | null;
     if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+
+    if (
+      target instanceof HTMLInputElement
+      && target.dataset.setting === "developerMode"
+      && target.checked
+      && !settings.developerMode
+    ) {
+      target.checked = false;
+      void ctx.ui.showConfirm({
+        title: "Enable Developer Mode",
+        message: "Developer Mode allows trusted artifact JavaScript to run inside an isolated, network-blocked iframe. It still cannot access Lumiverse, storage, or the host DOM.",
+        confirmLabel: "Enable",
+      }).then(({ confirmed }) => {
+        if (!confirmed) return;
+        settings = LoomOSSettingsSchema.parse({ ...settings, developerMode: true });
+        send({ type: "save_settings", requestId: requestId("developer-mode"), settings });
+        renderAll();
+      });
+      return;
+    }
     
     if (target.dataset.setting === "modulePreset") {
       applyModulePreset(target.value);
@@ -3223,9 +3395,11 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   tab.root.addEventListener("click", handleActionClick);
   tab.root.addEventListener("change", handleRootChange);
   tab.root.addEventListener("input", handleRootInput);
+  window.addEventListener("message", handleThemeMessage);
   cleanups.push(() => tab.root.removeEventListener("click", handleActionClick));
   cleanups.push(() => tab.root.removeEventListener("change", handleRootChange));
   cleanups.push(() => tab.root.removeEventListener("input", handleRootInput));
+  cleanups.push(() => window.removeEventListener("message", handleThemeMessage));
   cleanups.push(inputAction.onClick(openViewer));
   cleanups.push(tab.onActivate(() => syncFromHost(false)));
   cleanups.push(ctx.onBackendMessage(handleBackendMessage));
@@ -3272,6 +3446,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     clearAllMessageWidgets();
     modalListenerCleanup?.();
     modalListenerCleanup = null;
+    workshop?.destroy();
+    workshop = null;
     for (const cleanup of cleanups.splice(0).reverse()) {
       try {
         cleanup();

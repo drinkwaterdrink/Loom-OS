@@ -8,6 +8,11 @@ import type {
   StateHistoryItem,
   StateIdentity,
 } from "./types";
+import type {
+  ArtifactLibrary,
+  ArtifactRecord,
+  LoomOSArtifact,
+} from "./artifacts";
 
 export interface IdentityRequest {
   chatId: string;
@@ -31,7 +36,27 @@ export type FrontendRequest =
   | { type: "refresh_permissions"; requestId: string }
   | { type: "get_chat_states"; requestId: string; chatId: string }
   | { type: "list_state_history"; requestId: string; chatId: string }
-  | { type: "preview_injection"; requestId: string; chatId: string };
+  | { type: "preview_injection"; requestId: string; chatId: string }
+  | { type: "get_artifacts"; requestId: string }
+  | { type: "save_artifact"; requestId: string; artifact: LoomOSArtifact }
+  | { type: "delete_artifact"; requestId: string; artifactId: string }
+  | { type: "restore_artifact"; requestId: string; artifactId: string; revision: number }
+  | {
+      type: "generate_artifact";
+      requestId: string;
+      kind: LoomOSArtifact["kind"];
+      brief: string;
+      currentArtifact?: LoomOSArtifact | null;
+    }
+  | { type: "cancel_artifact_generation"; requestId: string }
+  | {
+      type: "install_artifact";
+      requestId: string;
+      artifact: LoomOSArtifact;
+      selectedArtifactIds?: string[];
+      applySettings?: boolean;
+      activateTheme?: boolean;
+    };
 
 export type BackendResponse =
   | {
@@ -41,6 +66,7 @@ export type BackendResponse =
       connections: ConnectionSummary[];
       identity: StateIdentity | null;
       state: LoomOSState | null;
+      artifacts: ArtifactLibrary;
     }
   | { type: "settings"; requestId?: string; settings: LoomOSSettings }
   | { type: "connections"; requestId?: string; connections: ConnectionSummary[] }
@@ -83,4 +109,36 @@ export type BackendResponse =
       type: "injection_preview";
       requestId?: string;
       preview: InjectionPreview | null;
+    }
+  | { type: "artifacts"; requestId?: string; library: ArtifactLibrary }
+  | {
+      type: "artifact_saved";
+      requestId: string;
+      library: ArtifactLibrary;
+      record: ArtifactRecord;
+    }
+  | {
+      type: "artifact_deleted";
+      requestId: string;
+      library: ArtifactLibrary;
+      artifactId: string;
+      settings: LoomOSSettings;
+    }
+  | {
+      type: "artifact_generation_status";
+      requestId: string;
+      status: "started" | "progress" | "completed" | "cancelled" | "failed";
+      message: string;
+      elapsedMs: number;
+      attempt: 1 | 2;
+      artifact?: LoomOSArtifact;
+      issues?: string[];
+    }
+  | {
+      type: "artifact_installed";
+      requestId: string;
+      settings: LoomOSSettings;
+      library: ArtifactLibrary;
+      installedIds: string[];
+      message: string;
     };

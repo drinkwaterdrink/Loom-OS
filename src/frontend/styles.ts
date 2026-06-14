@@ -2430,6 +2430,437 @@ export const LOOMOS_STYLES = `
     padding: 6px;
   }
 
+  /* Full-screen tracker runtime */
+  .loomos-root[data-view="modal"] {
+    align-content: stretch;
+    align-items: stretch;
+    container: loomos-viewer / inline-size;
+    grid-auto-rows: minmax(0, 1fr);
+    height: 100%;
+    max-height: 100%;
+    max-width: 100vw;
+    overflow: hidden;
+    padding: 0 !important;
+    width: 100%;
+  }
+  .loomos-viewer-app {
+    background: var(--loomos-canvas, #101114);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+    width: 100%;
+  }
+  .loomos-viewer-core {
+    align-items: center;
+    background: color-mix(in srgb, var(--loomos-bg) 96%, #000);
+    border-bottom: 1px solid var(--loomos-border);
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    min-height: 48px;
+    padding: max(6px, env(safe-area-inset-top)) 8px 6px;
+    position: relative;
+    z-index: 110;
+  }
+  .loomos-viewer-core-context {
+    display: grid;
+    flex: 1;
+    gap: 0;
+    min-width: 0;
+  }
+  .loomos-viewer-core-context strong,
+  .loomos-viewer-core-context span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .loomos-viewer-core-context strong { font-size: 12px; }
+  .loomos-viewer-core-context span { color: var(--loomos-muted); font-size: 9px; }
+  .loomos-viewer-core-actions {
+    align-items: center;
+    display: flex;
+    flex: 0 0 auto;
+    gap: 5px;
+  }
+  .loomos-core-icon,
+  .loomos-core-generate,
+  .loomos-viewer-more > summary {
+    align-items: center;
+    background: var(--loomos-panel);
+    border: 1px solid var(--loomos-border);
+    border-radius: 7px;
+    color: var(--loomos-ink);
+    cursor: pointer;
+    display: inline-flex;
+    justify-content: center;
+    min-height: 34px;
+  }
+  .loomos-core-icon,
+  .loomos-viewer-more > summary {
+    font-size: 20px;
+    height: 34px;
+    list-style: none;
+    padding: 0;
+    width: 34px;
+  }
+  .loomos-viewer-more > summary::-webkit-details-marker { display: none; }
+  .loomos-core-generate {
+    background: var(--loomos-accent);
+    border-color: var(--loomos-accent);
+    color: var(--lumiverse-accent-fg, #fff);
+    gap: 6px;
+    min-width: 84px;
+    padding: 0 10px;
+  }
+  .loomos-core-generate.is-busy {
+    background: color-mix(in srgb, #df5259 24%, var(--loomos-panel));
+    border-color: #df5259;
+    color: #ff858a;
+  }
+  .loomos-core-generate b { font-size: 10px; }
+  .loomos-viewer-more { position: relative; }
+  .loomos-viewer-menu {
+    background: var(--loomos-panel);
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, .38);
+    display: grid;
+    min-width: min(250px, calc(100vw - 20px));
+    overflow: hidden;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 120;
+  }
+  .loomos-viewer-menu button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--loomos-border);
+    color: var(--loomos-ink);
+    cursor: pointer;
+    display: flex;
+    font-size: 11px;
+    justify-content: space-between;
+    min-height: 40px;
+    padding: 8px 11px;
+    text-align: left;
+  }
+  .loomos-viewer-menu button:hover,
+  .loomos-viewer-menu button:focus-visible {
+    background: color-mix(in srgb, var(--loomos-accent) 10%, var(--loomos-panel));
+  }
+  .loomos-viewer-menu button.is-danger { color: #ff858a; }
+  .loomos-viewer-stage {
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+  }
+  .loomos-viewer-stage.is-native {
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+  }
+  .loomos-viewer-stage.is-native > .loomos-viewer-tabs {
+    top: 0;
+  }
+  .loomos-theme-frame {
+    background: #101114;
+    border: 0;
+    display: block;
+    height: 100%;
+    width: 100%;
+  }
+  .loomos-theme-trust-note {
+    background: #322a18;
+    border-bottom: 1px solid #66552a;
+    color: #f2d789;
+    font-size: 10px;
+    padding: 6px 10px;
+  }
+  .loomos-theme-trust-note + .loomos-theme-frame {
+    height: calc(100% - 30px);
+  }
+  .loomos-viewer-utility,
+  .loomos-viewer-stage > .loomos-viewer-tabs,
+  .loomos-viewer-stage > .loomos-compile-status,
+  .loomos-viewer-stage > .loomos-viewer-pane {
+    margin-left: 8px;
+    margin-right: 8px;
+  }
+  .loomos-viewer-utility {
+    height: 100%;
+    overflow: auto;
+    padding: 10px 0 max(18px, env(safe-area-inset-bottom));
+  }
+
+  /* Creator Workshop */
+  .loomos-workshop-root {
+    --loomos-code-bg: #0e1015;
+    --loomos-code-gutter: #171a20;
+    align-content: stretch;
+    align-items: stretch;
+    grid-auto-rows: minmax(0, 1fr);
+    height: 100%;
+    max-height: 100%;
+    max-width: 100vw;
+    overflow: hidden;
+    padding: 0 !important;
+    width: 100%;
+  }
+  .loomos-workshop {
+    background: var(--loomos-bg);
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+  }
+  .loomos-workshop-core {
+    align-items: center;
+    background: color-mix(in srgb, var(--loomos-panel) 95%, #000);
+    border-bottom: 1px solid var(--loomos-border);
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    min-height: 52px;
+    padding: max(8px, env(safe-area-inset-top)) 10px 8px;
+  }
+  .loomos-workshop-core > div:first-child {
+    display: grid;
+    min-width: 0;
+  }
+  .loomos-workshop-core strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .loomos-workshop-core-actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 5px;
+  }
+  .loomos-workshop-nav {
+    background: var(--loomos-bg);
+    border-bottom: 1px solid var(--loomos-border);
+    display: flex;
+    gap: 2px;
+    overflow-x: auto;
+    padding: 5px 8px;
+    scrollbar-width: none;
+  }
+  .loomos-workshop-nav::-webkit-scrollbar { display: none; }
+  .loomos-workshop-nav button,
+  .loomos-code-files button,
+  .loomos-preview-sizes button,
+  .loomos-ai-kind-row button {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--loomos-muted);
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 800;
+    min-height: 32px;
+    padding: 5px 9px;
+    white-space: nowrap;
+  }
+  .loomos-workshop-nav button.active,
+  .loomos-code-files button.active,
+  .loomos-preview-sizes button.active,
+  .loomos-ai-kind-row button.active {
+    background: color-mix(in srgb, var(--loomos-accent) 14%, var(--loomos-panel));
+    border-color: color-mix(in srgb, var(--loomos-accent) 55%, var(--loomos-border));
+    color: var(--loomos-ink);
+  }
+  .loomos-workshop-content {
+    min-height: 0;
+    overflow: auto;
+    padding: 10px 10px max(20px, env(safe-area-inset-bottom));
+  }
+  .loomos-workshop-panel {
+    display: grid;
+    gap: 12px;
+    margin: 0 auto;
+    max-width: 1120px;
+    width: 100%;
+  }
+  .loomos-workshop-heading {
+    align-items: end;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+  }
+  .loomos-workshop-heading h2,
+  .loomos-ai-stage h3 {
+    font-size: 17px;
+    margin: 2px 0 0;
+  }
+  .loomos-workshop-search { max-width: 280px; width: 42%; }
+  .loomos-workshop-create-grid,
+  .loomos-workshop-summary {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .loomos-workshop-create-grid > button {
+    background: var(--loomos-panel);
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    color: var(--loomos-ink);
+    cursor: pointer;
+    display: grid;
+    gap: 3px;
+    min-height: 72px;
+    padding: 11px;
+    text-align: left;
+  }
+  .loomos-workshop-create-grid > button:hover {
+    border-color: var(--loomos-accent);
+  }
+  .loomos-workshop-create-grid span { color: var(--loomos-muted); font-size: 10px; }
+  .loomos-workshop-library { display: grid; gap: 5px; }
+  .loomos-workshop-artifact {
+    align-items: center;
+    border-bottom: 1px solid var(--loomos-border);
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 5px 0;
+  }
+  .loomos-workshop-artifact.is-selected {
+    background: color-mix(in srgb, var(--loomos-accent) 7%, transparent);
+  }
+  .loomos-workshop-artifact-main {
+    background: transparent;
+    border: 0;
+    color: var(--loomos-ink);
+    cursor: pointer;
+    display: grid;
+    gap: 2px;
+    padding: 7px;
+    text-align: left;
+  }
+  .loomos-workshop-artifact-main small {
+    color: var(--loomos-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .loomos-artifact-kind {
+    color: #5eead4;
+    font-size: 9px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+  .loomos-workshop-artifact-meta {
+    align-items: end;
+    color: var(--loomos-muted);
+    display: grid;
+    font-size: 9px;
+    gap: 2px;
+    justify-items: end;
+    padding-right: 8px;
+  }
+  .loomos-workshop-actions,
+  .loomos-ai-kind-row,
+  .loomos-code-files,
+  .loomos-preview-sizes {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .loomos-ai-brief { min-height: 160px; resize: vertical; }
+  .loomos-workshop-live-status { color: var(--loomos-muted); font-size: 10px; }
+  .loomos-ai-stage {
+    align-items: center;
+    border-left: 3px solid #5eead4;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    padding: 10px 12px;
+  }
+  .loomos-ai-stage p { color: var(--loomos-muted); margin: 3px 0 0; }
+  .loomos-code-files {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .loomos-code-files::-webkit-scrollbar { display: none; }
+  .loomos-code-editor-host {
+    border: 1px solid var(--loomos-border);
+    border-radius: 7px;
+    min-height: 300px;
+    overflow: hidden;
+  }
+  .loomos-code-editor-host .cm-editor { min-height: 300px; }
+  .loomos-code-editor-host .cm-scroller { max-height: min(58dvh, 620px); overflow: auto; }
+  .loomos-preview-stage {
+    align-self: start;
+    background: #090a0d;
+    border: 1px solid var(--loomos-border);
+    display: grid;
+    height: min(68dvh, 760px);
+    justify-self: center;
+    overflow: hidden;
+    place-items: stretch;
+    width: 100%;
+  }
+  .loomos-preview-stage.is-mobile { max-width: 390px; }
+  .loomos-preview-stage.is-tablet { max-width: 760px; }
+  .loomos-preview-stage.is-desktop { max-width: 1120px; }
+  .loomos-preview-stage iframe { border: 0; height: 100%; width: 100%; }
+  .loomos-diagnostic-list { display: grid; gap: 5px; }
+  .loomos-diagnostic-list > div {
+    align-items: start;
+    border-left: 3px solid var(--loomos-border);
+    display: grid;
+    gap: 8px;
+    grid-template-columns: 62px minmax(0, 1fr);
+    padding: 7px 9px;
+  }
+  .loomos-diagnostic-list .is-ok { border-left-color: #45c58a; }
+  .loomos-diagnostic-list .is-warning { border-left-color: #d6a64a; }
+  .loomos-diagnostic-list .is-error { border-left-color: #df5259; }
+  .loomos-diagnostic-list strong { font-size: 9px; text-transform: uppercase; }
+  .loomos-revision-list { display: grid; gap: 5px; }
+  .loomos-revision-list article {
+    align-items: center;
+    border-bottom: 1px solid var(--loomos-border);
+    display: flex;
+    justify-content: space-between;
+    min-height: 48px;
+    padding: 5px 0;
+  }
+  .loomos-revision-list article > div { display: grid; }
+  .loomos-revision-list small { color: var(--loomos-muted); }
+  .loomos-blueprint-parts { display: grid; gap: 5px; }
+  .loomos-blueprint-parts .loomos-check {
+    border-bottom: 1px solid var(--loomos-border);
+    padding: 6px 0;
+  }
+  .loomos-blueprint-parts .loomos-check span { display: grid; }
+  .loomos-workshop-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .loomos-workshop-summary div {
+    border-top: 1px solid var(--loomos-border);
+    display: grid;
+    padding: 8px 0;
+    text-align: center;
+  }
+  .loomos-workshop-summary strong { font-size: 17px; }
+  .loomos-workshop-summary span { color: var(--loomos-muted); font-size: 9px; text-transform: uppercase; }
+  .sr-only {
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
   @container loomos-viewer (max-width: 620px) {
     .loomos-viewer-actions {
       grid-template-columns: minmax(92px, 1.35fr) repeat(2, minmax(58px, .8fr));
@@ -2463,6 +2894,17 @@ export const LOOMOS_STYLES = `
   }
 
   @media (max-width: 620px) {
+    .loomos-viewer-core-context { max-width: 42%; }
+    .loomos-core-generate { min-width: 72px; padding: 0 8px; }
+    .loomos-workshop-create-grid { grid-template-columns: 1fr; }
+    .loomos-workshop-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .loomos-workshop-heading,
+    .loomos-ai-stage {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .loomos-workshop-search { max-width: none; width: 100%; }
+    .loomos-workshop-artifact { grid-template-columns: minmax(0, 1fr) 64px; }
     .loomos-studio-actions,
     .loomos-code-grid {
       grid-template-columns: 1fr;

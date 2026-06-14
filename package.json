@@ -1,6 +1,6 @@
 {
   "name": "loomos-command-deck",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,13 +12,18 @@
     "validate": "npm run version:check && npm run typecheck && npm run build && npm test && node scripts/scan-dist.mjs"
   },
   "dependencies": {
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-html": "^6.4.11",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-json": "^6.0.2",
+    "codemirror": "^6.0.2",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.15.30",
-    "esbuild": "^0.25.5",
+    "esbuild": "^0.28.1",
     "lumiverse-spindle-types": "0.5.21",
-    "tsx": "^4.20.3",
+    "tsx": "^4.22.4",
     "typescript": "^5.8.3"
   }
 }

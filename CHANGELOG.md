@@ -2,6 +2,40 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.14] - 2026-06-14
+
+### Added
+
+- **Creator Workshop**, a full-screen mobile-first workspace for building, importing, exporting, editing, previewing, validating, installing, duplicating, and revising LoomOS artifacts.
+- Portable `loomos-artifact` version 2 contracts for Module Capsules, Themes, and complete Tracker Blueprints.
+- Nested JSON Schema module data with object, array, string, number, integer, boolean, required fields, enums, defaults, and bounded validation constraints.
+- CodeMirror 6 editing surfaces for JSON, prompt text, HTML, CSS, and optional isolated JavaScript.
+- Built-in AI artifact creation and refinement with staged output, elapsed-time progress, cancellation, validation, and one automatic repair pass.
+- External-AI builder prompts and raw, fenced, uploaded, and legacy version-1 JSON import.
+- A per-user artifact library with bounded 20-snapshot revision history, restore, deletion, and inactive drafts.
+- Mobile, tablet, and desktop artifact preview sizes using the same sandboxed runtime as the live tracker.
+- A stable `ViewerModelV1` theme data contract covering exact-swipe metadata, counts, scene context, changes, cast, world, story, continuity, tools, audit data, and custom modules.
+- A deterministic escaped template runtime with loops, conditions, `else`, partials, helpers, and capability-gated actions.
+- Developer Mode for trusted artifact JavaScript, disabled by default and isolated from Lumiverse APIs, host DOM, storage, and network access.
+- Regression coverage for artifact migration, nested schemas, normalization, revisions, AI repair, template escaping, sandbox documents, trust gating, and Workshop UI contracts.
+
+### Changed
+
+- Rebuilt the in-chat tracker around a thin native core bar containing only exit, reload, generate/stop with elapsed time, and an overflow menu.
+- Moved theme selection, native fallback, History, compact settings, diagnostics, Creator Workshop, and tracker deletion into the viewer overflow menu.
+- Themes now own the full tracker stage while exact-swipe lifecycle controls remain native and recoverable.
+- Artifact-backed custom modules now send their exact nested JSON Schema to the compiler and normalize generated values against that schema.
+- Legacy viewer HTML/CSS remains supported inside the new native core shell instead of being discarded.
+- Setup now presents Creator Workshop as the primary customization path while retaining the legacy field builder for existing modules.
+
+### Fixed
+
+- Prevented theme data from being rendered as executable markup by escaping all model values.
+- Prevented artifact JavaScript from escaping its script block and blocked ungranted bridge actions.
+- Preserved exact `chatId + messageId + swipeId` state, History, generation timing, and module behavior through the viewer overhaul.
+- Updated the local preview bootstrap for the artifact library and new theme settings.
+- Upgraded `esbuild` and `tsx` to patched releases, clearing the development dependency audit.
+
 ## [0.1.13] - 2026-06-11
 
 ### Added

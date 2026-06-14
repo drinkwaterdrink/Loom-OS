@@ -326,6 +326,8 @@ const defaultSettings = {
   customModulePresets: [],
   customModules: [],
   stockModuleOverrides: {},
+  activeThemeId: "",
+  developerMode: false,
 };
 
 const archivedState = JSON.parse(JSON.stringify(seededState));
@@ -474,6 +476,7 @@ const ctx = {
         }],
         identity: seededState.identity,
         state: seededState,
+        artifacts: { format: "loomos-artifact-library", version: 2, records: [] },
       }));
     } else if (payload.type === "generate_state") {
       const startedAt = Date.now();

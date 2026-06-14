@@ -3832,7 +3832,7 @@ ZodNaN.create = (params) => {
     ...processCreateParams(params)
   });
 };
-var BRAND = Symbol("zod_brand");
+var BRAND = /* @__PURE__ */ Symbol("zod_brand");
 var ZodBranded = class extends ZodType {
   _parse(input) {
     const { ctx } = this._processInputParams(input);
@@ -4463,6 +4463,7 @@ var CustomModuleFieldSchema = external_exports.object({
 });
 var CustomModuleSchema = external_exports.object({
   id: external_exports.string().min(1).max(160),
+  artifactId: external_exports.string().min(1).max(160).optional(),
   label: external_exports.string().trim().min(1).max(160),
   group: external_exports.string().trim().min(1).max(160).default("Custom"),
   description: external_exports.string().trim().max(500).default(""),
@@ -4475,8 +4476,19 @@ var CustomModuleSchema = external_exports.object({
   intensity: external_exports.enum(["light", "medium", "heavy", "experimental"]).default("medium"),
   displayOrder: external_exports.number().int().optional(),
   schemaFields: external_exports.array(CustomModuleFieldSchema).max(40).default([]),
+  jsonSchema: external_exports.unknown().optional(),
+  sampleData: external_exports.unknown().optional(),
   htmlTemplate: external_exports.string().max(8e3).default(""),
   cssTemplate: external_exports.string().max(8e3).default(""),
+  javascriptTemplate: external_exports.string().max(8e4).optional(),
+  capabilities: external_exports.array(external_exports.enum([
+    "copy",
+    "collapse",
+    "navigation",
+    "reload",
+    "generation",
+    "history"
+  ])).max(8).optional(),
   templateEngine: external_exports.enum(["mustache-lite", "token-replace"]).default("mustache-lite"),
   allowHtmlTemplate: external_exports.boolean().default(false)
 }).strict();
@@ -4532,6 +4544,8 @@ var RawSettingsSchema = external_exports.object({
   historyRetentionLimit: external_exports.number().int().min(1).max(1e3).default(100),
   generationTimeoutSeconds: external_exports.number().int().min(30).max(300).default(180),
   connectionId: external_exports.string().trim().max(200).default(""),
+  activeThemeId: external_exports.string().trim().max(160).default(""),
+  developerMode: external_exports.boolean().default(false),
   viewerTemplateEnabled: external_exports.boolean().default(false),
   viewerHtmlTemplate: external_exports.string().max(16e3).default(""),
   viewerCssTemplate: external_exports.string().max(16e3).default(""),
@@ -4573,6 +4587,8 @@ function settingsInput(value) {
     historyRetentionLimit: source.historyRetentionLimit,
     generationTimeoutSeconds: source.generationTimeoutSeconds,
     connectionId: source.connectionId,
+    activeThemeId: source.activeThemeId,
+    developerMode: source.developerMode,
     viewerTemplateEnabled: source.viewerTemplateEnabled,
     viewerHtmlTemplate: source.viewerHtmlTemplate,
     viewerCssTemplate: source.viewerCssTemplate,
@@ -5087,6 +5103,743 @@ var LegacyLoomOSStateSchema = external_exports.object({
 }).strict();
 var DEFAULT_SETTINGS = LoomOSSettingsSchema.parse({});
 
+// src/shared/moduleBundles.ts
+var ModuleBundleBaseSchema = external_exports.object({
+  format: external_exports.literal("loomos-module"),
+  version: external_exports.literal(1),
+  exportedAt: external_exports.string().datetime()
+}).strict();
+var StockModuleBundleSchema = ModuleBundleBaseSchema.extend({
+  kind: external_exports.literal("stock"),
+  key: ModuleKeySchema,
+  control: ModuleControlSchema,
+  override: StockModuleOverrideSchema.default({})
+}).strict();
+var CustomModuleBundleSchema = ModuleBundleBaseSchema.extend({
+  kind: external_exports.literal("custom"),
+  module: CustomModuleSchema
+}).strict();
+var ModuleBundleSchema = external_exports.discriminatedUnion("kind", [
+  StockModuleBundleSchema,
+  CustomModuleBundleSchema
+]);
+function exportCustomModuleBundle(module) {
+  return CustomModuleBundleSchema.parse({
+    format: "loomos-module",
+    version: 1,
+    exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    kind: "custom",
+    module
+  });
+}
+function parseModuleBundle(value) {
+  const bundled = ModuleBundleSchema.safeParse(value);
+  if (bundled.success) return bundled.data;
+  const legacyCustom = CustomModuleSchema.safeParse(value);
+  if (legacyCustom.success) return exportCustomModuleBundle(legacyCustom.data);
+  if (typeof value === "object" && value !== null && "key" in value && typeof value.key === "string" && MODULE_KEYS.includes(value.key)) {
+    const source = value;
+    return StockModuleBundleSchema.parse({
+      format: "loomos-module",
+      version: 1,
+      exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      kind: "stock",
+      key: source.key,
+      control: source.control,
+      override: source.override ?? {}
+    });
+  }
+  throw new Error("This JSON is not a valid LoomOS stock or custom module bundle.");
+}
+
+// src/shared/artifacts.ts
+var ARTIFACT_FORMAT = "loomos-artifact";
+var ARTIFACT_VERSION = 2;
+var VIEWER_MODEL_VERSION = 1;
+var ARTIFACT_LIBRARY_PATH = "artifacts/library-v2.json";
+var ARTIFACT_REVISION_LIMIT = 20;
+var ArtifactIdSchema = external_exports.string().trim().min(1).max(160).regex(/^[A-Za-z][A-Za-z0-9_-]*$/);
+var ArtifactMetaSchema = external_exports.object({
+  name: external_exports.string().trim().min(1).max(160),
+  description: external_exports.string().trim().max(1200).default(""),
+  author: external_exports.string().trim().max(160).default(""),
+  tags: external_exports.array(external_exports.string().trim().min(1).max(80)).max(24).default([])
+}).strict();
+var SUPPORTED_SCHEMA_KEYS = /* @__PURE__ */ new Set([
+  "type",
+  "title",
+  "description",
+  "default",
+  "enum",
+  "properties",
+  "required",
+  "additionalProperties",
+  "items",
+  "minItems",
+  "maxItems",
+  "minLength",
+  "maxLength",
+  "minimum",
+  "maximum"
+]);
+var SUPPORTED_SCHEMA_TYPES = /* @__PURE__ */ new Set([
+  "object",
+  "array",
+  "string",
+  "number",
+  "integer",
+  "boolean"
+]);
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function validateFiniteNumber(value, path, diagnostics, integer = false) {
+  if (typeof value !== "number" || !Number.isFinite(value) || integer && !Number.isInteger(value)) {
+    diagnostics.push({ path, message: integer ? "Expected an integer." : "Expected a finite number." });
+  }
+}
+function validateSchemaNode(value, path, depth, diagnostics) {
+  if (depth > 12) {
+    diagnostics.push({ path, message: "Schema nesting cannot exceed 12 levels." });
+    return;
+  }
+  if (!isRecord(value)) {
+    diagnostics.push({ path, message: "Expected a schema object." });
+    return;
+  }
+  for (const key of Object.keys(value)) {
+    if (!SUPPORTED_SCHEMA_KEYS.has(key)) {
+      diagnostics.push({ path: `${path}.${key}`, message: `Unsupported JSON Schema keyword "${key}".` });
+    }
+  }
+  const type = value.type;
+  if (typeof type !== "string" || !SUPPORTED_SCHEMA_TYPES.has(type)) {
+    diagnostics.push({
+      path: `${path}.type`,
+      message: "Type must be object, array, string, number, integer, or boolean."
+    });
+    return;
+  }
+  if (value.title !== void 0 && typeof value.title !== "string") {
+    diagnostics.push({ path: `${path}.title`, message: "Title must be a string." });
+  }
+  if (value.description !== void 0 && typeof value.description !== "string") {
+    diagnostics.push({ path: `${path}.description`, message: "Description must be a string." });
+  }
+  if (value.enum !== void 0) {
+    if (!Array.isArray(value.enum) || value.enum.length === 0 || value.enum.length > 80 || value.enum.some((item) => !["string", "number", "boolean"].includes(typeof item))) {
+      diagnostics.push({
+        path: `${path}.enum`,
+        message: "Enum must contain 1-80 string, number, or boolean values."
+      });
+    }
+  }
+  for (const key of ["minItems", "maxItems", "minLength", "maxLength"]) {
+    if (value[key] !== void 0) validateFiniteNumber(value[key], `${path}.${key}`, diagnostics, true);
+  }
+  for (const key of ["minimum", "maximum"]) {
+    if (value[key] !== void 0) validateFiniteNumber(value[key], `${path}.${key}`, diagnostics);
+  }
+  if (typeof value.minItems === "number" && typeof value.maxItems === "number" && value.minItems > value.maxItems) {
+    diagnostics.push({ path, message: "minItems cannot exceed maxItems." });
+  }
+  if (typeof value.minLength === "number" && typeof value.maxLength === "number" && value.minLength > value.maxLength) {
+    diagnostics.push({ path, message: "minLength cannot exceed maxLength." });
+  }
+  if (typeof value.minimum === "number" && typeof value.maximum === "number" && value.minimum > value.maximum) {
+    diagnostics.push({ path, message: "minimum cannot exceed maximum." });
+  }
+  if (type === "object") {
+    if (!isRecord(value.properties)) {
+      diagnostics.push({ path: `${path}.properties`, message: "Object schemas require properties." });
+      return;
+    }
+    const propertyEntries = Object.entries(value.properties);
+    if (propertyEntries.length > 120) {
+      diagnostics.push({ path: `${path}.properties`, message: "An object may define at most 120 properties." });
+    }
+    for (const [key, child] of propertyEntries) {
+      if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(key)) {
+        diagnostics.push({
+          path: `${path}.properties.${key}`,
+          message: "Property names must begin with a letter and use only letters, numbers, or underscores."
+        });
+      }
+      validateSchemaNode(child, `${path}.properties.${key}`, depth + 1, diagnostics);
+    }
+    if (value.required !== void 0) {
+      if (!Array.isArray(value.required) || value.required.some((item) => typeof item !== "string")) {
+        diagnostics.push({ path: `${path}.required`, message: "required must be an array of property names." });
+      } else {
+        for (const key of value.required) {
+          if (!(key in value.properties)) {
+            diagnostics.push({
+              path: `${path}.required`,
+              message: `Required property "${key}" is not declared in properties.`
+            });
+          }
+        }
+      }
+    }
+    if (value.additionalProperties !== void 0 && typeof value.additionalProperties !== "boolean") {
+      diagnostics.push({
+        path: `${path}.additionalProperties`,
+        message: "additionalProperties must be true or false."
+      });
+    }
+  }
+  if (type === "array") {
+    if (value.items === void 0) {
+      diagnostics.push({ path: `${path}.items`, message: "Array schemas require an items schema." });
+    } else {
+      validateSchemaNode(value.items, `${path}.items`, depth + 1, diagnostics);
+    }
+  }
+}
+function validateJsonSchemaSubset(value) {
+  const diagnostics = [];
+  validateSchemaNode(value, "schema", 0, diagnostics);
+  return diagnostics;
+}
+var JsonSchemaSubsetSchema = external_exports.unknown().superRefine((value, context) => {
+  for (const diagnostic of validateJsonSchemaSubset(value)) {
+    context.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: `${diagnostic.path}: ${diagnostic.message}`
+    });
+  }
+}).transform((value) => value);
+var ThemeCapabilitySchema = external_exports.enum([
+  "copy",
+  "collapse",
+  "navigation",
+  "reload",
+  "generation",
+  "history"
+]);
+var ArtifactViewSchema = external_exports.object({
+  html: external_exports.string().max(12e4).default(""),
+  css: external_exports.string().max(12e4).default(""),
+  javascript: external_exports.string().max(8e4).default(""),
+  partials: external_exports.record(external_exports.string().max(4e4)).default({})
+}).strict();
+var ArtifactBaseSchema = external_exports.object({
+  format: external_exports.literal(ARTIFACT_FORMAT),
+  version: external_exports.literal(ARTIFACT_VERSION),
+  id: ArtifactIdSchema,
+  createdAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
+  updatedAt: external_exports.string().datetime().default(() => (/* @__PURE__ */ new Date()).toISOString()),
+  meta: ArtifactMetaSchema
+}).strict();
+var ModuleCapsuleArtifactSchema = ArtifactBaseSchema.extend({
+  kind: external_exports.literal("module"),
+  schema: JsonSchemaSubsetSchema,
+  prompt: external_exports.string().trim().min(1).max(24e3),
+  view: ArtifactViewSchema,
+  sampleData: external_exports.unknown().default({}),
+  defaults: external_exports.object({
+    track: external_exports.boolean().default(true),
+    display: external_exports.boolean().default(true),
+    inject: external_exports.boolean().default(false),
+    group: external_exports.string().trim().min(1).max(160).default("Custom"),
+    maxItems: external_exports.number().int().min(1).max(80).default(12),
+    intensity: external_exports.enum(["light", "medium", "heavy", "experimental"]).default("medium"),
+    displayOrder: external_exports.number().int().default(1e4)
+  }).strict().default({}),
+  capabilities: external_exports.array(ThemeCapabilitySchema).max(8).default([])
+}).strict();
+var ThemeArtifactSchema = ArtifactBaseSchema.extend({
+  kind: external_exports.literal("theme"),
+  manifest: external_exports.object({
+    viewerModelVersion: external_exports.literal(VIEWER_MODEL_VERSION),
+    developerMode: external_exports.boolean().default(false),
+    capabilities: external_exports.array(ThemeCapabilitySchema).max(8).default([]),
+    minWidth: external_exports.number().int().min(280).max(2400).default(320),
+    preferredColorScheme: external_exports.enum(["auto", "dark", "light"]).default("auto")
+  }).strict(),
+  view: ArtifactViewSchema,
+  sampleData: external_exports.unknown().default({})
+}).strict();
+var BlueprintArtifactSchema = ArtifactBaseSchema.extend({
+  kind: external_exports.literal("blueprint"),
+  modules: external_exports.array(ModuleCapsuleArtifactSchema).max(80).default([]),
+  theme: ThemeArtifactSchema.nullable().default(null),
+  settings: external_exports.object({
+    injectionEnabled: external_exports.boolean().optional(),
+    injectionTokenBudget: external_exports.number().int().min(80).max(1e4).optional(),
+    compilerSeedTokenBudget: external_exports.number().int().min(200).max(1e4).optional(),
+    historyRetentionLimit: external_exports.number().int().min(1).max(1e3).optional(),
+    developerMode: external_exports.boolean().optional()
+  }).strict().default({})
+}).strict();
+var LoomOSArtifactSchema = external_exports.discriminatedUnion("kind", [
+  ModuleCapsuleArtifactSchema,
+  ThemeArtifactSchema,
+  BlueprintArtifactSchema
+]);
+var ArtifactRevisionSchema = external_exports.object({
+  revision: external_exports.number().int().positive(),
+  savedAt: external_exports.string().datetime(),
+  artifact: LoomOSArtifactSchema
+}).strict();
+var ArtifactRecordSchema = external_exports.object({
+  artifact: LoomOSArtifactSchema,
+  revision: external_exports.number().int().positive(),
+  revisions: external_exports.array(ArtifactRevisionSchema).max(ARTIFACT_REVISION_LIMIT)
+}).strict();
+var ArtifactLibrarySchema = external_exports.object({
+  format: external_exports.literal("loomos-artifact-library"),
+  version: external_exports.literal(2),
+  records: external_exports.array(ArtifactRecordSchema).max(240).default([])
+}).strict();
+var EMPTY_ARTIFACT_LIBRARY = {
+  format: "loomos-artifact-library",
+  version: 2,
+  records: []
+};
+function slug(value) {
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
+  return normalized || "artifact";
+}
+function moduleFieldsToJsonSchema(module) {
+  const properties = {};
+  const required = [];
+  for (const field of module.schemaFields) {
+    let schema;
+    if (field.type === "number" || field.type === "gauge") {
+      schema = {
+        type: "number",
+        ...field.min !== void 0 ? { minimum: field.min } : {},
+        ...field.max !== void 0 ? { maximum: field.max } : {}
+      };
+    } else if (field.type === "boolean") {
+      schema = { type: "boolean" };
+    } else if (field.type === "enum") {
+      schema = { type: "string", enum: field.enumOptions };
+    } else if (field.type === "chips" || field.type === "list") {
+      schema = {
+        type: "array",
+        items: { type: "string" },
+        maxItems: field.maxItems ?? 24
+      };
+    } else {
+      schema = {
+        type: "string",
+        maxLength: field.type === "longText" ? 1600 : 500
+      };
+    }
+    properties[field.key] = {
+      ...schema,
+      title: field.label,
+      description: field.description,
+      ...field.defaultValue !== void 0 ? { default: field.defaultValue } : {}
+    };
+    if (field.required) required.push(field.key);
+  }
+  return {
+    type: "object",
+    properties,
+    required,
+    additionalProperties: false
+  };
+}
+function legacyModuleToArtifact(module) {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  return ModuleCapsuleArtifactSchema.parse({
+    format: ARTIFACT_FORMAT,
+    version: ARTIFACT_VERSION,
+    kind: "module",
+    id: module.id,
+    createdAt: now,
+    updatedAt: now,
+    meta: {
+      name: module.label,
+      description: module.description,
+      tags: ["legacy-v1"]
+    },
+    schema: moduleFieldsToJsonSchema(module),
+    prompt: module.compilerInstruction,
+    view: {
+      html: module.htmlTemplate,
+      css: module.cssTemplate,
+      javascript: "",
+      partials: {}
+    },
+    sampleData: {},
+    defaults: {
+      track: module.enabled,
+      display: module.display,
+      inject: module.inject,
+      group: module.group,
+      maxItems: module.maxItems,
+      intensity: module.intensity,
+      displayOrder: module.displayOrder ?? 1e4
+    }
+  });
+}
+function normalizeArtifactEnvelope(value) {
+  if (!isRecord(value)) return value;
+  if (value.format !== ARTIFACT_FORMAT || value.version !== ARTIFACT_VERSION) return value;
+  const meta = isRecord(value.meta) ? value.meta : {};
+  const kind = typeof value.kind === "string" ? value.kind : "artifact";
+  const name = typeof meta.name === "string" && meta.name.trim() ? meta.name.trim() : `${kind[0]?.toUpperCase() ?? ""}${kind.slice(1)} Artifact`;
+  const id = typeof value.id === "string" && value.id.trim() ? value.id : `${slug(name)}_${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    ...value,
+    id,
+    meta: {
+      name,
+      description: "",
+      author: "",
+      tags: [],
+      ...meta
+    }
+  };
+}
+function extractJsonText(raw) {
+  const trimmed = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  const first = trimmed.indexOf("{");
+  const last = trimmed.lastIndexOf("}");
+  if (first < 0 || last <= first) {
+    throw new Error("The input does not contain a JSON object.");
+  }
+  return JSON.parse(trimmed.slice(first, last + 1));
+}
+function parseLoomOSArtifact(value) {
+  const current = LoomOSArtifactSchema.safeParse(normalizeArtifactEnvelope(value));
+  if (current.success) return current.data;
+  try {
+    const legacy = parseModuleBundle(value);
+    if (legacy.kind === "custom") return legacyModuleToArtifact(legacy.module);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    return ModuleCapsuleArtifactSchema.parse({
+      format: ARTIFACT_FORMAT,
+      version: ARTIFACT_VERSION,
+      kind: "module",
+      id: `stock_${legacy.key}`,
+      createdAt: now,
+      updatedAt: now,
+      meta: {
+        name: legacy.override.label || legacy.key,
+        description: legacy.override.description || `Migrated stock module ${legacy.key}.`,
+        tags: ["legacy-v1", "stock-module"]
+      },
+      schema: {
+        type: "object",
+        properties: {},
+        required: [],
+        additionalProperties: true
+      },
+      prompt: legacy.override.compilerInstructionOverride || legacy.override.compilerGuidanceAddendum || `Track the ${legacy.key} module using grounded transcript evidence.`,
+      view: {
+        html: legacy.override.htmlTemplate || "",
+        css: legacy.override.cssTemplate || "",
+        javascript: "",
+        partials: {}
+      },
+      sampleData: {},
+      defaults: {
+        track: legacy.control.track,
+        display: legacy.control.display,
+        inject: legacy.control.inject,
+        group: legacy.override.group || "Migrated Stock"
+      }
+    });
+  } catch {
+    throw new Error(
+      current.error.issues.map((issue) => `${issue.path.join(".") || "artifact"}: ${issue.message}`).join("\n")
+    );
+  }
+}
+function parseLoomOSArtifactText(raw) {
+  return parseLoomOSArtifact(extractJsonText(raw));
+}
+function fieldTypeForSchema(schema) {
+  if (schema.type === "boolean") return "boolean";
+  if (schema.enum?.length) return "enum";
+  if (schema.type === "number" || schema.type === "integer") return "number";
+  if (schema.type === "array") return "list";
+  if (schema.type === "string" && (schema.maxLength ?? 0) > 500) return "longText";
+  return "text";
+}
+function artifactToCustomModule(artifact) {
+  const properties = artifact.schema.type === "object" ? artifact.schema.properties ?? {} : { value: artifact.schema };
+  const required = new Set(artifact.schema.required ?? []);
+  const schemaFields = Object.entries(properties).slice(0, 40).map(([key, schema], index) => ({
+    id: `field_${slug(key)}_${index}`,
+    label: schema.title || key.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
+    key: key.replace(/-/g, "_"),
+    type: fieldTypeForSchema(schema),
+    required: required.has(key),
+    description: schema.description || "",
+    defaultValue: schema.default,
+    enumOptions: (schema.enum ?? []).map(String),
+    maxItems: schema.maxItems,
+    min: schema.minimum,
+    max: schema.maximum,
+    displayHint: schema.type
+  }));
+  return CustomModuleSchema.parse({
+    id: artifact.id,
+    artifactId: artifact.id,
+    label: artifact.meta.name,
+    group: artifact.defaults.group,
+    description: artifact.meta.description,
+    enabled: artifact.defaults.track,
+    display: artifact.defaults.display,
+    inject: artifact.defaults.inject,
+    compilerInstruction: artifact.prompt,
+    outputMode: artifact.view.html ? "template" : "cards",
+    maxItems: artifact.defaults.maxItems,
+    intensity: artifact.defaults.intensity,
+    displayOrder: artifact.defaults.displayOrder,
+    schemaFields,
+    jsonSchema: artifact.schema,
+    sampleData: artifact.sampleData,
+    htmlTemplate: artifact.view.html,
+    cssTemplate: artifact.view.css,
+    javascriptTemplate: artifact.view.javascript,
+    templateEngine: "mustache-lite",
+    allowHtmlTemplate: Boolean(artifact.view.html),
+    capabilities: artifact.capabilities
+  });
+}
+function createStarterModuleArtifact() {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  return ModuleCapsuleArtifactSchema.parse({
+    format: ARTIFACT_FORMAT,
+    version: ARTIFACT_VERSION,
+    kind: "module",
+    id: `module_${Math.random().toString(36).slice(2, 9)}`,
+    createdAt: now,
+    updatedAt: now,
+    meta: {
+      name: "New Tracker Module",
+      description: "A portable LoomOS tracker module.",
+      tags: []
+    },
+    schema: {
+      type: "object",
+      properties: {
+        summary: {
+          type: "string",
+          title: "Summary",
+          description: "A grounded summary of the tracked state.",
+          maxLength: 1200
+        }
+      },
+      required: ["summary"],
+      additionalProperties: false
+    },
+    prompt: "Track only grounded transcript evidence. Carry stable facts forward and use empty values when evidence is absent.",
+    view: {
+      html: `<section class="capsule">
+  <h2>{{meta.name}}</h2>
+  <p>{{data.summary}}</p>
+</section>`,
+      css: `.capsule {
+  border: 1px solid var(--loom-border, #3a3b43);
+  border-radius: 8px;
+  padding: 12px;
+}`,
+      javascript: "",
+      partials: {}
+    },
+    sampleData: { summary: "Sample tracked state." },
+    defaults: {}
+  });
+}
+function createStarterThemeArtifact() {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  return ThemeArtifactSchema.parse({
+    format: ARTIFACT_FORMAT,
+    version: ARTIFACT_VERSION,
+    kind: "theme",
+    id: `theme_${Math.random().toString(36).slice(2, 9)}`,
+    createdAt: now,
+    updatedAt: now,
+    meta: {
+      name: "New Tracker Theme",
+      description: "A full-screen LoomOS tracker theme.",
+      tags: []
+    },
+    manifest: {
+      viewerModelVersion: VIEWER_MODEL_VERSION,
+      developerMode: false,
+      capabilities: ["copy", "collapse", "navigation"]
+    },
+    view: {
+      html: `<main class="tracker">
+  <header>
+    <span class="eyebrow">Current scene</span>
+    <h1>{{kernel.scene}}</h1>
+    <p>{{kernel.location}} \xB7 {{kernel.timeframe}}</p>
+  </header>
+  <section class="summary">
+    <h2>{{kernel.currentFocus}}</h2>
+    <p>{{kernel.summary}}</p>
+  </section>
+  <section>
+    <h2>Cast</h2>
+    <div class="cast-grid">
+      {{#each cast}}
+      <article>
+        <strong>{{name}}</strong>
+        <span>{{role}}</span>
+        <p>{{status}}</p>
+      </article>
+      {{/each}}
+    </div>
+  </section>
+</main>`,
+      css: `:root {
+  color-scheme: dark;
+  font-family: Inter, system-ui, sans-serif;
+}
+body {
+  margin: 0;
+  background: #101114;
+  color: #f4f4f5;
+}
+.tracker {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+header {
+  border-left: 3px solid #5eead4;
+  padding-left: 12px;
+}
+h1, h2, p {
+  margin: 0;
+}
+.eyebrow {
+  color: #5eead4;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.summary, article {
+  border: 1px solid #303239;
+  border-radius: 8px;
+  padding: 12px;
+}
+.cast-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}`,
+      javascript: "",
+      partials: {}
+    },
+    sampleData: {}
+  });
+}
+function createStarterBlueprintArtifact() {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  return BlueprintArtifactSchema.parse({
+    format: ARTIFACT_FORMAT,
+    version: ARTIFACT_VERSION,
+    kind: "blueprint",
+    id: `blueprint_${Math.random().toString(36).slice(2, 9)}`,
+    createdAt: now,
+    updatedAt: now,
+    meta: {
+      name: "New Tracker Blueprint",
+      description: "A complete LoomOS module and theme package.",
+      tags: []
+    },
+    modules: [],
+    theme: null,
+    settings: {}
+  });
+}
+function upsertArtifactRecord(library, artifact) {
+  const parsedArtifact = LoomOSArtifactSchema.parse({
+    ...artifact,
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+  });
+  const previous = library.records.find((record2) => record2.artifact.id === parsedArtifact.id);
+  const nextRevision = (previous?.revision ?? 0) + 1;
+  const revision = {
+    revision: nextRevision,
+    savedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    artifact: parsedArtifact
+  };
+  const record = {
+    artifact: parsedArtifact,
+    revision: nextRevision,
+    revisions: [...previous?.revisions ?? [], revision].slice(-ARTIFACT_REVISION_LIMIT)
+  };
+  return {
+    library: ArtifactLibrarySchema.parse({
+      ...library,
+      records: [
+        ...library.records.filter((candidate) => candidate.artifact.id !== parsedArtifact.id),
+        record
+      ].sort((a, b) => b.artifact.updatedAt.localeCompare(a.artifact.updatedAt))
+    }),
+    record
+  };
+}
+function restoreArtifactRecord(library, artifactId, revision) {
+  const existing = library.records.find((record) => record.artifact.id === artifactId);
+  const snapshot = existing?.revisions.find((candidate) => candidate.revision === revision);
+  if (!existing || !snapshot) throw new Error("That artifact revision no longer exists.");
+  return upsertArtifactRecord(library, {
+    ...snapshot.artifact,
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+  });
+}
+function deleteArtifactRecord(library, artifactId) {
+  return ArtifactLibrarySchema.parse({
+    ...library,
+    records: library.records.filter((record) => record.artifact.id !== artifactId)
+  });
+}
+function defaultForSchema(schema) {
+  if (schema.default !== void 0) return structuredClone(schema.default);
+  if (schema.type === "object") {
+    return Object.fromEntries(
+      Object.entries(schema.properties ?? {}).map(([key, child]) => [key, defaultForSchema(child)])
+    );
+  }
+  if (schema.type === "array") return [];
+  if (schema.type === "boolean") return false;
+  if (schema.type === "number" || schema.type === "integer") return schema.minimum ?? 0;
+  return schema.enum?.[0] ?? "";
+}
+function normalizeValueForJsonSchema(value, schema, depth = 0) {
+  if (depth > 12) return defaultForSchema(schema);
+  if (schema.enum?.length) {
+    return schema.enum.includes(value) ? value : schema.default ?? schema.enum[0];
+  }
+  if (schema.type === "object") {
+    const source = isRecord(value) ? value : {};
+    return Object.fromEntries(
+      Object.entries(schema.properties ?? {}).map(([key, child]) => [
+        key,
+        normalizeValueForJsonSchema(source[key], child, depth + 1)
+      ])
+    );
+  }
+  if (schema.type === "array") {
+    const values = Array.isArray(value) ? value : [];
+    const itemSchema = schema.items ?? { type: "string" };
+    return values.slice(0, schema.maxItems ?? 80).map((item) => normalizeValueForJsonSchema(item, itemSchema, depth + 1));
+  }
+  if (schema.type === "boolean") return typeof value === "boolean" ? value : Boolean(schema.default);
+  if (schema.type === "number" || schema.type === "integer") {
+    let numeric = typeof value === "number" && Number.isFinite(value) ? value : typeof schema.default === "number" ? schema.default : schema.minimum ?? 0;
+    if (schema.type === "integer") numeric = Math.round(numeric);
+    if (schema.minimum !== void 0) numeric = Math.max(schema.minimum, numeric);
+    if (schema.maximum !== void 0) numeric = Math.min(schema.maximum, numeric);
+    return numeric;
+  }
+  const text2 = typeof value === "string" ? value : typeof schema.default === "string" ? schema.default : "";
+  return text2.slice(0, schema.maxLength ?? 4e3);
+}
+
 // src/shared/normalizeCompiledState.ts
 var CompiledStateNormalizationError = class extends Error {
   report;
@@ -5096,7 +5849,7 @@ var CompiledStateNormalizationError = class extends Error {
     this.report = report;
   }
 };
-function isRecord(value) {
+function isRecord2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function cloneJson(value) {
@@ -5108,7 +5861,7 @@ function cloneJson(value) {
   }
 }
 function asRecord(value) {
-  return isRecord(value) ? value : {};
+  return isRecord2(value) ? value : {};
 }
 function mark(changes, path) {
   if (!changes.includes(path)) changes.push(path);
@@ -5116,7 +5869,7 @@ function mark(changes, path) {
 function textFromValue(value) {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (!isRecord(value)) return "";
+  if (!isRecord2(value)) return "";
   for (const key of [
     "goal",
     "text",
@@ -5278,7 +6031,7 @@ function normalizePocket(value) {
     const name2 = text(value, 160);
     return name2 ? { name: name2, type: "misc", qty: 1, condition: "", known: true } : null;
   }
-  if (!isRecord(value)) return null;
+  if (!isRecord2(value)) return null;
   const name = text(value.name ?? value.item ?? value.title ?? value.text, 160);
   if (!name) return null;
   return {
@@ -5301,7 +6054,7 @@ function normalizeRelationship(value) {
     const target2 = text(value, 500);
     return target2 ? { target: target2, axis: "general", value: 0 } : null;
   }
-  if (!isRecord(value)) return null;
+  if (!isRecord2(value)) return null;
   const target = text(value.target ?? value.name ?? value.text ?? value.summary, 500);
   if (!target) return null;
   const pct = text(value.pct, 12);
@@ -5570,7 +6323,7 @@ function normalizeSceneItem(value) {
     const name2 = text(value, 160);
     return name2 ? { name: name2, owner: "", location: "", condition: "", lastTouch: "", importance: "medium" } : null;
   }
-  if (!isRecord(value)) return null;
+  if (!isRecord2(value)) return null;
   const name = text(value.name ?? value.title ?? value.text, 160);
   if (!name) return null;
   return {
@@ -5918,7 +6671,7 @@ function defaultTools() {
 function normalizeTools(value) {
   const source = asRecord(value);
   const result = defaultTools();
-  if (isRecord(source.actionResolver)) {
+  if (isRecord2(source.actionResolver)) {
     result.actionResolver = {
       userAction: text(source.actionResolver.userAction, 1600),
       worldResponse: text(source.actionResolver.worldResponse, 1600),
@@ -5926,7 +6679,7 @@ function normalizeTools(value) {
       blockers: stringArray(source.actionResolver.blockers, 6, 500)
     };
   }
-  if (isRecord(source.dialogueState)) {
+  if (isRecord2(source.dialogueState)) {
     result.dialogueState = {
       openThread: text(source.dialogueState.openThread, 1600),
       socialMask: text(source.dialogueState.socialMask, 1600),
@@ -5934,7 +6687,7 @@ function normalizeTools(value) {
       taboos: stringArray(source.dialogueState.taboos, 6, 500)
     };
   }
-  if (isRecord(source.directorStyle)) {
+  if (isRecord2(source.directorStyle)) {
     result.directorStyle = {
       primary: text(source.directorStyle.primary, 500),
       mask: text(source.directorStyle.mask, 500),
@@ -5942,7 +6695,7 @@ function normalizeTools(value) {
       voiceCues: stringArray(source.directorStyle.voiceCues, 6, 500)
     };
   }
-  if (isRecord(source.closenessState)) {
+  if (isRecord2(source.closenessState)) {
     result.closenessState = {
       emotional: text(source.closenessState.emotional, 500),
       physical: text(source.closenessState.physical, 500),
@@ -5950,7 +6703,7 @@ function normalizeTools(value) {
       boundaries: stringArray(source.closenessState.boundaries, 6, 500)
     };
   }
-  if (isRecord(source.imagePrompt)) {
+  if (isRecord2(source.imagePrompt)) {
     result.imagePrompt = {
       aspect: text(source.imagePrompt.aspect, 160),
       shot: text(source.imagePrompt.shot, 500),
@@ -5996,7 +6749,7 @@ function normalizeCustomField(value, field) {
   if (field.type === "gauge") return normalizeGauge(value, field.max ?? 100);
   if (field.type === "chips") return stringArray(value, field.maxItems ?? 24, 160);
   if (field.type === "list") {
-    return arrayValue(value).filter((item) => typeof item === "string" || isRecord(item)).slice(0, field.maxItems ?? 24).map((item) => typeof item === "string" ? text(item, 1600) : cloneJson(item));
+    return arrayValue(value).filter((item) => typeof item === "string" || isRecord2(item)).slice(0, field.maxItems ?? 24).map((item) => typeof item === "string" ? text(item, 1600) : cloneJson(item));
   }
   return value;
 }
@@ -6007,7 +6760,10 @@ function normalizeCustomModuleData(value, customModules) {
     if (!moduleId) return null;
     const module = customModules.find((candidate) => candidate.id === moduleId);
     const fieldsSource = asRecord(row.fields);
-    const fields = module ? Object.fromEntries(module.schemaFields.map((field) => [
+    const fields = module?.jsonSchema ? normalizeValueForJsonSchema(
+      fieldsSource,
+      module.jsonSchema
+    ) : module ? Object.fromEntries(module.schemaFields.map((field) => [
       field.key,
       normalizeCustomField(fieldsSource[field.key], field)
     ])) : Object.fromEntries(Object.entries(fieldsSource).slice(0, 40));
@@ -6045,7 +6801,7 @@ function normalizeCompiledState(value, options) {
   const cloned = cloneJson(value);
   const source = asRecord(cloned);
   const changes = [];
-  if (!isRecord(cloned)) mark(changes, "root");
+  if (!isRecord2(cloned)) mark(changes, "root");
   const enabled = options.enabledModules.filter((key) => MODULE_KEYS.includes(key));
   const activeModules = arrayValue(source.activeModules).filter((item) => typeof item === "string" && MODULE_KEYS.includes(item)).filter((item) => enabled.includes(item));
   const normalizedActive = activeModules.length > 0 ? activeModules : enabled;
@@ -6066,9 +6822,9 @@ function normalizeCompiledState(value, options) {
         ...normalizeGauge(row)
       };
     }).filter((item) => Boolean(item)).slice(0, 6),
-    scene: source.scene !== null && (isRecord(source.scene) || wantsScene) ? normalizeScene(source.scene) : null,
+    scene: source.scene !== null && (isRecord2(source.scene) || wantsScene) ? normalizeScene(source.scene) : null,
     castMatrix: arrayValue(source.castMatrix).map(normalizeCastMember).filter((item) => Boolean(item)).slice(0, 24),
-    worldState: source.worldState !== null && (isRecord(source.worldState) || wantsWorld) ? normalizeWorldState(source.worldState) : null,
+    worldState: source.worldState !== null && (isRecord2(source.worldState) || wantsWorld) ? normalizeWorldState(source.worldState) : null,
     storyState: normalizeStoryState(source.storyState),
     continuityFirewall: normalizeContinuityFirewall(source.continuityFirewall),
     tools: normalizeTools(source.tools),
@@ -6324,6 +7080,14 @@ function buildStateCompilerPrompt(enabledModules, customModules = [], overrides 
     return buildStockModulePromptBlock(module.key, overrides);
   }).join("\n");
   const enabledCustom = customModules.filter((m) => m.enabled).map((m) => {
+    if (m.jsonSchema) {
+      return [
+        `- customModuleData[moduleId=${m.id}] (${m.label}): ${m.compilerInstruction}`,
+        `  maxItems=${m.maxItems}; outputMode=${m.outputMode}; fields must match this JSON Schema subset exactly:`,
+        `  ${JSON.stringify(m.jsonSchema)}`,
+        "  Output semantic state only. Never output display counts, colors, percentages, HTML, CSS, scripts, or template markup unless they are explicit semantic schema fields."
+      ].join("\n");
+    }
     const fields = Object.fromEntries(m.schemaFields.map((field) => {
       if (field.type === "number") return [field.key, field.defaultValue ?? field.min ?? 0];
       if (field.type === "boolean") return [field.key, field.defaultValue ?? false];
@@ -6344,7 +7108,7 @@ function buildStateCompilerPrompt(enabledModules, customModules = [], overrides 
     return [
       `- customModuleData[moduleId=${m.id}] (${m.label}): ${m.compilerInstruction}`,
       `  maxItems=${m.maxItems}; outputMode=${m.outputMode}; fields=${JSON.stringify(fields)}`,
-      "  Output data only. Never output HTML, CSS, scripts, or template markup."
+      "  Output semantic data only. Never output HTML, CSS, scripts, or template markup."
     ].join("\n");
   }).join("\n");
   const trackingText = enabled + (enabledCustom ? "\n\nEnabled custom tracking modules:\n" + enabledCustom : "");
@@ -6656,12 +7420,12 @@ ${buildStateCompilerPrompt(
 }
 
 // src/backend/generation.ts
-function isRecord2(value) {
+function isRecord3(value) {
   return typeof value === "object" && value !== null;
 }
 function normalizeGenerationText(result) {
   if (typeof result === "string" && result.trim()) return result;
-  if (!isRecord2(result)) {
+  if (!isRecord3(result)) {
     throw new Error("Lumiverse generation returned an unsupported response.");
   }
   for (const key of ["content", "text", "output", "response"]) {
@@ -6670,7 +7434,7 @@ function normalizeGenerationText(result) {
   }
   const message = result.message;
   if (typeof message === "string" && message.trim()) return message;
-  if (isRecord2(message) && typeof message.content === "string" && message.content.trim()) {
+  if (isRecord3(message) && typeof message.content === "string" && message.content.trim()) {
     return message.content;
   }
   throw new Error("Lumiverse generation completed without textual content.");
@@ -6705,6 +7469,155 @@ async function runQuietGeneration(spindle2, request) {
     clearTimeout(timer);
     request.parentSignal.removeEventListener("abort", onAbort);
   }
+}
+
+// src/backend/artifactGeneration.ts
+function starterForKind(kind) {
+  if (kind === "theme") return createStarterThemeArtifact();
+  if (kind === "blueprint") return createStarterBlueprintArtifact();
+  return createStarterModuleArtifact();
+}
+function artifactContract(kind) {
+  const common = `Every artifact must include:
+- format: "${ARTIFACT_FORMAT}"
+- version: ${ARTIFACT_VERSION}
+- kind: "${kind}"
+- id: stable identifier beginning with a letter and using only letters, numbers, underscores, or hyphens
+- createdAt and updatedAt: ISO timestamps
+- meta: name, description, author, tags`;
+  if (kind === "module") {
+    return `${common}
+- schema: a JSON Schema Draft 7 subset using only type, title, description, default, enum, properties, required, additionalProperties, items, minItems, maxItems, minLength, maxLength, minimum, maximum
+- prompt: precise generation instructions that request semantic story state only
+- view: HTML, CSS, optional isolated JavaScript, and optional partials
+- sampleData: realistic data matching schema
+- defaults: track, display, inject, group, maxItems, intensity, displayOrder
+- capabilities: any of copy, collapse, navigation, reload, generation, history
+The root schema should normally be an object. Do not ask the model to generate display colors, percentages, counts, visibility flags, or labels that LoomOS can derive.`;
+  }
+  if (kind === "theme") {
+    return `${common}
+- manifest: viewerModelVersion=${VIEWER_MODEL_VERSION}, developerMode, capabilities, minWidth, preferredColorScheme
+- view: complete responsive HTML, CSS, optional isolated JavaScript, and reusable partials
+- sampleData
+Templates support escaped {{path}}, {{#if path}}, {{#unless path}}, {{#each path}}, {{else}}, {{> partial}}, and helpers count, percent, json, uppercase, lowercase, fallback.
+ViewerModelV1 paths include meta, counts, kernel, delta, meters, scene, cast, world, story, continuity, tools, audit, and modules.
+Use data-loom-action for bridge actions. Theme JavaScript may call window.LoomOS.action(name, payload) and read window.LoomOS.model. It has no network, storage, host DOM, or Spindle access.`;
+  }
+  return `${common}
+- modules: complete module artifacts
+- theme: one complete theme artifact or null
+- settings: optional recommended injectionEnabled, injectionTokenBudget, compilerSeedTokenBudget, historyRetentionLimit, and developerMode
+Every embedded artifact must use the same version-2 contract.`;
+}
+function systemPrompt(kind) {
+  return `You are the LoomOS Creator Workshop artifact engineer.
+Return exactly one JSON object and no Markdown fences or commentary.
+Create a production-ready, mobile-first ${kind} artifact.
+Preserve grounded tracker semantics, concise generation instructions, readable typography, accessible controls, and responsive layouts.
+Never include external URLs, remote assets, network calls, eval, Function constructors, storage access, parent DOM access, or Spindle APIs.
+JavaScript is optional and must use only the isolated LoomOS bridge.
+
+${artifactContract(kind)}
+
+Valid starter shape:
+${JSON.stringify(starterForKind(kind), null, 2)}`;
+}
+function userPrompt(request) {
+  return [
+    request.currentArtifact ? "Revise the current artifact according to the request. Preserve working details not explicitly changed." : "Create a new artifact according to the request.",
+    "",
+    "REQUEST:",
+    request.brief.trim(),
+    "",
+    request.currentArtifact ? `CURRENT ARTIFACT:
+${JSON.stringify(request.currentArtifact, null, 2)}` : ""
+  ].filter(Boolean).join("\n");
+}
+function parseExpected(raw, kind) {
+  const artifact = parseLoomOSArtifactText(raw);
+  if (artifact.kind !== kind) {
+    throw new Error(`Expected a ${kind} artifact but received ${artifact.kind}.`);
+  }
+  return artifact;
+}
+async function generateArtifactWithRepair(request) {
+  request.onProgress?.(1, `Generating ${request.kind} draft.`);
+  const messages = [
+    { role: "system", content: systemPrompt(request.kind) },
+    { role: "user", content: userPrompt(request) }
+  ];
+  const firstRaw = await request.generate(messages, request.signal, 1);
+  try {
+    return {
+      artifact: parseExpected(firstRaw, request.kind),
+      repaired: false,
+      issues: []
+    };
+  } catch (error) {
+    const issue = error instanceof Error ? error.message : String(error);
+    request.onProgress?.(2, `Repairing artifact: ${issue.split("\n")[0] ?? "invalid output"}`);
+    const repairMessages = [
+      {
+        role: "system",
+        content: `${systemPrompt(request.kind)}
+
+Repair the malformed artifact. Satisfy every contract exactly and return only the corrected JSON object.`
+      },
+      {
+        role: "user",
+        content: [
+          "VALIDATION FAILURE:",
+          issue.slice(0, 6e3),
+          "",
+          "MALFORMED OUTPUT:",
+          firstRaw.slice(0, 8e4)
+        ].join("\n")
+      }
+    ];
+    const repairedRaw = await request.generate(repairMessages, request.signal, 2);
+    return {
+      artifact: parseExpected(repairedRaw, request.kind),
+      repaired: true,
+      issues: [issue]
+    };
+  }
+}
+
+// src/backend/artifactStorage.ts
+async function loadArtifactLibrary(spindle2, userId) {
+  const raw = await spindle2.userStorage.getJson(ARTIFACT_LIBRARY_PATH, {
+    fallback: EMPTY_ARTIFACT_LIBRARY,
+    userId
+  });
+  const parsed = ArtifactLibrarySchema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  spindle2.log.warn("Invalid LoomOS artifact library found; a new library will be used.");
+  return EMPTY_ARTIFACT_LIBRARY;
+}
+async function persistLibrary(spindle2, userId, library) {
+  const parsed = ArtifactLibrarySchema.parse(library);
+  await spindle2.userStorage.setJson(ARTIFACT_LIBRARY_PATH, parsed, {
+    indent: 2,
+    userId
+  });
+  return parsed;
+}
+async function saveArtifact(spindle2, userId, artifact) {
+  const current = await loadArtifactLibrary(spindle2, userId);
+  const next = upsertArtifactRecord(current, artifact);
+  await persistLibrary(spindle2, userId, next.library);
+  return next;
+}
+async function deleteArtifact(spindle2, userId, artifactId) {
+  const current = await loadArtifactLibrary(spindle2, userId);
+  return persistLibrary(spindle2, userId, deleteArtifactRecord(current, artifactId));
+}
+async function restoreArtifact(spindle2, userId, artifactId, revision) {
+  const current = await loadArtifactLibrary(spindle2, userId);
+  const next = restoreArtifactRecord(current, artifactId, revision);
+  await persistLibrary(spindle2, userId, next.library);
+  return next;
 }
 
 // src/shared/compact.ts
@@ -7227,7 +8140,7 @@ var automaticGenerationKeys = /* @__PURE__ */ new Set();
 var interceptorRegistered = false;
 var interceptorEnabled = spindle.permissions.has("interceptor");
 var disposed = false;
-function isRecord3(value) {
+function isRecord4(value) {
   return typeof value === "object" && value !== null;
 }
 function errorMessage(error) {
@@ -7273,7 +8186,7 @@ async function getSettings(userId) {
   });
   const parsed = LoomOSSettingsSchema.safeParse(raw);
   if (parsed.success) {
-    if (!isRecord3(raw) || raw.schemaVersion !== 2) {
+    if (!isRecord4(raw) || raw.schemaVersion !== 2) {
       await spindle.userStorage.setJson(SETTINGS_PATH, parsed.data, {
         indent: 2,
         userId
@@ -7327,7 +8240,7 @@ async function loadState(identity, userId) {
     spindle.log.warn("Ignored a LoomOS state file with mismatched identity.");
     return null;
   }
-  if (isRecord3(raw) && raw.schemaVersion === 1) {
+  if (isRecord4(raw) && raw.schemaVersion === 1) {
     await spindle.userStorage.setJson(path, state, { indent: 2, userId });
   }
   return state;
@@ -7725,8 +8638,147 @@ async function generateState(requestId, requested, userId) {
     if (jobByIdentity.get(identityKey) === jobKey) jobByIdentity.delete(identityKey);
   }
 }
+async function generateArtifactDraft(requestId, kind, brief, currentArtifact, userId) {
+  if (!spindle.permissions.has("generation")) {
+    throw new Error("PERMISSION_DENIED: generation is required to create LoomOS artifacts.");
+  }
+  if (!brief.trim()) throw new Error("Describe the module, theme, or Blueprint you want to create.");
+  const startedAt = Date.now();
+  const settings = await getSettings(userId);
+  const connections = await listConnections(userId);
+  const connection = chooseConnection(connections, settings.connectionId);
+  if (!connection) {
+    throw new Error("No ready Lumiverse LLM connection is available. Configure a connection, then retry.");
+  }
+  const controller = new AbortController();
+  const jobKey = requestJobKey(userId, requestId);
+  jobs.set(jobKey, { controller, identityKey: `artifact:${requestId}` });
+  send({
+    type: "artifact_generation_status",
+    requestId,
+    status: "started",
+    message: `Preparing ${connection.name}.`,
+    elapsedMs: 0,
+    attempt: 1
+  }, userId);
+  try {
+    const result = await generateArtifactWithRepair({
+      kind,
+      brief: brief.slice(0, 12e3),
+      currentArtifact: currentArtifact ? LoomOSArtifactSchema.parse(currentArtifact) : null,
+      signal: controller.signal,
+      onProgress: (attempt, message) => {
+        send({
+          type: "artifact_generation_status",
+          requestId,
+          status: "progress",
+          message,
+          elapsedMs: Date.now() - startedAt,
+          attempt
+        }, userId);
+      },
+      generate: async (messages, signal) => runQuietGeneration(spindle, {
+        messages,
+        connectionId: connection.id,
+        userId,
+        timeoutMs: settings.generationTimeoutSeconds * 1e3,
+        parentSignal: signal
+      })
+    });
+    if (controller.signal.aborted) throw new DOMException("Generation cancelled.", "AbortError");
+    send({
+      type: "artifact_generation_status",
+      requestId,
+      status: "completed",
+      message: result.repaired ? "Artifact validated after one repair pass." : "Artifact draft validated.",
+      elapsedMs: Date.now() - startedAt,
+      attempt: result.repaired ? 2 : 1,
+      artifact: result.artifact,
+      issues: result.issues.slice(0, 8)
+    }, userId);
+  } catch (error) {
+    if (controller.signal.aborted || error instanceof Error && error.name === "AbortError") {
+      send({
+        type: "artifact_generation_status",
+        requestId,
+        status: "cancelled",
+        message: "Artifact generation cancelled.",
+        elapsedMs: Date.now() - startedAt,
+        attempt: 1
+      }, userId);
+      return;
+    }
+    send({
+      type: "artifact_generation_status",
+      requestId,
+      status: "failed",
+      message: errorMessage(error),
+      elapsedMs: Date.now() - startedAt,
+      attempt: 1
+    }, userId);
+  } finally {
+    if (jobs.get(jobKey)?.controller === controller) jobs.delete(jobKey);
+  }
+}
+function mergeInstalledModule(modules, artifact) {
+  const compiled = artifactToCustomModule(artifact);
+  const existingIndex = modules.findIndex(
+    (module) => module.artifactId === artifact.id || module.id === artifact.id
+  );
+  if (existingIndex < 0) return [...modules, compiled];
+  return modules.map((module, index) => index === existingIndex ? compiled : module);
+}
+async function installArtifact(artifactValue, selectedArtifactIds, applySettings, activateTheme, userId) {
+  const artifact = LoomOSArtifactSchema.parse(artifactValue);
+  const selected = new Set(selectedArtifactIds ?? []);
+  const installedIds = [];
+  let settings = await getSettings(userId);
+  await saveArtifact(spindle, userId, artifact);
+  const installModule = async (module) => {
+    await saveArtifact(spindle, userId, module);
+    settings = LoomOSSettingsSchema.parse({
+      ...settings,
+      customModules: mergeInstalledModule(settings.customModules, module)
+    });
+    installedIds.push(module.id);
+  };
+  const installTheme = async (theme) => {
+    await saveArtifact(spindle, userId, theme);
+    settings = LoomOSSettingsSchema.parse({
+      ...settings,
+      activeThemeId: activateTheme ? theme.id : settings.activeThemeId
+    });
+    installedIds.push(theme.id);
+  };
+  if (artifact.kind === "module") {
+    await installModule(artifact);
+  } else if (artifact.kind === "theme") {
+    await installTheme(artifact);
+  } else {
+    const defaultAll = selected.size === 0;
+    for (const module of artifact.modules) {
+      if (defaultAll || selected.has(module.id)) await installModule(module);
+    }
+    if (artifact.theme && (defaultAll || selected.has(artifact.theme.id))) {
+      await installTheme(artifact.theme);
+    }
+    if (applySettings) {
+      settings = LoomOSSettingsSchema.parse({
+        ...settings,
+        ...artifact.settings
+      });
+    }
+    installedIds.push(artifact.id);
+  }
+  settings = await saveSettings(settings, userId);
+  return {
+    settings,
+    installedIds,
+    message: installedIds.length === 0 ? "Blueprint saved to the library without activating any parts." : `Installed ${installedIds.length} artifact${installedIds.length === 1 ? "" : "s"}.`
+  };
+}
 function parseFrontendRequest(payload) {
-  if (!isRecord3(payload) || typeof payload.type !== "string") {
+  if (!isRecord4(payload) || typeof payload.type !== "string") {
     throw new Error("Invalid LoomOS frontend request.");
   }
   return payload;
@@ -7747,7 +8799,8 @@ async function handleFrontendRequest(payload, userId) {
           permissions: permissionSnapshot(),
           connections: await listConnections(userId),
           identity,
-          state: identity ? await loadState(identity, userId) : null
+          state: identity ? await loadState(identity, userId) : null,
+          artifacts: await loadArtifactLibrary(spindle, userId)
         }, userId);
         return;
       }
@@ -7842,14 +8895,109 @@ async function handleFrontendRequest(payload, userId) {
         send({ type: "injection_preview", requestId, preview }, userId);
         return;
       }
+      case "get_artifacts":
+        send({
+          type: "artifacts",
+          requestId,
+          library: await loadArtifactLibrary(spindle, userId)
+        }, userId);
+        return;
+      case "save_artifact": {
+        const saved = await saveArtifact(
+          spindle,
+          userId,
+          LoomOSArtifactSchema.parse(request.artifact)
+        );
+        send({
+          type: "artifact_saved",
+          requestId: request.requestId,
+          library: saved.library,
+          record: saved.record
+        }, userId);
+        return;
+      }
+      case "delete_artifact": {
+        let nextSettings = await getSettings(userId);
+        nextSettings = LoomOSSettingsSchema.parse({
+          ...nextSettings,
+          activeThemeId: nextSettings.activeThemeId === request.artifactId ? "" : nextSettings.activeThemeId,
+          customModules: nextSettings.customModules.filter(
+            (module) => module.artifactId !== request.artifactId
+          )
+        });
+        await saveSettings(nextSettings, userId);
+        const library = await deleteArtifact(spindle, userId, request.artifactId);
+        send({
+          type: "artifact_deleted",
+          requestId: request.requestId,
+          library,
+          artifactId: request.artifactId,
+          settings: nextSettings
+        }, userId);
+        return;
+      }
+      case "restore_artifact": {
+        const restored = await restoreArtifact(
+          spindle,
+          userId,
+          request.artifactId,
+          request.revision
+        );
+        send({
+          type: "artifact_saved",
+          requestId: request.requestId,
+          library: restored.library,
+          record: restored.record
+        }, userId);
+        return;
+      }
+      case "generate_artifact":
+        void generateArtifactDraft(
+          request.requestId,
+          request.kind,
+          request.brief,
+          request.currentArtifact,
+          userId
+        ).catch((error) => {
+          send({
+            type: "artifact_generation_status",
+            requestId: request.requestId,
+            status: "failed",
+            message: errorMessage(error),
+            elapsedMs: 0,
+            attempt: 1
+          }, userId);
+        });
+        return;
+      case "cancel_artifact_generation":
+        abortJob(requestJobKey(userId, request.requestId));
+        return;
+      case "install_artifact": {
+        const installed = await installArtifact(
+          request.artifact,
+          request.selectedArtifactIds,
+          request.applySettings ?? false,
+          request.activateTheme ?? true,
+          userId
+        );
+        send({
+          type: "artifact_installed",
+          requestId: request.requestId,
+          settings: installed.settings,
+          library: await loadArtifactLibrary(spindle, userId),
+          installedIds: installed.installedIds,
+          message: installed.message
+        }, userId);
+        return;
+      }
     }
   } catch (error) {
     send({ type: "error", requestId, message: errorMessage(error) }, userId);
   }
 }
 function eventMessage(payload) {
-  if (!isRecord3(payload)) return null;
-  const message = isRecord3(payload.message) ? payload.message : payload;
+  if (!isRecord4(payload)) return null;
+  const message = isRecord4(payload.message) ? payload.message : payload;
   if (typeof message.id !== "string" || typeof message.chat_id !== "string" || typeof message.swipe_id !== "number" || !Array.isArray(message.swipes)) return null;
   return message;
 }
@@ -7928,7 +9076,7 @@ async function handleSwipeEdited(payload, eventUserId) {
   }
 }
 async function handleMessageDeleted(payload, eventUserId) {
-  if (!isRecord3(payload) || typeof payload.chatId !== "string" || typeof payload.messageId !== "string") return;
+  if (!isRecord4(payload) || typeof payload.chatId !== "string" || typeof payload.messageId !== "string") return;
   for (const userId of eventUsers(payload.chatId, eventUserId)) {
     await invalidateMessageStates(payload.chatId, payload.messageId, userId);
   }
@@ -7962,7 +9110,7 @@ function tryRegisterInterceptor() {
   interceptorRegistered = true;
   interceptorEnabled = true;
   spindle.registerInterceptor(async (messages, context) => {
-    if (!interceptorEnabled || disposed || !isRecord3(context)) return messages;
+    if (!interceptorEnabled || disposed || !isRecord4(context)) return messages;
     if (context.generationType === "quiet" || typeof context.chatId !== "string") return messages;
     if (!spindle.permissions.has("chat_mutation")) return messages;
     const chatId = context.chatId;
@@ -8054,7 +9202,7 @@ disposers.push(spindle.permissions.onChanged(({ permission, granted }) => {
   }
 }));
 disposers.push(spindle.on("SPINDLE_EXTENSION_UNLOADED", (payload) => {
-  if (isRecord3(payload) && payload.extensionId === EXTENSION_ID) disposeBackend();
+  if (isRecord4(payload) && payload.extensionId === EXTENSION_ID) disposeBackend();
 }));
 tryRegisterInterceptor();
 spindle.log.info("LoomOS Command Deck backend loaded.");
