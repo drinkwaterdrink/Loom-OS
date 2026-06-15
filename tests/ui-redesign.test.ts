@@ -79,13 +79,14 @@ test("history uses a compact archive heading and search surface", () => {
 test("creator workshop exposes the Phase 3 navigation and responsive workspace", async () => {
   const source = await readFile("src/frontend.ts", "utf8");
   const workshop = await readFile("src/frontend/workshop.ts", "utf8");
+  const behavior = await readFile("src/frontend/workshopBehavior.ts", "utf8");
   const styles = await readFile("src/frontend/styles.ts", "utf8");
   assert.match(source, /Creator Workshop/);
   assert.match(source, /activeThemeId/);
   assert.match(source, /developerMode/);
   assert.match(workshop, /LoomOS Creator Workshop/);
   for (const view of ["home", "packs", "modules", "layout", "theme", "test-lab", "advanced-code", "revisions"]) {
-    assert.match(workshop, new RegExp(`id: "${view}"`));
+    assert.match(behavior, new RegExp(`id: "${view}"`));
   }
   assert.match(workshop, /loomos-workshop-rail/);
   assert.match(workshop, /loomos-workshop-preview-pane/);
@@ -94,6 +95,7 @@ test("creator workshop exposes the Phase 3 navigation and responsive workspace",
   assert.match(styles, /grid-template-columns:\s*minmax\(190px, 224px\) minmax\(420px, 1fr\) minmax\(310px, 390px\)/);
   assert.match(styles, /@media \(max-width: 760px\)/);
   assert.match(styles, /\.loomos-workshop-bottom-actions/);
+  assert.match(styles, /div:has\(> \.loomos-workshop-root\)/);
   assert.match(styles, /min-height:\s*44px/);
   assert.match(styles, /overflow-x:\s*hidden/);
 });
@@ -127,19 +129,22 @@ test("creator workshop preserves artifact, Loom Pack, layout, and advanced code 
 
 test("advanced code and preview keep valid-artifact and sandbox boundaries", async () => {
   const workshop = await readFile("src/frontend/workshop.ts", "utf8");
+  const behavior = await readFile("src/frontend/workshopBehavior.ts", "utf8");
   assert.match(workshop, /activeView !== "advanced-code"/);
-  assert.match(workshop, /applyCodeValue\(workingArtifact, codeSection, codeEditor\.getValue\(\)\)/);
+  assert.match(workshop, /applyWorkshopCodeValue\(workingArtifact, codeSection, codeDraft\)/);
+  assert.match(workshop, /saveWorkshopCodeDraft/);
   assert.match(workshop, /Draft contains invalid data and has not replaced the last valid revision/);
   assert.match(workshop, /LoomOSArtifactSchema\.parse\(workingArtifact\)/);
   assert.match(workshop, /buildViewerModel\(previewState, settings, history, "Workshop preview"\)/);
   assert.match(workshop, /enrichViewerModelWithLayout/);
-  assert.match(workshop, /buildThemeDocument/);
+  assert.match(behavior, /buildThemeDocument/);
+  assert.match(behavior, /renderDashboard/);
   assert.match(workshop, /nativePreviewDocument/);
   assert.match(workshop, /inspectLayoutDiagnostics/);
   assert.match(workshop, /inspectThemeComplexity/);
   assert.match(workshop, /Developer Mode/);
-  assert.doesNotMatch(workshop, /\beval\s*\(/);
-  assert.doesNotMatch(workshop, /new Function/);
+  assert.doesNotMatch(`${workshop}\n${behavior}`, /\beval\s*\(/);
+  assert.doesNotMatch(`${workshop}\n${behavior}`, /new Function/);
 });
 
 test("creator workshop exposes unified module and theme controls", async () => {

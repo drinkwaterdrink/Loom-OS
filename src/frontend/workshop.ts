@@ -7,25 +7,18 @@ import type {
   FrontendRequest,
 } from "../shared/protocol";
 import {
-  BlueprintArtifactSchema,
   LoomOSArtifactSchema,
-  ModuleCapsuleArtifactSchema,
   ThemeArtifactSchema,
   createStarterBlueprintArtifact,
   createStarterModuleArtifact,
   createStarterThemeArtifact,
-  parseLoomOSArtifactText,
-  parseLoomOSArtifact,
   sampleForArtifact,
   validateJsonSchemaSubset,
-  parseLoomPack,
   LoomPackSchema,
-  extractJsonText,
   type ArtifactLibrary,
   type ArtifactRecord,
   type BlueprintArtifact,
   type LoomOSArtifact,
-  type ModuleCapsuleArtifact,
   type ThemeArtifact,
   type LoomPack,
 } from "../shared/artifacts";
@@ -42,9 +35,7 @@ import {
   type ModuleKey,
 } from "../shared/modules";
 import {
-  buildThemeDocument,
   inspectThemeComplexity,
-  type ThemeDocumentOptions,
 } from "../shared/themeRuntime";
 import {
   mountCodeEditor,
@@ -55,38 +46,29 @@ import {
   escapeHtml,
   enrichViewerModelWithLayout,
   inspectLayoutDiagnostics,
-  renderDashboard,
 } from "./render";
-import { LOOMOS_STYLES } from "./styles";
-
-type WorkshopView =
-  | "home"
-  | "packs"
-  | "modules"
-  | "layout"
-  | "theme"
-  | "test-lab"
-  | "advanced-code"
-  | "revisions";
+import {
+  WORKSHOP_NAV,
+  activeSetupCounts,
+  applyWorkshopCodeValue,
+  applyWorkshopLayoutEdits,
+  artifactMatchesPackFilter,
+  buildWorkshopNativePreviewDocument,
+  buildWorkshopThemePreviewDocument,
+  mobilePreviewState,
+  parseWorkshopImportText,
+  saveWorkshopCodeDraft,
+  selectedArtifactRecord,
+  widgetMatchesModuleFilter,
+  workshopInstallTarget,
+  workshopSaveTarget,
+  type PreviewDataMode,
+  type PreviewSurface,
+  type WidgetControlPatch,
+  type WorkshopView,
+} from "./workshopBehavior";
 
 type PreviewSize = "mobile" | "tablet" | "desktop";
-type PreviewSurface = "theme" | "native";
-type PreviewDataMode = "current" | "empty" | "dense";
-
-const WORKSHOP_NAV: ReadonlyArray<{
-  id: WorkshopView;
-  label: string;
-  description: string;
-}> = [
-  { id: "home", label: "Home", description: "Setup overview and quick actions" },
-  { id: "packs", label: "Packs", description: "Import, export, and manage portable artifacts" },
-  { id: "modules", label: "Modules", description: "Track, display, inject, and place modules" },
-  { id: "layout", label: "Layout", description: "Arrange widgets into responsive slots" },
-  { id: "theme", label: "Theme", description: "Preview and activate visual shells" },
-  { id: "test-lab", label: "Test Lab", description: "Compare preview sizes, data, and diagnostics" },
-  { id: "advanced-code", label: "Advanced Code", description: "Edit JSON, HTML, CSS, and JavaScript" },
-  { id: "revisions", label: "Revisions", description: "Restore saved artifact snapshots" },
-];
 
 export interface CreatorWorkshopOptions {
   ctx: SpindleFrontendContext;
@@ -226,69 +208,6 @@ function codeValue(artifact: LoomOSArtifact, section: string): string {
   return "";
 }
 
-function applyCodeValue(
-  artifact: LoomOSArtifact,
-  section: string,
-  raw: string,
-): LoomOSArtifact {
-  const next = cloneArtifact(artifact);
-  const json = () => JSON.parse(raw);
-  if (section === "meta") {
-    const identity = json() as {
-      id?: unknown;
-      meta?: unknown;
-      createdAt?: unknown;
-      updatedAt?: unknown;
-    };
-    return LoomOSArtifactSchema.parse({
-      ...next,
-      id: identity.id,
-      meta: identity.meta,
-      createdAt: identity.createdAt,
-      updatedAt: new Date().toISOString(),
-    });
-  }
-  if (next.kind === "module") {
-    if (section === "schema") next.schema = json();
-    if (section === "prompt") next.prompt = raw;
-    if (section === "sample") next.sampleData = json();
-    if (section === "defaults") {
-      const value = json() as { defaults?: unknown; capabilities?: unknown };
-      next.defaults = value.defaults as ModuleCapsuleArtifact["defaults"];
-      next.capabilities = value.capabilities as ModuleCapsuleArtifact["capabilities"];
-    }
-    if (section === "html" || section === "css" || section === "javascript") {
-      next.view[section] = raw;
-    }
-    return ModuleCapsuleArtifactSchema.parse({
-      ...next,
-      updatedAt: new Date().toISOString(),
-    });
-  }
-  if (next.kind === "theme") {
-    if (section === "manifest") next.manifest = json();
-    if (section === "partials") next.view.partials = json();
-    if (section === "sample") next.sampleData = json();
-    if (section === "html" || section === "css" || section === "javascript") {
-      next.view[section] = raw;
-    }
-    return ThemeArtifactSchema.parse({
-      ...next,
-      updatedAt: new Date().toISOString(),
-    });
-  }
-  if (next.kind === "blueprint") {
-    if (section === "modules") next.modules = json();
-    if (section === "theme") next.theme = json();
-    if (section === "settings") next.settings = json();
-    return BlueprintArtifactSchema.parse({
-      ...next,
-      updatedAt: new Date().toISOString(),
-    });
-  }
-  return LoomOSArtifactSchema.parse(next);
-}
-
 function diagnosticsFor(artifact: LoomOSArtifact): Array<{ level: "ok" | "warning" | "error"; text: string }> {
   const diagnostics: Array<{ level: "ok" | "warning" | "error"; text: string }> = [];
   const parsed = LoomOSArtifactSchema.safeParse(artifact);
@@ -404,6 +323,8 @@ export function openCreatorWorkshop(
   let codeEditor: CodeEditorHandle | null = null;
   let codeDraft = "";
   let codeError = "";
+  let codeDirty = false;
+  let settingsDirty = false;
   let previewSize: PreviewSize = "mobile";
   let previewSurface: PreviewSurface = "theme";
   let previewDataMode: PreviewDataMode = "current";
@@ -419,7 +340,10 @@ export function openCreatorWorkshop(
   let modalDismissed = false;
   let layoutQuery = "";
   let layoutGroupBySlot = true;
+  let packQuery = "";
   let packKindFilter = "all";
+  let railQuery = "";
+  let moduleQuery = "";
   let moduleSourceFilter = "all";
   let moduleGroupFilter = "all";
   let moduleStatusFilter = "all";
@@ -434,7 +358,7 @@ export function openCreatorWorkshop(
   modal.root.dataset.view = "workshop";
 
   function selectedRecord(): ArtifactRecord | null {
-    return library.records.find((record) => record.artifact.id === selectedId) ?? null;
+    return selectedArtifactRecord(library, selectedId);
   }
 
   function stopTimer(): void {
@@ -447,16 +371,21 @@ export function openCreatorWorkshop(
     autosaveTimer = setTimeout(() => {
       autosaveTimer = null;
       if (!workingArtifact || !codeEditor || activeView !== "advanced-code") return;
-      try {
-        const candidate = applyCodeValue(workingArtifact, codeSection, codeEditor.getValue());
-        workingArtifact = candidate;
+      const result = saveWorkshopCodeDraft(
+        workingArtifact,
+        codeSection,
+        codeEditor.getValue(),
+        options.requestId("artifact-autosave"),
+        options.send,
+      );
+      if (result.ok) {
+        workingArtifact = result.artifact;
+        codeDirty = false;
         codeError = "Draft autosaved";
-        options.send({
-          type: "save_artifact",
-          requestId: options.requestId("artifact-autosave"),
-          artifact: candidate,
-        });
-      } catch {
+        const errorRoot = modal.root.querySelector<HTMLElement>("[data-code-error]");
+        if (errorRoot) errorRoot.textContent = codeError;
+        updateDirtyActionState();
+      } else {
         codeError = "Draft contains invalid data and has not replaced the last valid revision.";
         const errorRoot = modal.root.querySelector<HTMLElement>("[data-code-error]");
         if (errorRoot) errorRoot.textContent = codeError;
@@ -478,7 +407,7 @@ export function openCreatorWorkshop(
     if (!workingArtifact || activeView !== "advanced-code" || !codeEditor) return true;
     try {
       codeDraft = codeEditor.getValue();
-      workingArtifact = applyCodeValue(workingArtifact, codeSection, codeDraft);
+      workingArtifact = applyWorkshopCodeValue(workingArtifact, codeSection, codeDraft);
       codeError = "";
       return true;
     } catch (error) {
@@ -489,7 +418,81 @@ export function openCreatorWorkshop(
     }
   }
 
-  function chooseArtifact(artifact: LoomOSArtifact): void {
+  function saveCodeDraft(prefix = "artifact-save"): boolean {
+    if (!workingArtifact || !codeEditor || activeView !== "advanced-code") return false;
+    if (autosaveTimer) clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+    const result = saveWorkshopCodeDraft(
+      workingArtifact,
+      codeSection,
+      codeEditor.getValue(),
+      options.requestId(prefix),
+      options.send,
+    );
+    if (!result.ok) {
+      codeError = result.error;
+      const errorRoot = modal.root.querySelector<HTMLElement>("[data-code-error]");
+      if (errorRoot) errorRoot.textContent = codeError;
+      return false;
+    }
+    workingArtifact = result.artifact;
+    codeDirty = false;
+    codeError = "Revision saved";
+    const errorRoot = modal.root.querySelector<HTMLElement>("[data-code-error]");
+    if (errorRoot) errorRoot.textContent = codeError;
+    updateDirtyActionState();
+    options.onStatus(`Saving ${workingArtifact.meta.name}`);
+    return true;
+  }
+
+  function saveCommittedArtifact(prefix = "artifact-save"): boolean {
+    if (!workingArtifact) return false;
+    try {
+      const artifact = LoomOSArtifactSchema.parse(workingArtifact);
+      options.send({
+        type: "save_artifact",
+        requestId: options.requestId(prefix),
+        artifact,
+      });
+      workingArtifact = artifact;
+      codeDirty = false;
+      codeError = "Revision saved";
+      const errorRoot = modal.root.querySelector<HTMLElement>("[data-code-error]");
+      if (errorRoot) errorRoot.textContent = codeError;
+      updateDirtyActionState();
+      options.onStatus(`Saving ${artifact.meta.name}`);
+      return true;
+    } catch (error) {
+      codeError = error instanceof Error ? error.message : String(error);
+      return false;
+    }
+  }
+
+  function prepareAdvancedCodeTransition(): boolean {
+    if (activeView !== "advanced-code") return true;
+    if (!commitCodeDraft()) return false;
+    if (!codeDirty) return true;
+    return saveCodeDraft("artifact-transition-save");
+  }
+
+  function prepareForRender(): boolean {
+    if (activeView === "advanced-code" && !commitCodeDraft()) return false;
+    if ((activeView === "modules" || activeView === "layout") && settingsDirty) {
+      captureLayoutFromDOM(false);
+    }
+    return true;
+  }
+
+  function prepareViewTransition(): boolean {
+    if (activeView === "advanced-code") return prepareAdvancedCodeTransition();
+    if (codeDirty && !saveCommittedArtifact("artifact-transition-save")) return false;
+    if ((activeView === "modules" || activeView === "layout") && settingsDirty) {
+      captureLayoutFromDOM(false);
+    }
+    return true;
+  }
+
+  function chooseArtifact(artifact: LoomOSArtifact, saved = true): void {
     codeEditor?.destroy();
     codeEditor = null;
     selectedId = artifact.id;
@@ -498,6 +501,7 @@ export function openCreatorWorkshop(
     stagedArtifact = null;
     codeSection = codeSections(artifact)[0]?.id ?? "meta";
     codeError = "";
+    codeDirty = !saved;
   }
 
   function createArtifact(kind: LoomOSArtifact["kind"]): void {
@@ -506,7 +510,7 @@ export function openCreatorWorkshop(
       : kind === "theme"
       ? createStarterThemeArtifact()
       : createStarterBlueprintArtifact();
-    chooseArtifact(artifact);
+    chooseArtifact(artifact, false);
     activeView = "advanced-code";
     render();
   }
@@ -527,10 +531,7 @@ export function openCreatorWorkshop(
     tracked: number;
     injected: number;
   } {
-    const widgets = settings.layout?.widgets.filter((widget) => widget.display).length ?? 0;
-    const tracked = settings.layout?.widgets.filter((widget) => widget.track).length ?? 0;
-    const injected = settings.layout?.widgets.filter((widget) => widget.inject).length ?? 0;
-    return { widgets, tracked, injected };
+    return activeSetupCounts(settings);
   }
 
   function quickAction(
@@ -626,7 +627,7 @@ export function openCreatorWorkshop(
         <div class="loomos-filter-bar">
           <label class="loomos-filter-search">
             <span class="sr-only">Search artifacts</span>
-            <input class="loomos-input" type="search" placeholder="Search name, tag, or description" data-workshop-search>
+            <input class="loomos-input" type="search" placeholder="Search name, tag, or description" value="${escapeHtml(packQuery)}" data-workshop-search>
           </label>
           <label>
             <span>Type</span>
@@ -758,7 +759,7 @@ export function openCreatorWorkshop(
         <div class="loomos-workshop-actions">
           <button type="button" class="loomos-button" data-workshop-action="format-code">Format JSON</button>
           <button type="button" class="loomos-button" data-workshop-action="validate">Validate</button>
-          <button type="button" class="loomos-button loomos-button-primary" data-workshop-action="save">Save Revision</button>
+          <button type="button" class="loomos-button loomos-button-primary" data-workshop-action="save" data-workshop-code-save${codeDirty ? "" : " disabled"}>Save Revision</button>
         </div>
       </section>`;
   }
@@ -781,12 +782,12 @@ export function openCreatorWorkshop(
             <h2>Modules</h2>
             <p class="loomos-workshop-lede">Track controls compiler output, Display controls the tracker UI, and Inject controls future roleplay context.</p>
           </div>
-          <button type="button" class="loomos-button loomos-button-primary" data-workshop-action="save-context">Save Modules</button>
+          <button type="button" class="loomos-button loomos-button-primary" data-workshop-action="save-context" data-workshop-settings-save${settingsDirty ? "" : " disabled"}>Save Modules</button>
         </div>
         <div class="loomos-filter-bar loomos-module-filter-bar">
           <label class="loomos-filter-search">
             <span class="sr-only">Search modules</span>
-            <input class="loomos-input" type="search" placeholder="Search modules" data-module-filter="search">
+            <input class="loomos-input" type="search" placeholder="Search modules" value="${escapeHtml(moduleQuery)}" data-module-filter="search">
           </label>
           <label><span>Source</span><select class="loomos-select" data-module-filter="source">
             ${["all", "stock", "custom", "artifact"].map((value) =>
@@ -935,28 +936,16 @@ export function openCreatorWorkshop(
       return `<!doctype html><body style="font-family:system-ui;background:#111;color:#eee;padding:20px"><h2>This Blueprint has no theme to preview.</h2></body>`;
     }
     const model = previewModelFor(artifact, dataMode);
-    const runtime: ThemeDocumentOptions = {
-      nonce: `preview-${artifact.id}`,
-      developerModeEnabled: settings.developerMode,
-    };
-    return buildThemeDocument(
+    return buildWorkshopThemePreviewDocument(
       previewTheme,
       model as unknown as ReturnType<typeof buildViewerModel>,
-      runtime,
+      settings.developerMode,
+      `preview-${artifact.id}`,
     );
   }
 
   function nativePreviewDocument(dataMode: PreviewDataMode = previewDataMode): string {
-    const previewState = dataMode === "empty" ? null : state;
-    const content = previewState
-      ? renderDashboard(previewState, settings, "overview")
-      : `<div class="loomos-empty"><h3>Empty exact-swipe state</h3><p>Generate a tracker or switch Data to Current to inspect live content.</p></div>`;
-    return `<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>${LOOMOS_STYLES}</style></head>
-<body class="loomos-root" data-skin="${escapeHtml(settings.skin)}" style="margin:0;padding:10px;background:var(--loomos-bg);color:var(--loomos-ink)">
-${content}
-</body></html>`;
+    return buildWorkshopNativePreviewDocument(state, settings, history, dataMode);
   }
 
   function diagnosticsSummaryHtml(): string {
@@ -1047,18 +1036,15 @@ ${content}
       </section>`;
   }
 
-  function saveLayoutFromDOM() {
+  function captureLayoutFromDOM(sendChanges: boolean): boolean {
     const container = modal.root.querySelector(".loomos-workshop-center");
-    if (!container) return;
+    if (!container || !settings.layout) return false;
 
     const widgetCards = container.querySelectorAll(".loomos-widget-editor-card");
-    const nextWidgets = settings.layout ? JSON.parse(JSON.stringify(settings.layout.widgets)) : [];
-
-    widgetCards.forEach((card: any) => {
-      const widgetId = card.dataset.widgetId;
-      const widget = nextWidgets.find((w: any) => w.id === widgetId);
-      if (!widget) return;
-
+    const patches: WidgetControlPatch[] = [];
+    widgetCards.forEach((card) => {
+      const widgetId = (card as HTMLElement).dataset.widgetId;
+      if (!widgetId) return;
       const trackInput = card.querySelector("[data-widget-property='track']") as HTMLInputElement;
       const displayInput = card.querySelector("[data-widget-property='display']") as HTMLInputElement;
       const injectInput = card.querySelector("[data-widget-property='inject']") as HTMLInputElement;
@@ -1067,67 +1053,39 @@ ${content}
       const priorityInput = card.querySelector("[data-widget-property='tokenPriority']") as HTMLInputElement;
       const orderInput = card.querySelector("[data-widget-property='order']") as HTMLInputElement;
 
-      if (trackInput) widget.track = trackInput.checked;
-      if (displayInput) widget.display = displayInput.checked;
-      if (injectInput) widget.inject = injectInput.checked;
-      if (slotSelect) widget.slot = slotSelect.value;
-      if (displayModeSelect) widget.displayMode = displayModeSelect.value as any;
-      if (priorityInput) widget.tokenPriority = Number(priorityInput.value);
-      if (orderInput) widget.order = Number(orderInput.value);
+      patches.push({
+        id: widgetId,
+        ...(trackInput ? { track: trackInput.checked } : {}),
+        ...(displayInput ? { display: displayInput.checked } : {}),
+        ...(injectInput ? { inject: injectInput.checked } : {}),
+        ...(slotSelect ? { slot: slotSelect.value } : {}),
+        ...(displayModeSelect
+          ? { displayMode: displayModeSelect.value as WidgetControlPatch["displayMode"] }
+          : {}),
+        ...(priorityInput ? { tokenPriority: Number(priorityInput.value) || 0 } : {}),
+        ...(orderInput ? { order: Number(orderInput.value) || 0 } : {}),
+      });
     });
-
-    nextWidgets.sort((a: any, b: any) => a.order - b.order);
 
     const responsiveModeSelect = container.querySelector("[data-layout-input='responsive-mode']") as HTMLSelectElement;
-    const responsiveMode = responsiveModeSelect ? responsiveModeSelect.value : (settings.layout?.responsiveMode || "single-column");
-
-    const layout = {
-      slots: settings.layout?.slots || [],
-      widgets: nextWidgets,
-      responsiveMode: responsiveMode as any,
-    };
-
-    const moduleSettings = { ...settings.moduleSettings };
-    for (const w of nextWidgets) {
-      if (w.source === "stock") {
-        moduleSettings[w.moduleId as keyof typeof settings.moduleSettings] = {
-          track: w.track,
-          display: w.display,
-          inject: w.inject,
-        };
-      } else {
-        const cmIndex = settings.customModules.findIndex(c =>
-          c.id === w.moduleId || c.artifactId === w.moduleId
-        );
-        if (cmIndex >= 0) {
-          settings.customModules[cmIndex] = {
-            ...settings.customModules[cmIndex]!,
-            enabled: w.track,
-            display: w.display,
-            inject: w.inject,
-          };
-        }
-      }
+    const responsiveMode = (responsiveModeSelect?.value
+      ?? settings.layout.responsiveMode) as NonNullable<LoomOSSettings["layout"]>["responsiveMode"];
+    settings = applyWorkshopLayoutEdits(settings, patches, responsiveMode);
+    if (sendChanges) {
+      options.send({
+        type: "save_settings",
+        requestId: options.requestId("layout-save"),
+        settings,
+      });
+      settingsDirty = false;
+      options.onStatus(activeView === "modules" ? "Module settings saved" : "Dashboard layout saved");
+      render();
     }
+    return true;
+  }
 
-    const nextSettings = LoomOSSettingsSchema.parse({
-      ...settings,
-      moduleSettings,
-      layout,
-    });
-
-    settings.layout = nextSettings.layout;
-    settings.moduleSettings = nextSettings.moduleSettings;
-    settings.customModules = nextSettings.customModules;
-
-    options.send({
-      type: "save_settings",
-      requestId: options.requestId("layout-save"),
-      settings,
-    });
-
-    options.onStatus("Dashboard layout saved");
-    render();
+  function saveLayoutFromDOM(): void {
+    captureLayoutFromDOM(true);
   }
 
   function renderWidgetEditorCard(
@@ -1258,7 +1216,7 @@ ${content}
           <div><span class="loomos-kicker">Interactive slot builder</span><h2>Dashboard Layout</h2></div>
           <div style="display:flex; gap:8px;">
             <button type="button" class="loomos-button loomos-btn-sm" data-layout-action="reset-layout" title="Reset layout to default settings">Reset Layout</button>
-            <button type="button" class="loomos-button loomos-button-primary loomos-btn-sm" data-layout-action="save-layout">Save Layout</button>
+            <button type="button" class="loomos-button loomos-button-primary loomos-btn-sm" data-layout-action="save-layout" data-workshop-settings-save${settingsDirty ? "" : " disabled"}>Save Layout</button>
           </div>
         </div>
 
@@ -1381,10 +1339,10 @@ ${content}
         </nav>
         <label class="loomos-rail-search">
           <span>Library search</span>
-          <input class="loomos-input" type="search" placeholder="Find an artifact" data-workshop-global-search>
+          <input class="loomos-input" type="search" placeholder="Find an artifact" value="${escapeHtml(railQuery)}" data-workshop-global-search>
         </label>
         <div class="loomos-rail-library">
-          ${library.records.slice(0, 10).map((record) => `
+          ${library.records.map((record) => `
             <button type="button" data-workshop-action="select" data-artifact-id="${escapeHtml(record.artifact.id)}"
               data-rail-artifact
               data-search="${escapeHtml(`${record.artifact.meta.name} ${record.artifact.kind}`.toLowerCase())}"
@@ -1393,6 +1351,7 @@ ${content}
             </button>
           `).join("") || `<p class="loomos-muted">No saved artifacts.</p>`}
         </div>
+        <button type="button" class="loomos-button loomos-rail-view-all" data-workshop-view="packs">View all in Packs</button>
         <div class="loomos-rail-summary">
           <span>Active setup</span>
           <strong>${escapeHtml(activeThemeRecord()?.artifact.meta.name ?? "Native tracker")}</strong>
@@ -1456,6 +1415,24 @@ ${content}
     });
   }
 
+  function updateDirtyActionState(): void {
+    modal.root.querySelectorAll<HTMLButtonElement>("[data-workshop-settings-save]").forEach((button) => {
+      button.disabled = !settingsDirty;
+    });
+    modal.root.querySelectorAll<HTMLButtonElement>("[data-workshop-code-save]").forEach((button) => {
+      button.disabled = !codeDirty;
+    });
+    const contextSave = modal.root.querySelector<HTMLButtonElement>("[data-workshop-context-save]");
+    if (contextSave) {
+      contextSave.disabled = !workshopSaveTarget(
+        activeView,
+        Boolean(workingArtifact),
+        settingsDirty,
+        codeDirty,
+      );
+    }
+  }
+
   function render(): void {
     if (destroyed) return;
     codeEditor?.destroy();
@@ -1463,6 +1440,22 @@ ${content}
     modal.root.dataset.skin = settings.skin;
     const artifact = stagedArtifact ?? workingArtifact;
     const currentNav = WORKSHOP_NAV.find((item) => item.id === activeView)!;
+    const saveTarget = workshopSaveTarget(activeView, Boolean(workingArtifact), settingsDirty, codeDirty);
+    const activeTheme = activeThemeRecord()?.artifact as ThemeArtifact | undefined;
+    const installTarget = workshopInstallTarget(
+      activeView,
+      workingArtifact,
+      stagedArtifact,
+      activeTheme ?? null,
+    );
+    const saveLabel = activeView === "modules"
+      ? "Save Modules"
+      : activeView === "layout"
+      ? "Save Layout"
+      : saveTarget === "artifact"
+      ? "Save Revision"
+      : "Save";
+    const installLabel = installTarget?.kind === "theme" ? "Install Theme" : "Install";
     modal.root.innerHTML = `
       <div class="loomos-workshop">
         <header class="loomos-workshop-core">
@@ -1492,8 +1485,8 @@ ${content}
         </div>
         <footer class="loomos-workshop-bottom-actions">
           <button type="button" class="loomos-button" data-workshop-action="mobile-preview">Preview</button>
-          <button type="button" class="loomos-button" data-workshop-action="save-context"${workingArtifact || activeView === "modules" || activeView === "layout" ? "" : " disabled"}>Save</button>
-          <button type="button" class="loomos-button loomos-button-primary" data-workshop-action="install"${workingArtifact ? "" : " disabled"}>Install</button>
+          <button type="button" class="loomos-button" data-workshop-action="save-context" data-workshop-context-save${saveTarget ? "" : " disabled"}>${saveLabel}</button>
+          <button type="button" class="loomos-button loomos-button-primary" data-workshop-action="install"${installTarget ? "" : " disabled"}>${installLabel}</button>
         </footer>
         ${mobilePreviewHtml()}
       </div>`;
@@ -1507,8 +1500,10 @@ ${content}
       if (host) {
         codeEditor = mountCodeEditor(host, codeDraft, section.language, (value) => {
           codeDraft = value;
+          codeDirty = true;
           const dirty = modal.root.querySelector<HTMLElement>("[data-code-error]");
           if (dirty) dirty.textContent = "Unsaved changes";
+          updateDirtyActionState();
           scheduleAutosave();
         });
       }
@@ -1516,6 +1511,7 @@ ${content}
     mountPreviewFrames();
     applyPackFilters();
     applyModuleFilters();
+    applyRailFilters();
   }
 
   async function openImport(): Promise<void> {
@@ -1525,6 +1521,7 @@ ${content}
       maxHeight: Math.min(760, window.innerHeight - 20),
     });
     importModal.root.className = "loomos-root";
+    importModal.root.dataset.view = "modal";
     importModal.root.innerHTML = `
       <div class="loomos-prompt-dialog">
         <p class="loomos-hint">Paste raw JSON, fenced JSON from an AI, a Loom Pack, a version-1 LoomOS module, or upload a .json/.loompack file.</p>
@@ -1544,14 +1541,12 @@ ${content}
     importModal.root.querySelector("[data-import-confirm]")?.addEventListener("click", () => {
       try {
         const text = textarea?.value ?? "";
-        const json = extractJsonText(text);
-        if (json && typeof json === "object" && "format" in json && json.format === "loomos-pack") {
-          const pack = parseLoomPack(json);
+        const imported = parseWorkshopImportText(text);
+        if (imported.kind === "pack") {
           importModal.dismiss();
-          openLoomPackInstall(pack);
+          openLoomPackInstall(imported.pack);
         } else {
-          const artifact = parseLoomOSArtifact(json);
-          chooseArtifact(artifact);
+          chooseArtifact(imported.artifact, false);
           activeView = "test-lab";
           importModal.dismiss();
           render();
@@ -1571,6 +1566,7 @@ ${content}
       maxHeight: Math.min(780, window.innerHeight - 20),
     });
     installModal.root.className = "loomos-root";
+    installModal.root.dataset.view = "modal";
     const parts = [
       ...blueprint.modules.map((module) => ({ id: module.id, name: module.meta.name, kind: "module" })),
       ...(blueprint.theme ? [{ id: blueprint.theme.id, name: blueprint.theme.meta.name, kind: "theme" }] : []),
@@ -1617,6 +1613,7 @@ ${content}
       maxHeight: Math.min(780, window.innerHeight - 20),
     });
     installModal.root.className = "loomos-root";
+    installModal.root.dataset.view = "modal";
     
     let artifactsHtml = "";
     if (pack.artifacts.length === 0) {
@@ -1756,6 +1753,7 @@ ${content}
       maxHeight: Math.min(780, window.innerHeight - 20),
     });
     exportModal.root.className = "loomos-root";
+    exportModal.root.dataset.view = "modal";
     exportModal.root.innerHTML = `
       <div class="loomos-prompt-dialog">
         <p class="loomos-hint">Bundle multiple artifacts and your active preset settings into a portable .loompack file.</p>
@@ -1847,7 +1845,7 @@ ${content}
 
   function artifactRecordById(artifactId: string | undefined): ArtifactRecord | null {
     if (!artifactId) return null;
-    return library.records.find((candidate) => candidate.artifact.id === artifactId) ?? null;
+    return selectedArtifactRecord(library, artifactId);
   }
 
   async function installArtifactValue(artifact: LoomOSArtifact): Promise<void> {
@@ -1881,26 +1879,43 @@ ${content}
   }
 
   function applyPackFilters(): void {
-    const search = modal.root.querySelector<HTMLInputElement>("[data-workshop-search]")?.value.trim().toLowerCase() ?? "";
     modal.root.querySelectorAll<HTMLElement>("[data-artifact-row]").forEach((row) => {
-      const matchesSearch = !search || (row.dataset.search ?? "").includes(search);
-      const matchesKind = packKindFilter === "all" || row.dataset.kind === packKindFilter;
-      row.hidden = !(matchesSearch && matchesKind);
+      const record = artifactRecordById(
+        row.querySelector<HTMLElement>("[data-artifact-id]")?.dataset.artifactId,
+      );
+      row.hidden = !record || !artifactMatchesPackFilter(record.artifact, {
+        query: packQuery,
+        kind: packKindFilter as "all" | LoomOSArtifact["kind"],
+      });
     });
   }
 
   function applyModuleFilters(): void {
-    const search = modal.root.querySelector<HTMLInputElement>("[data-module-filter='search']")?.value.trim().toLowerCase() ?? "";
     modal.root.querySelectorAll<HTMLElement>("[data-module-card]").forEach((card) => {
-      const matchesSearch = !search || (card.dataset.search ?? "").includes(search);
-      const matchesSource = moduleSourceFilter === "all" || card.dataset.source === moduleSourceFilter;
-      const matchesGroup = moduleGroupFilter === "all" || card.dataset.group === moduleGroupFilter;
-      const matchesStatus = moduleStatusFilter === "all"
-        || card.dataset.status === moduleStatusFilter
-        || (moduleStatusFilter === "tracked" && card.querySelector<HTMLInputElement>("[data-widget-property='track']")?.checked)
-        || (moduleStatusFilter === "displayed" && card.querySelector<HTMLInputElement>("[data-widget-property='display']")?.checked)
-        || (moduleStatusFilter === "injected" && card.querySelector<HTMLInputElement>("[data-widget-property='inject']")?.checked);
-      card.hidden = !(matchesSearch && matchesSource && matchesGroup && matchesStatus);
+      const track = card.querySelector<HTMLInputElement>("[data-widget-property='track']")?.checked ?? false;
+      const display = card.querySelector<HTMLInputElement>("[data-widget-property='display']")?.checked ?? false;
+      const inject = card.querySelector<HTMLInputElement>("[data-widget-property='inject']")?.checked ?? false;
+      card.hidden = !widgetMatchesModuleFilter({
+        search: card.dataset.search ?? "",
+        source: card.dataset.source ?? "",
+        group: card.dataset.group ?? "",
+        status: !track && (display || inject) ? "warning" : card.dataset.status ?? "",
+        track,
+        display,
+        inject,
+      }, {
+        query: moduleQuery,
+        source: moduleSourceFilter,
+        group: moduleGroupFilter,
+        status: moduleStatusFilter,
+      });
+    });
+  }
+
+  function applyRailFilters(): void {
+    const query = railQuery.trim().toLowerCase();
+    modal.root.querySelectorAll<HTMLElement>("[data-rail-artifact]").forEach((row) => {
+      row.hidden = Boolean(query) && !(row.dataset.search ?? "").includes(query);
     });
   }
 
@@ -1908,6 +1923,7 @@ ${content}
     const action = button.dataset.workshopAction;
     if (!action) return;
     if (action === "close") {
+      if (!prepareViewTransition()) return;
       modal.dismiss();
       return;
     }
@@ -1915,39 +1931,45 @@ ${content}
       if (activeView === "home") {
         modal.dismiss();
       } else {
-        if (activeView === "advanced-code" && !commitCodeDraft()) return;
+        if (!prepareViewTransition()) return;
         activeView = "home";
         render();
       }
       return;
     }
     if (action === "create") {
+      if (!prepareViewTransition()) return;
       createArtifact((button.dataset.kind ?? "module") as LoomOSArtifact["kind"]);
       return;
     }
     if (action === "select") {
+      if (!prepareViewTransition()) return;
       const record = library.records.find((candidate) => candidate.artifact.id === button.dataset.artifactId);
       if (record) chooseArtifact(record.artifact);
       render();
       return;
     }
     if (action === "open-active-setup") {
+      if (!prepareViewTransition()) return;
       activeView = "modules";
       render();
       return;
     }
     if (action === "preview-tracker") {
+      if (!prepareViewTransition()) return;
       activeView = "test-lab";
       render();
       return;
     }
     if (action === "mobile-preview") {
-      mobilePreviewOpen = true;
+      if (!prepareForRender()) return;
+      mobilePreviewOpen = mobilePreviewState(mobilePreviewOpen, "open");
       render();
       return;
     }
     if (action === "close-mobile-preview") {
-      mobilePreviewOpen = false;
+      if (!prepareForRender()) return;
+      mobilePreviewOpen = mobilePreviewState(mobilePreviewOpen, "close");
       render();
       return;
     }
@@ -1966,6 +1988,7 @@ ${content}
       return;
     }
     if (["preview-artifact", "edit-artifact", "export-artifact", "duplicate-artifact", "install-artifact", "delete-artifact"].includes(action)) {
+      if (!prepareViewTransition()) return;
       const record = artifactRecordById(button.dataset.artifactId);
       if (!record) return;
       if (action === "preview-artifact") {
@@ -1980,8 +2003,7 @@ ${content}
         downloadJson(`${safeFilename(record.artifact.meta.name)}.loomos.json`, record.artifact);
         options.onStatus(`Exported ${record.artifact.meta.name}`);
       } else if (action === "duplicate-artifact") {
-        chooseArtifact(duplicateArtifact(record.artifact));
-        selectedId = "";
+        chooseArtifact(duplicateArtifact(record.artifact), false);
         activeView = "advanced-code";
         codeError = "Unsaved duplicate";
         render();
@@ -1993,35 +2015,44 @@ ${content}
       return;
     }
     if (action === "duplicate" && workingArtifact) {
-      chooseArtifact(duplicateArtifact(workingArtifact));
-      selectedId = "";
+      if (!prepareForRender()) return;
+      chooseArtifact(duplicateArtifact(workingArtifact), false);
       activeView = "advanced-code";
       codeError = "Unsaved duplicate";
       render();
       return;
     }
     if (action === "save-context") {
-      if (activeView === "modules" || activeView === "layout") {
+      const saveTarget = workshopSaveTarget(
+        activeView,
+        Boolean(workingArtifact),
+        settingsDirty,
+        codeDirty,
+      );
+      if (saveTarget === "settings") {
         saveLayoutFromDOM();
         return;
       }
-      if (!workingArtifact) return;
-      if (!commitCodeDraft()) return;
-      const artifact = LoomOSArtifactSchema.parse(workingArtifact);
-      options.send({ type: "save_artifact", requestId: options.requestId("artifact-save"), artifact });
-      options.onStatus(`Saving ${artifact.meta.name}`);
+      if (saveTarget === "artifact") {
+        if (activeView === "advanced-code") saveCodeDraft();
+        else saveCommittedArtifact();
+      }
       return;
     }
     if (action === "save" && workingArtifact) {
-      if (!commitCodeDraft()) return;
-      const artifact = LoomOSArtifactSchema.parse(workingArtifact);
-      options.send({ type: "save_artifact", requestId: options.requestId("artifact-save"), artifact });
-      options.onStatus(`Saving ${artifact.meta.name}`);
+      saveCodeDraft();
       return;
     }
-    if (action === "install" && workingArtifact) {
-      if (activeView === "advanced-code" && !commitCodeDraft()) return;
-      await installArtifactValue(workingArtifact);
+    if (action === "install") {
+      if (!prepareAdvancedCodeTransition()) return;
+      const activeTheme = activeThemeRecord()?.artifact as ThemeArtifact | undefined;
+      const installTarget = workshopInstallTarget(
+        activeView,
+        workingArtifact,
+        stagedArtifact,
+        activeTheme ?? null,
+      );
+      if (installTarget) await installArtifactValue(installTarget);
       return;
     }
     if (action === "delete" && selectedRecord()) {
@@ -2059,7 +2090,8 @@ ${content}
       return;
     }
     if (action === "accept-stage" && stagedArtifact) {
-      chooseArtifact(stagedArtifact);
+      if (!prepareViewTransition()) return;
+      chooseArtifact(stagedArtifact, false);
       stagedArtifact = null;
       activeView = "test-lab";
       generationStatus = "Draft accepted. Save or install when ready.";
@@ -2073,6 +2105,7 @@ ${content}
       return;
     }
     if (action === "preview-stage") {
+      if (!prepareViewTransition()) return;
       activeView = "test-lab";
       render();
       return;
@@ -2109,28 +2142,31 @@ ${content}
       return;
     }
     if (action === "preview-surface") {
+      if (!prepareForRender()) return;
       previewSurface = button.dataset.surface === "native" ? "native" : "theme";
       render();
       return;
     }
     if (action === "preview-size") {
+      if (!prepareForRender()) return;
       previewSize = (button.dataset.size ?? "mobile") as PreviewSize;
       render();
       return;
     }
     if (action === "preview-data") {
+      if (!prepareForRender()) return;
       previewDataMode = (button.dataset.dataMode ?? "current") as PreviewDataMode;
       render();
       return;
     }
     if (action === "duplicate-revision" && selectedId) {
+      if (!prepareViewTransition()) return;
       const record = selectedRecord();
       const revision = record?.revisions.find((candidate) =>
         candidate.revision === Number(button.dataset.revision)
       );
       if (revision) {
-        chooseArtifact(duplicateArtifact(revision.artifact));
-        selectedId = "";
+        chooseArtifact(duplicateArtifact(revision.artifact), false);
         activeView = "advanced-code";
         codeError = `Unsaved copy of revision ${revision.revision}`;
         render();
@@ -2151,7 +2187,7 @@ ${content}
     const target = event.target as HTMLElement | null;
     const viewButton = target?.closest<HTMLElement>("[data-workshop-view]");
     if (viewButton) {
-      if (activeView === "advanced-code" && !commitCodeDraft()) return;
+      if (!prepareViewTransition()) return;
       activeView = (viewButton.dataset.workshopView ?? "home") as WorkshopView;
       render();
       return;
@@ -2177,6 +2213,7 @@ ${content}
           requestId: options.requestId("layout-reset"),
           settings,
         });
+        settingsDirty = false;
         options.onStatus("Dashboard layout reset to defaults");
         render();
       } else if (action === "save-layout") {
@@ -2189,17 +2226,20 @@ ${content}
   const onInput = (event: Event): void => {
     const input = event.target as HTMLInputElement | null;
     if (input?.matches("[data-workshop-search]")) {
+      packQuery = input.value;
       applyPackFilters();
       return;
     }
     if (input?.matches("[data-workshop-global-search]")) {
-      const query = input.value.trim().toLowerCase();
+      railQuery = input.value;
+      const query = railQuery.trim().toLowerCase();
       modal.root.querySelectorAll<HTMLElement>("[data-rail-artifact]").forEach((row) => {
         row.hidden = Boolean(query) && !(row.dataset.search ?? "").includes(query);
       });
       return;
     }
     if (input?.matches("[data-module-filter='search']")) {
+      moduleQuery = input.value;
       applyModuleFilters();
       return;
     }
@@ -2214,12 +2254,17 @@ ${content}
       });
       return;
     }
+    if (input?.matches("[data-widget-property]")) {
+      settingsDirty = true;
+      updateDirtyActionState();
+      applyModuleFilters();
+    }
   };
 
   const onChange = (event: Event): void => {
     const target = event.target as HTMLElement | null;
     if (target?.matches("[data-workshop-view-select]")) {
-      if (activeView === "advanced-code" && !commitCodeDraft()) return;
+      if (!prepareViewTransition()) return;
       activeView = (target as HTMLSelectElement).value as WorkshopView;
       render();
       return;
@@ -2245,18 +2290,22 @@ ${content}
       return;
     }
     if (target?.matches("[data-layout-input='group-by-slot']")) {
+      if (!prepareForRender()) return;
       const checkbox = target as HTMLInputElement;
       layoutGroupBySlot = checkbox.checked;
       render();
       return;
     }
     if (target?.matches("[data-layout-input='responsive-mode']")) {
-      const select = target as HTMLSelectElement;
-      if (settings.layout) {
-        settings.layout.responsiveMode = select.value as any;
-      }
+      settingsDirty = true;
+      captureLayoutFromDOM(false);
       render();
       return;
+    }
+    if (target?.matches("[data-widget-property]")) {
+      settingsDirty = true;
+      updateDirtyActionState();
+      applyModuleFilters();
     }
   };
 
@@ -2296,6 +2345,7 @@ ${content}
     },
     updateSettings(nextSettings) {
       settings = LoomOSSettingsSchema.parse(nextSettings);
+      if (activeView === "advanced-code" && codeEditor) return;
       render();
     },
     updateState(nextState, nextHistory) {

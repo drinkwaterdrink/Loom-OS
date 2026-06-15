@@ -2,6 +2,33 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.21] - 2026-06-14
+
+### Added
+
+- Added behavioral Workshop tests for navigation, artifact and module filtering, active setup counts, layout/module synchronization, contextual Save and Install routing, preview builders, import detection, mobile preview state, and valid/invalid code saves.
+- Expanded the preview host with realistic Module, Theme, Blueprint, revision, import, install, restore, and Loom Pack workflows for interaction QA.
+
+### Changed
+
+- Made library search cover the full artifact collection and added an explicit route to the Packs browser.
+- Preserved Workshop search/filter state and unsaved module/layout controls across rerenders and view changes.
+- Scoped bottom Save and Install actions to the active workflow, selected artifact, staged artifact, or active Theme, and disabled actions when nothing relevant can be saved or installed.
+- Kept CodeMirror mounted during routine settings updates and validated or saved dirty Advanced Code before navigation.
+- Routed Theme previews through `buildThemeDocument` and Native previews through `renderDashboard`.
+
+### Fixed
+
+- Prevented invalid Advanced Code drafts from sending `save_artifact` or overwriting the last valid revision.
+- Fixed staged imports and duplicates so their first Save creates the intended library revision without losing selection.
+- Fixed Test Lab refreshes after changing surface, viewport, or data mode.
+- Fixed mobile Workshop modal stacking so the preview overlay and fixed bottom actions receive touch and pointer input above the tracker viewer.
+- Fixed Home quick actions, contextual Save labels, revision restore/duplicate flows, and stale artifact installation from unrelated views.
+
+### Preserved
+
+- Kept exact-swipe state storage, compiler core behavior, legacy v1 imports, v2 artifact imports, Loom Pack import/export, Phase 2.1 restricted raw `renderedContent`, sandbox/CSP boundaries, and Theme isolation unchanged.
+
 ## [0.1.20] - 2026-06-14
 
 ### Added

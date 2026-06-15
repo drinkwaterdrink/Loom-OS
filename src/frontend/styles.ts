@@ -2947,7 +2947,10 @@ export const LOOMOS_STYLES = `
   @media (max-width: 768px) {
     div:has(> .loomos-root[data-view="modal"]),
     div:has(> * > .loomos-root[data-view="modal"]),
-    div:has(> * > * > .loomos-root[data-view="modal"]) {
+    div:has(> * > * > .loomos-root[data-view="modal"]),
+    div:has(> .loomos-workshop-root),
+    div:has(> * > .loomos-workshop-root),
+    div:has(> * > * > .loomos-workshop-root) {
       width: 100vw !important;
       max-width: 100vw !important;
       height: 100vh !important;
@@ -3645,6 +3648,11 @@ export const LOOMOS_STYLES = `
   }
 
   @media (max-width: 760px) {
+    .loomos-workshop-root {
+      height: 100% !important;
+      max-height: 100% !important;
+      min-height: 0 !important;
+    }
     .loomos-workshop-core {
       gap: 8px;
       min-height: 64px;

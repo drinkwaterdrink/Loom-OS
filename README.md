@@ -1,13 +1,17 @@
 # LoomOS Command Deck
 
-Current release: **0.1.20**
+Current release: **0.1.21**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.20
+## Key Features & Upgrades in 0.1.21
 
+- **Phase 3.1 Functional Hardening**: Exercised and tightened real Workshop navigation, import, preview, edit, save, install, mobile, layout, module, and revision workflows after the mobile-first redesign.
+- **Behavioral Regression Coverage**: Added pure-helper tests for filtering, settings synchronization, contextual Save/Install routing, preview document selection, import detection, and valid versus invalid code saves.
+- **Safer Editing Transitions**: Invalid Advanced Code drafts remain local, valid dirty drafts save before navigation, and CodeMirror stays mounted while routine settings updates arrive.
+- **Predictable Mobile Actions**: Fixed Workshop modal stacking and contextual bottom actions so Preview, Save, and Install operate on the visible workflow and selected or staged artifact.
 - **Phase 3 Creator Workshop**: Rebuilt the Workshop as a mobile-first creation workspace with Home, Packs, Modules, Layout, Theme, Test Lab, Advanced Code, and Revisions views.
 - **Responsive Workspace Shell**: Wide screens use library navigation, a focused editor, and persistent preview/diagnostics panes. Phones use one task at a time, context navigation, a full-screen preview, and fixed Preview/Save/Install actions.
 - **Unified Module Controls**: Stock and custom modules share Track, Display, Inject, slot, display mode, priority, order, source, status, and system-lock controls.
@@ -251,7 +255,7 @@ Five continuity-critical modules are locked **Track: on** for system safety. The
 
 ## Creator Workshop
 
-Open **Setup -> Creator Workshop** or use **More -> Creator Workshop** in the chat viewer. Phase 3 organizes creation around the work being done instead of exposing one long technical form.
+Open **Setup -> Creator Workshop** or use **More -> Creator Workshop** in the chat viewer. Phase 3 organizes creation around the work being done instead of exposing one long technical form. Phase 3.1 hardened those interaction flows through behavioral tests and real desktop/mobile smoke testing before visual builders begin.
 
 ### Responsive Workspace
 
@@ -291,6 +295,8 @@ The built-in creator supports Module, Theme, and Blueprint jobs. A job uses the 
 Module editors expose identity, nested data schema, AI instructions, HTML, CSS, optional JavaScript, sample data, defaults, and capabilities. Theme editors expose identity, manifest, HTML, CSS, JavaScript, partials, and sample data. Blueprint editors expose embedded Modules, Theme, and recommended settings.
 
 Valid code drafts autosave after a short pause and create a new library revision. Invalid JSON or schema changes stay local in the editor with an error message; the last valid saved artifact remains available. **Save Revision** performs an explicit save, while **Duplicate** creates a new inactive artifact with a conflict-safe ID.
+
+Leaving Advanced Code validates the current draft first. Invalid drafts keep the editor open; valid unsaved drafts are committed before the view changes. Layout and Modules preserve active filters and unsaved controls while rerendering, and their contextual Save action synchronizes layout widgets with both stock `moduleSettings` and artifact-backed `customModules`.
 
 ### Installation
 

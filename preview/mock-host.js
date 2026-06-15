@@ -306,6 +306,173 @@ const moduleSettings = Object.fromEntries(moduleKeys.map((key) => [
   key,
   { track: active.has(key), display: active.has(key), inject: ["sceneKernel", "deltas", "castCore", "relationships", "inventory", "worldSpace", "storyThreads", "continuity", "actionResolver"].includes(key) },
 ]));
+const artifactTimestamp = "2026-06-14T20:00:00.000Z";
+const qaModule = {
+  format: "loomos-artifact",
+  version: 2,
+  id: "module_workshop_qa",
+  createdAt: artifactTimestamp,
+  updatedAt: artifactTimestamp,
+  meta: {
+    name: "Workshop QA Module",
+    description: "A preview module for Creator Workshop interaction testing.",
+    author: "LoomOS",
+    tags: ["qa", "preview"],
+  },
+  kind: "module",
+  schema: {
+    type: "object",
+    properties: {
+      summary: { type: "string", maxLength: 1200 },
+    },
+    required: ["summary"],
+    additionalProperties: false,
+  },
+  prompt: "Track grounded QA state and preserve established facts.",
+  view: {
+    html: "<section class=\"qa-module\"><h2>{{meta.name}}</h2><p>{{data.summary}}</p></section>",
+    css: ".qa-module{border:1px solid #5eead4;border-radius:8px;padding:12px}",
+    javascript: "",
+    partials: {},
+  },
+  sampleData: { summary: "The Workshop preview module is active." },
+  defaults: {
+    track: true,
+    display: true,
+    inject: false,
+    group: "Custom",
+    maxItems: 12,
+    intensity: "medium",
+    displayOrder: 10000,
+  },
+  capabilities: [],
+};
+const qaTheme = {
+  format: "loomos-artifact",
+  version: 2,
+  id: "theme_workshop_qa",
+  createdAt: artifactTimestamp,
+  updatedAt: artifactTimestamp,
+  meta: {
+    name: "Workshop QA Theme",
+    description: "A preview theme for Creator Workshop interaction testing.",
+    author: "LoomOS",
+    tags: ["qa", "preview"],
+  },
+  kind: "theme",
+  manifest: {
+    viewerModelVersion: 1,
+    developerMode: false,
+    capabilities: ["copy", "collapse", "navigation"],
+    minWidth: 320,
+    preferredColorScheme: "auto",
+    slots: ["hero", "main", "cast"],
+  },
+  view: {
+    html: "<main class=\"qa-theme\"><span>Workshop QA Theme</span><h1>{{kernel.scene}}</h1><p>{{kernel.currentFocus}}</p></main>",
+    css: "body{margin:0;background:#10141d;color:#f4f7fb;font-family:system-ui}.qa-theme{display:grid;gap:12px;padding:18px}",
+    javascript: "",
+    partials: {},
+  },
+  sampleData: {},
+};
+const qaBlueprint = {
+  format: "loomos-artifact",
+  version: 2,
+  id: "blueprint_workshop_qa",
+  createdAt: artifactTimestamp,
+  updatedAt: artifactTimestamp,
+  meta: {
+    name: "Workshop QA Blueprint",
+    description: "A complete preview package with a module and theme.",
+    author: "LoomOS",
+    tags: ["qa", "preview"],
+  },
+  kind: "blueprint",
+  modules: [qaModule],
+  theme: qaTheme,
+  settings: {
+    injectionEnabled: true,
+    injectionTokenBudget: 360,
+  },
+};
+
+function makeArtifactRecord(artifact, revisions = [artifact]) {
+  return {
+    artifact,
+    revision: revisions.length,
+    revisions: revisions.map((snapshot, index) => ({
+      revision: index + 1,
+      savedAt: new Date(Date.parse(artifactTimestamp) + index * 1000).toISOString(),
+      artifact: snapshot,
+    })),
+  };
+}
+
+const qaModuleRevisionOne = {
+  ...qaModule,
+  updatedAt: "2026-06-14T19:59:00.000Z",
+  prompt: "Track grounded QA state.",
+};
+let previewArtifactLibrary = {
+  format: "loomos-artifact-library",
+  version: 2,
+  records: [
+    makeArtifactRecord(qaModule, [qaModuleRevisionOne, qaModule]),
+    makeArtifactRecord(qaTheme),
+    makeArtifactRecord(qaBlueprint),
+  ],
+};
+
+function upsertPreviewArtifact(artifact) {
+  const previous = previewArtifactLibrary.records.find((record) => record.artifact.id === artifact.id);
+  const savedArtifact = { ...structuredClone(artifact), updatedAt: new Date().toISOString() };
+  const revision = (previous?.revision ?? 0) + 1;
+  const record = {
+    artifact: savedArtifact,
+    revision,
+    revisions: [
+      ...(previous?.revisions ?? []),
+      { revision, savedAt: new Date().toISOString(), artifact: savedArtifact },
+    ].slice(-20),
+  };
+  previewArtifactLibrary = {
+    ...previewArtifactLibrary,
+    records: [
+      ...previewArtifactLibrary.records.filter((candidate) => candidate.artifact.id !== artifact.id),
+      record,
+    ].sort((left, right) => right.artifact.updatedAt.localeCompare(left.artifact.updatedAt)),
+  };
+  return record;
+}
+
+function mockCustomModule(artifact) {
+  return {
+    id: artifact.id,
+    artifactId: artifact.id,
+    label: artifact.meta.name,
+    group: artifact.defaults.group,
+    description: artifact.meta.description,
+    enabled: artifact.defaults.track,
+    display: artifact.defaults.display,
+    inject: artifact.defaults.inject,
+    compilerInstruction: artifact.prompt,
+    outputMode: "template",
+    maxItems: artifact.defaults.maxItems,
+    intensity: artifact.defaults.intensity,
+    displayOrder: artifact.defaults.displayOrder,
+    schemaFields: [],
+    jsonSchema: artifact.schema,
+    sampleData: artifact.sampleData,
+    htmlTemplate: artifact.view.html,
+    cssTemplate: artifact.view.css,
+    javascriptTemplate: artifact.view.javascript,
+    capabilities: artifact.capabilities,
+    templateEngine: "mustache-lite",
+    allowHtmlTemplate: true,
+  };
+}
+
 const defaultSettings = {
   schemaVersion: 2,
   skin: "cyberpunk",
@@ -370,6 +537,20 @@ function sameIdentity(left, right) {
 
 const eventHandlers = new Map();
 let backendHandler = () => {};
+const previewBackendMessages = [];
+window.loomosPreviewMessages = previewBackendMessages;
+window.loomosPreviewArtifacts = () => structuredClone(previewArtifactLibrary);
+
+function recordPreviewBackendMessage(payload) {
+  previewBackendMessages.push(structuredClone(payload));
+  document.documentElement.dataset.previewRequestType = payload.type;
+  document.documentElement.dataset.previewRequestArtifact = payload.artifact?.id ?? payload.artifactId ?? "";
+  document.documentElement.dataset.previewRequestCount = String(previewBackendMessages.length);
+  if (["save_artifact", "install_artifact", "install_loom_pack", "update_settings"].includes(payload.type)) {
+    document.documentElement.dataset.previewMutationType = payload.type;
+    document.documentElement.dataset.previewMutationArtifact = payload.artifact?.id ?? payload.artifactId ?? "";
+  }
+}
 
 function modalHandle(options) {
   const backdrop = document.createElement("div");
@@ -465,6 +646,7 @@ const ctx = {
   },
   getActiveChat: () => ({ chatId: "chat-preview", characterId: "character-preview" }),
   sendToBackend(payload) {
+    recordPreviewBackendMessage(payload);
     if (payload.type === "ready") {
       queueMicrotask(() => backendHandler({
         type: "bootstrap",
@@ -476,7 +658,7 @@ const ctx = {
         }],
         identity: seededState.identity,
         state: seededState,
-        artifacts: { format: "loomos-artifact-library", version: 2, records: [] },
+        artifacts: previewArtifactLibrary,
       }));
     } else if (payload.type === "generate_state") {
       const startedAt = Date.now();
@@ -578,6 +760,111 @@ const ctx = {
     } else if (payload.type === "save_settings") {
       Object.assign(defaultSettings, payload.settings);
       queueMicrotask(() => backendHandler({ type: "settings", requestId: payload.requestId, settings: defaultSettings }));
+    } else if (payload.type === "get_artifacts") {
+      queueMicrotask(() => backendHandler({
+        type: "artifacts",
+        requestId: payload.requestId,
+        library: previewArtifactLibrary,
+      }));
+    } else if (payload.type === "save_artifact") {
+      const record = upsertPreviewArtifact(payload.artifact);
+      queueMicrotask(() => backendHandler({
+        type: "artifact_saved",
+        requestId: payload.requestId,
+        library: previewArtifactLibrary,
+        record,
+      }));
+    } else if (payload.type === "restore_artifact") {
+      const existing = previewArtifactLibrary.records.find((record) => record.artifact.id === payload.artifactId);
+      const snapshot = existing?.revisions.find((revision) => revision.revision === payload.revision);
+      if (snapshot) {
+        const record = upsertPreviewArtifact(snapshot.artifact);
+        queueMicrotask(() => backendHandler({
+          type: "artifact_saved",
+          requestId: payload.requestId,
+          library: previewArtifactLibrary,
+          record,
+        }));
+      }
+    } else if (payload.type === "delete_artifact") {
+      previewArtifactLibrary = {
+        ...previewArtifactLibrary,
+        records: previewArtifactLibrary.records.filter((record) => record.artifact.id !== payload.artifactId),
+      };
+      defaultSettings.activeThemeId = defaultSettings.activeThemeId === payload.artifactId
+        ? ""
+        : defaultSettings.activeThemeId;
+      defaultSettings.customModules = defaultSettings.customModules.filter((module) =>
+        module.artifactId !== payload.artifactId
+      );
+      queueMicrotask(() => backendHandler({
+        type: "artifact_deleted",
+        requestId: payload.requestId,
+        library: previewArtifactLibrary,
+        artifactId: payload.artifactId,
+        settings: defaultSettings,
+      }));
+    } else if (payload.type === "install_artifact") {
+      const installedIds = [];
+      const installModule = (artifact) => {
+        upsertPreviewArtifact(artifact);
+        defaultSettings.customModules = [
+          ...defaultSettings.customModules.filter((module) => module.artifactId !== artifact.id),
+          mockCustomModule(artifact),
+        ];
+        installedIds.push(artifact.id);
+      };
+      const installTheme = (artifact) => {
+        upsertPreviewArtifact(artifact);
+        if (payload.activateTheme !== false) defaultSettings.activeThemeId = artifact.id;
+        installedIds.push(artifact.id);
+      };
+      if (payload.artifact.kind === "module") installModule(payload.artifact);
+      if (payload.artifact.kind === "theme") installTheme(payload.artifact);
+      if (payload.artifact.kind === "blueprint") {
+        upsertPreviewArtifact(payload.artifact);
+        const selected = new Set(payload.selectedArtifactIds ?? [
+          ...payload.artifact.modules.map((module) => module.id),
+          ...(payload.artifact.theme ? [payload.artifact.theme.id] : []),
+        ]);
+        payload.artifact.modules.filter((module) => selected.has(module.id)).forEach(installModule);
+        if (payload.artifact.theme && selected.has(payload.artifact.theme.id)) installTheme(payload.artifact.theme);
+        installedIds.push(payload.artifact.id);
+      }
+      queueMicrotask(() => backendHandler({
+        type: "artifact_installed",
+        requestId: payload.requestId,
+        settings: defaultSettings,
+        library: previewArtifactLibrary,
+        installedIds,
+        message: `Installed ${payload.artifact.meta.name}`,
+      }));
+    } else if (payload.type === "install_loom_pack") {
+      const selected = new Set(payload.selectedArtifactIds);
+      const installedIds = [];
+      for (const artifact of payload.pack.artifacts) {
+        upsertPreviewArtifact(artifact);
+        if (payload.installMode === "library_only") continue;
+        if (artifact.kind === "module" && selected.has(artifact.id) && payload.installMode !== "theme_only") {
+          defaultSettings.customModules = [
+            ...defaultSettings.customModules.filter((module) => module.artifactId !== artifact.id),
+            mockCustomModule(artifact),
+          ];
+          installedIds.push(artifact.id);
+        }
+        if (artifact.kind === "theme" && selected.has(artifact.id) && payload.installMode !== "modules_only") {
+          if (payload.activateTheme) defaultSettings.activeThemeId = artifact.id;
+          installedIds.push(artifact.id);
+        }
+      }
+      queueMicrotask(() => backendHandler({
+        type: "artifact_installed",
+        requestId: payload.requestId,
+        settings: defaultSettings,
+        library: previewArtifactLibrary,
+        installedIds,
+        message: `Installed Loom Pack ${payload.pack.meta.name}`,
+      }));
     } else if (payload.type === "get_chat_states") {
       queueMicrotask(() => backendHandler({
         type: "chat_states",
