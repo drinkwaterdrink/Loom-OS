@@ -3666,6 +3666,13 @@ export const LOOMOS_STYLES = `
     gap: 5px;
     min-width: 0;
   }
+  .loomos-visual-form-grid .loomos-input,
+  .loomos-visual-form-grid .loomos-select,
+  .loomos-token-grid .loomos-input {
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
   .loomos-visual-form-grid label > span,
   .loomos-token-grid label > span { color: var(--loomos-muted); font-size: 10px; }
   .loomos-visual-span { grid-column: 1 / -1; }
@@ -3697,6 +3704,16 @@ export const LOOMOS_STYLES = `
     background: var(--loomos-bg);
     border: 1px solid var(--loomos-border);
     border-radius: 8px;
+    overflow-wrap: anywhere;
+    padding: 10px;
+  }
+  .loomos-visual-builder .loomos-dialog-error:not(:empty) {
+    background: color-mix(in srgb, #7f1d1d 28%, var(--loomos-panel));
+    border: 1px solid color-mix(in srgb, #fb7185 55%, var(--loomos-border));
+    border-radius: 8px;
+    max-height: 110px;
+    overflow: auto;
+    overflow-wrap: anywhere;
     padding: 10px;
   }
   .loomos-visual-field-heading,
@@ -3798,6 +3815,10 @@ export const LOOMOS_STYLES = `
       width: 100%;
     }
     .loomos-field-card-actions .loomos-button { min-height: 44px; }
+    .loomos-visual-field-card { min-width: 0; }
+    .loomos-visual-field-card .loomos-field-enum { grid-column: 1 / -1; }
+    .loomos-visual-builder textarea.loomos-input { min-height: 96px; }
+    .loomos-token-grid { overflow: hidden; }
     .loomos-status-pill { align-self: start; }
     .loomos-setup-summary,
     .loomos-workshop-quick-grid,

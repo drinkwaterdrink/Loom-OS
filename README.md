@@ -1,13 +1,18 @@
 # LoomOS Command Deck
 
-Current release: **0.1.22**
+Current release: **0.1.23**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.22
+## Key Features & Upgrades in 0.1.23
 
+- **Phase 4.1 Builder Hardening**: Tightened visual Module and Theme validation, schema round trips, visual/code synchronization, action routing, and mobile editing after the Phase 4 launch.
+- **Schema-Safe Field Editing**: Rejects duplicate or invalid keys, empty enums, invalid numeric ranges, unsafe list bounds, missing required properties, and type-mismatched defaults before they can replace a valid artifact.
+- **Strict Local Design Tokens**: Applies per-token color, length, and font allowlists while rejecting URLs, imports, protocols, scripts, rule delimiters, comments, and unknown CSS variables.
+- **Draft and Install Isolation**: Invalid visual drafts stay visible and local, keep the last valid preview, and disable Save and Install until corrected.
+- **Mobile Builder Polish**: Field cards, enum controls, token grids, errors, preview controls, and fixed actions remain usable without horizontal overflow.
 - **Phase 4 Visual Builders**: Module and Theme artifacts now have guided, mobile-first editors backed by the same v2 JSON contracts as Advanced Code.
 - **Visual Field Builder**: Create, rename, type, require, describe, default, constrain, delete, and reorder fields, including semantic character, item, timeline, and relationship templates.
 - **Safe Complex-Schema Fallback**: Existing nested schemas that cannot be represented faithfully switch to Advanced schema mode and remain untouched.
@@ -295,11 +300,15 @@ Selecting or creating a Module opens the guided **Module Builder** inside the Mo
 
 The embedded **Field Builder** converts visual field cards into LoomOS's bounded JSON Schema subset. It supports text, long text, number, integer, boolean, enum, gauge, chips/list, object, array, character-linked, item-linked, timeline-event, and relationship-edge fields. Simple existing schemas are parsed back into cards. Schemas with structures the builder cannot reproduce exactly display **Advanced schema required** and remain unchanged.
 
+Phase 4.1 validates field keys, uniqueness, enum choices, numeric ranges, list limits, required-property references, semantic field shapes, and typed defaults before updating the working artifact. Representable schemas round-trip through the builder; complex schemas remain byte-for-byte unchanged until edited in Advanced Code.
+
 ### Theme Builder and Design Tokens
 
 Selecting or creating a Theme opens the guided **Theme Builder**. It edits Theme metadata, preferred color scheme, minimum width, Developer Mode, capabilities, declared slots, typography, background, panel, border, density, header, widget style, mobile notes, and preferred preview surface.
 
-The **Design Tokens** section stores validated local values for `--loom-bg`, `--loom-panel`, `--loom-card`, text/status colors, borders, radii, spacing, and display/body font stacks. LoomOS generates CSS variable declarations inside the existing sandboxed Theme document. Token values cannot contain `url()`, `@import`, remote protocols, scripts, CSS rule delimiters, or external assets. Existing Themes without tokens render exactly as before.
+The **Design Tokens** section stores validated local values for `--loom-bg`, `--loom-panel`, `--loom-card`, text/status colors, borders, radii, spacing, and display/body font stacks. LoomOS generates CSS variable declarations inside the existing sandboxed Theme document. Color tokens accept local color forms, length tokens accept simple local CSS lengths, and font tokens accept local font stacks. Values cannot contain `url()`, `@import`, remote protocols, scripts, comments, CSS rule delimiters, unknown variables, or external assets. Existing Themes without tokens render exactly as before.
+
+Theme slots are trimmed and deduplicated, manifest capabilities and minimum width are validated, and imported view code remains intact. Theme JavaScript still requires both the artifact's Developer Mode declaration and the user's LoomOS Developer Mode setting.
 
 ### AI Creation
 
@@ -316,6 +325,8 @@ Valid code drafts autosave after a short pause and create a new library revision
 Leaving Advanced Code validates the current draft first. Invalid drafts keep the editor open; valid unsaved drafts are committed before the view changes. Layout and Modules preserve active filters and unsaved controls while rerendering, and their contextual Save action synchronizes layout widgets with both stock `moduleSettings` and artifact-backed `customModules`.
 
 Advanced Code remains fully available from both visual builders. Valid code changes are parsed back into visual forms when representable, while invalid code and invalid visual input remain local. Both editing modes preview and save the same validated artifact rather than maintaining separate copies.
+
+While a visual draft is invalid, the form and inline error remain on screen, Preview uses the last valid artifact, and Save/Install are disabled. Correcting the draft immediately restores the shared visual/code artifact and the contextual actions.
 
 ### Installation
 

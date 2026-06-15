@@ -175,10 +175,15 @@ test("Phase 4 visual builders remain mobile-first and keep Advanced Code availab
   assert.match(workshop, /data-design-token/);
   assert.match(workshop, /Invalid form input stays visible in the editor/);
   assert.match(workshop, /syncMobilePreviewOverlay/);
+  assert.match(workshop, /visualDraftValid/);
+  assert.match(workshop, /Install blocked\. Fix the invalid visual draft first/);
+  assert.match(workshop, /JavaScript runs only when this flag and the user's LoomOS Developer Mode setting/);
   assert.match(builders, /visualFieldsToJsonSchema/);
   assert.match(builders, /parseJsonSchemaToVisualFields/);
   assert.match(styles, /\.loomos-visual-form-grid/);
   assert.match(styles, /\.loomos-token-grid/);
+  assert.match(styles, /\.loomos-field-enum/);
+  assert.match(styles, /overflow-wrap: anywhere/);
   assert.doesNotMatch(builders, /\beval\s*\(|new Function|Function\s*\(/);
   assert.doesNotMatch(builders, /fetch\s*\(|XMLHttpRequest|WebSocket/);
 });

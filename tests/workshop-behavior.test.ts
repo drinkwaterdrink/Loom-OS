@@ -14,6 +14,7 @@ import {
   selectedArtifactRecord,
   widgetMatchesModuleFilter,
   workshopInstallTarget,
+  workshopSaveLabel,
   workshopSaveTarget,
 } from "../src/frontend/workshopBehavior";
 import {
@@ -150,6 +151,13 @@ test("bottom Save routing is scoped to dirty settings or artifact changes", () =
   assert.equal(workshopSaveTarget("home", true, true, true), null);
 });
 
+test("bottom Save labels match visual artifact and settings actions", () => {
+  assert.equal(workshopSaveLabel("modules", null, true), "Save Revision");
+  assert.equal(workshopSaveLabel("theme", "artifact", true), "Save Revision");
+  assert.equal(workshopSaveLabel("modules", "settings", false), "Save Modules");
+  assert.equal(workshopSaveLabel("layout", "settings", false), "Save Layout");
+});
+
 test("preview builders use the real Theme runtime and native dashboard renderer", () => {
   const settings = LoomOSSettingsSchema.parse({});
   const state = makeState();
@@ -236,6 +244,26 @@ test("valid Advanced Code edits synchronize visual Module and Theme metadata", (
   }));
   assert.equal(editedTheme.kind, "theme");
   if (editedTheme.kind === "theme") assert.equal(editedTheme.design?.tokens.accent, "#abcdef");
+});
+
+test("invalid Advanced Code edits retain the last valid visual artifact", () => {
+  const module = createStarterModuleArtifact();
+  assert.throws(() => applyWorkshopCodeValue(module, "defaults", JSON.stringify({
+    defaults: module.defaults,
+    capabilities: module.capabilities,
+    visual: {
+      ...module.visual,
+      outputMode: "unsupported",
+    },
+  })), /Invalid enum value/);
+  assert.equal(module.visual?.outputMode, "cards");
+
+  const theme = createStarterThemeArtifact();
+  assert.throws(() => applyWorkshopCodeValue(theme, "manifest", JSON.stringify({
+    manifest: { ...theme.manifest, minWidth: 100 },
+    design: theme.design,
+  })), /greater than or equal to 280/);
+  assert.equal(theme.manifest.minWidth, 320);
 });
 
 test("selection, contextual installs, and mobile preview routing stay explicit", () => {

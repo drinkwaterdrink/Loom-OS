@@ -11188,6 +11188,13 @@ var LOOMOS_STYLES = `
     gap: 5px;
     min-width: 0;
   }
+  .loomos-visual-form-grid .loomos-input,
+  .loomos-visual-form-grid .loomos-select,
+  .loomos-token-grid .loomos-input {
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
   .loomos-visual-form-grid label > span,
   .loomos-token-grid label > span { color: var(--loomos-muted); font-size: 10px; }
   .loomos-visual-span { grid-column: 1 / -1; }
@@ -11219,6 +11226,16 @@ var LOOMOS_STYLES = `
     background: var(--loomos-bg);
     border: 1px solid var(--loomos-border);
     border-radius: 8px;
+    overflow-wrap: anywhere;
+    padding: 10px;
+  }
+  .loomos-visual-builder .loomos-dialog-error:not(:empty) {
+    background: color-mix(in srgb, #7f1d1d 28%, var(--loomos-panel));
+    border: 1px solid color-mix(in srgb, #fb7185 55%, var(--loomos-border));
+    border-radius: 8px;
+    max-height: 110px;
+    overflow: auto;
+    overflow-wrap: anywhere;
     padding: 10px;
   }
   .loomos-visual-field-heading,
@@ -11320,6 +11337,10 @@ var LOOMOS_STYLES = `
       width: 100%;
     }
     .loomos-field-card-actions .loomos-button { min-height: 44px; }
+    .loomos-visual-field-card { min-width: 0; }
+    .loomos-visual-field-card .loomos-field-enum { grid-column: 1 / -1; }
+    .loomos-visual-builder textarea.loomos-input { min-height: 96px; }
+    .loomos-token-grid { overflow: hidden; }
     .loomos-status-pill { align-self: start; }
     .loomos-setup-summary,
     .loomos-workshop-quick-grid,
@@ -11606,27 +11627,105 @@ var ModuleVisualSchema = external_exports.object({
   tokenPriorityRecommendation: external_exports.number().int().min(0).max(100).default(5),
   fieldTypes: external_exports.record(VisualFieldTypeSchema).default({})
 }).strict();
-var safeCssToken = external_exports.string().trim().min(1).max(160).refine(
-  (value) => !/(?:url\s*\(|@import|https?:|javascript:|expression\s*\(|[\u0000-\u001f{};<>])/i.test(value),
-  "Design token contains an unsafe CSS value."
-);
+var COLOR_TOKEN_KEYS = /* @__PURE__ */ new Set([
+  "bg",
+  "panel",
+  "card",
+  "text",
+  "muted",
+  "accent",
+  "danger",
+  "warning",
+  "success",
+  "border"
+]);
+var LENGTH_TOKEN_KEYS = /* @__PURE__ */ new Set(["radiusSm", "radiusMd", "radiusLg", "gap"]);
+var SAFE_COLOR_KEYWORDS = /* @__PURE__ */ new Set([
+  "black",
+  "white",
+  "gray",
+  "grey",
+  "red",
+  "green",
+  "blue",
+  "yellow",
+  "orange",
+  "purple",
+  "pink",
+  "teal",
+  "transparent",
+  "currentcolor"
+]);
+var SAFE_FONT_KEYWORDS = /* @__PURE__ */ new Set([
+  "system-ui",
+  "sans-serif",
+  "serif",
+  "monospace",
+  "ui-sans-serif",
+  "ui-serif",
+  "ui-monospace",
+  "-apple-system",
+  "blinkmacsystemfont"
+]);
+var UNSAFE_TOKEN_SYNTAX = /(?:url\s*\(|@import|https?\s*:|javascript\s*:|data\s*:|expression\s*\(|\/\*|\*\/|<!--|-->|!important|[\u0000-\u001f\u007f{};<>\\@])/i;
+var LOCAL_LOOM_VAR = /^var\(\s*(--loom-[a-z0-9-]+)\s*\)$/i;
+var SAFE_LOOM_VARIABLES = /* @__PURE__ */ new Set([
+  "--loom-bg",
+  "--loom-panel",
+  "--loom-card",
+  "--loom-text",
+  "--loom-muted",
+  "--loom-accent",
+  "--loom-danger",
+  "--loom-warning",
+  "--loom-success",
+  "--loom-border",
+  "--loom-radius-sm",
+  "--loom-radius-md",
+  "--loom-radius-lg",
+  "--loom-gap",
+  "--loom-font-display",
+  "--loom-font-body"
+]);
+var SAFE_COLOR_FUNCTION = /^(?:rgb|rgba|hsl|hsla)\(\s*[0-9.%+\-,/\s]+\)$/i;
+var SAFE_LENGTH = /^(?:0|(?:\d+(?:\.\d+)?|\.\d+)(?:px|rem|em))$/i;
+var SAFE_FONT_NAME = /^(?:"[A-Za-z0-9 ._-]+"|'[A-Za-z0-9 ._-]+'|[A-Za-z][A-Za-z0-9 _-]*)$/;
+function validateThemeDesignTokenValue(key, rawValue) {
+  const value = rawValue.trim();
+  if (!value || value.length > 160 || UNSAFE_TOKEN_SYNTAX.test(value)) return false;
+  const variable2 = value.match(LOCAL_LOOM_VAR)?.[1]?.toLowerCase();
+  if (variable2) return SAFE_LOOM_VARIABLES.has(variable2);
+  if (COLOR_TOKEN_KEYS.has(key)) {
+    return /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value) || SAFE_COLOR_FUNCTION.test(value) || SAFE_COLOR_KEYWORDS.has(value.toLowerCase());
+  }
+  if (LENGTH_TOKEN_KEYS.has(key)) return SAFE_LENGTH.test(value);
+  return value.split(",").every((font) => {
+    const normalized = font.trim();
+    return SAFE_FONT_KEYWORDS.has(normalized.toLowerCase()) || SAFE_FONT_NAME.test(normalized);
+  });
+}
+function themeToken(key, fallback) {
+  return external_exports.string().trim().min(1).max(160).refine((value) => validateThemeDesignTokenValue(key, value), {
+    message: "Design token contains an unsafe CSS value or unsupported format."
+  }).default(fallback);
+}
 var ThemeDesignTokensSchema = external_exports.object({
-  bg: safeCssToken.default("#101114"),
-  panel: safeCssToken.default("#17191f"),
-  card: safeCssToken.default("#20232b"),
-  text: safeCssToken.default("#f4f4f5"),
-  muted: safeCssToken.default("#a1a1aa"),
-  accent: safeCssToken.default("#5eead4"),
-  danger: safeCssToken.default("#fb7185"),
-  warning: safeCssToken.default("#fbbf24"),
-  success: safeCssToken.default("#4ade80"),
-  border: safeCssToken.default("#303239"),
-  radiusSm: safeCssToken.default("6px"),
-  radiusMd: safeCssToken.default("10px"),
-  radiusLg: safeCssToken.default("16px"),
-  gap: safeCssToken.default("12px"),
-  fontDisplay: safeCssToken.default("system-ui, sans-serif"),
-  fontBody: safeCssToken.default("system-ui, sans-serif")
+  bg: themeToken("bg", "#101114"),
+  panel: themeToken("panel", "#17191f"),
+  card: themeToken("card", "#20232b"),
+  text: themeToken("text", "#f4f4f5"),
+  muted: themeToken("muted", "#a1a1aa"),
+  accent: themeToken("accent", "#5eead4"),
+  danger: themeToken("danger", "#fb7185"),
+  warning: themeToken("warning", "#fbbf24"),
+  success: themeToken("success", "#4ade80"),
+  border: themeToken("border", "#303239"),
+  radiusSm: themeToken("radiusSm", "6px"),
+  radiusMd: themeToken("radiusMd", "10px"),
+  radiusLg: themeToken("radiusLg", "16px"),
+  gap: themeToken("gap", "12px"),
+  fontDisplay: themeToken("fontDisplay", "system-ui, sans-serif"),
+  fontBody: themeToken("fontBody", "system-ui, sans-serif")
 }).strict();
 var ThemeDesignSchema = external_exports.object({
   tokens: ThemeDesignTokensSchema.default({}),
@@ -12223,6 +12322,8 @@ var SIMPLE_TYPES = /* @__PURE__ */ new Set([
   "chips",
   "list"
 ]);
+var FIELD_KEY = /^[A-Za-z][A-Za-z0-9_]*$/;
+var MAX_VISUAL_ARRAY_ITEMS = 80;
 function titleForKey(key) {
   return key.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -12280,17 +12381,49 @@ function semanticSchema(type) {
   }
   return { type: "array", items: { type: "string", maxLength: 500 }, maxItems: 24 };
 }
+function validateFieldDefault(field) {
+  if (field.defaultValue === void 0) return;
+  const value = field.defaultValue;
+  if ((field.type === "number" || field.type === "gauge") && (typeof value !== "number" || !Number.isFinite(value))) {
+    throw new Error(`Default for "${field.label}" must be a number.`);
+  }
+  if (field.type === "integer" && !Number.isInteger(value)) {
+    throw new Error(`Default for "${field.label}" must be an integer.`);
+  }
+  if (field.type === "boolean" && typeof value !== "boolean") {
+    throw new Error(`Default for "${field.label}" must be true or false.`);
+  }
+  if (field.type === "enum" && !field.enumOptions.includes(String(value))) {
+    throw new Error(`Default for "${field.label}" must match one of its enum choices.`);
+  }
+  if ((field.type === "chips" || field.type === "list" || field.type === "array") && !Array.isArray(value)) {
+    throw new Error(`Default for "${field.label}" must be a JSON array.`);
+  }
+  if (["object", "character-linked", "item-linked", "timeline-event", "relationship-edge"].includes(field.type) && (typeof value !== "object" || value === null || Array.isArray(value))) {
+    throw new Error(`Default for "${field.label}" must be a JSON object.`);
+  }
+}
 function visualFieldsToJsonSchema(fields) {
   const properties2 = {};
   const required = [];
   for (const field of fields) {
-    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(field.key)) {
+    if (!FIELD_KEY.test(field.key)) {
       throw new Error(`Field key "${field.key}" must begin with a letter and use letters, numbers, or underscores.`);
     }
     if (properties2[field.key]) throw new Error(`Field key "${field.key}" is duplicated.`);
+    if (field.min !== void 0 && field.max !== void 0 && field.min > field.max) {
+      throw new Error(`Minimum cannot exceed maximum for field "${field.label}".`);
+    }
+    if ((field.type === "chips" || field.type === "list" || field.type === "array") && field.maxItems !== void 0 && (!Number.isInteger(field.maxItems) || field.maxItems < 1 || field.maxItems > MAX_VISUAL_ARRAY_ITEMS)) {
+      throw new Error(`Max items for "${field.label}" must be an integer from 1 to ${MAX_VISUAL_ARRAY_ITEMS}.`);
+    }
+    validateFieldDefault(field);
     let schema;
     if (!SIMPLE_TYPES.has(field.type)) {
       schema = semanticSchema(field.type);
+      if (field.type === "array" && field.maxItems !== void 0) {
+        schema = { ...schema, maxItems: field.maxItems };
+      }
     } else if (field.type === "number" || field.type === "integer" || field.type === "gauge") {
       schema = {
         type: field.type === "integer" ? "integer" : "number",
@@ -12301,8 +12434,9 @@ function visualFieldsToJsonSchema(fields) {
     } else if (field.type === "boolean") {
       schema = { type: "boolean" };
     } else if (field.type === "enum") {
-      if (field.enumOptions.length === 0) throw new Error(`Enum field "${field.label}" needs at least one choice.`);
-      schema = { type: "string", enum: field.enumOptions };
+      const choices = [...new Set(field.enumOptions.map((choice) => choice.trim()).filter(Boolean))];
+      if (choices.length === 0) throw new Error(`Enum field "${field.label}" needs at least one choice.`);
+      schema = { type: "string", enum: choices };
     } else if (field.type === "chips" || field.type === "list") {
       schema = { type: "array", items: { type: "string", maxLength: 500 }, maxItems: field.maxItems ?? 24 };
     } else {
@@ -12328,19 +12462,64 @@ function inferFieldType(schema) {
   if (schema.type === "object" && Object.keys(schema.properties ?? {}).length === 0) return "object";
   return null;
 }
+function stableShape(value) {
+  if (Array.isArray(value)) return `[${value.map(stableShape).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value).filter(([, entry]) => entry !== void 0).sort(([left], [right]) => left.localeCompare(right)).map(([key, entry]) => `${JSON.stringify(key)}:${stableShape(entry)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+function fieldTypeMatchesSchema(type, schema) {
+  const { title: _title, description: _description, default: _default, ...shape } = schema;
+  let expected;
+  if (type === "text") expected = { type: "string", maxLength: 500 };
+  else if (type === "longText") expected = { type: "string", maxLength: 4e3 };
+  else if (type === "enum") {
+    if (!schema.enum?.length) return false;
+    expected = { type: "string", enum: schema.enum };
+  } else if (type === "number" || type === "integer" || type === "gauge") {
+    expected = {
+      type: type === "integer" ? "integer" : "number",
+      ...schema.minimum !== void 0 ? { minimum: schema.minimum } : {},
+      ...schema.maximum !== void 0 ? { maximum: schema.maximum } : {}
+    };
+    if (type === "gauge" && (schema.minimum === void 0 || schema.maximum === void 0)) return false;
+  } else if (type === "boolean") expected = { type: "boolean" };
+  else if (type === "chips" || type === "list" || type === "array") {
+    if (schema.maxItems === void 0) return false;
+    expected = {
+      type: "array",
+      items: { type: "string", maxLength: 500 },
+      maxItems: schema.maxItems
+    };
+  } else {
+    expected = semanticSchema(type);
+  }
+  return stableShape(shape) === stableShape(expected);
+}
 function parseJsonSchemaToVisualFields(schema, fieldTypes = {}) {
   if (schema.type !== "object" || !schema.properties) {
     return { mode: "advanced", fields: [], reason: "The root schema is not a visual object schema." };
   }
   const required = new Set(schema.required ?? []);
-  const fields = [];
-  for (const [key, property] of Object.entries(schema.properties)) {
-    const type = fieldTypes[key] ?? inferFieldType(property);
-    if (!type) {
+  const propertyKeys = new Set(Object.keys(schema.properties));
+  for (const key of required) {
+    if (!propertyKeys.has(key)) {
       return {
         mode: "advanced",
         fields: [],
-        reason: `Field "${key}" uses a nested or advanced schema that cannot be edited safely as a visual card.`
+        reason: `Required field "${key}" is not declared in schema properties.`
+      };
+    }
+  }
+  const fields = [];
+  for (const [key, property] of Object.entries(schema.properties)) {
+    const type = fieldTypes[key] ?? inferFieldType(property);
+    if (!type || !fieldTypeMatchesSchema(type, property)) {
+      return {
+        mode: "advanced",
+        fields: [],
+        reason: `Field "${key}" uses a nested, mismatched, or advanced schema that cannot be edited safely as a visual card.`
       };
     }
     fields.push({
@@ -12358,6 +12537,13 @@ function parseJsonSchemaToVisualFields(schema, fieldTypes = {}) {
   }
   return { mode: "visual", fields, reason: "" };
 }
+function parseVisualSampleData(raw) {
+  try {
+    return JSON.parse(raw || "{}");
+  } catch {
+    throw new Error("Sample data must be valid JSON.");
+  }
+}
 function applyVisualModuleEdits(artifact, edits) {
   return ModuleCapsuleArtifactSchema.parse({
     ...artifact,
@@ -12366,7 +12552,7 @@ function applyVisualModuleEdits(artifact, edits) {
       ...artifact.meta,
       name: edits.name,
       description: edits.description,
-      author: edits.author || "User",
+      author: edits.author,
       tags: edits.tags
     },
     prompt: edits.prompt,
@@ -12428,6 +12614,7 @@ h1, h2, h3, strong { font-family: var(--loom-font-display); }
 }`;
 }
 function applyVisualThemeEdits(artifact, edits) {
+  const slots = edits.manifest.slots ? [...new Set(edits.manifest.slots.map((slot) => slot.trim()).filter(Boolean))] : void 0;
   return ThemeArtifactSchema.parse({
     ...artifact,
     updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -12435,10 +12622,13 @@ function applyVisualThemeEdits(artifact, edits) {
       ...artifact.meta,
       name: edits.name,
       description: edits.description,
-      author: edits.author || "User",
+      author: edits.author,
       tags: edits.tags
     },
-    manifest: edits.manifest,
+    manifest: {
+      ...edits.manifest,
+      ...slots ? { slots } : {}
+    },
     design: edits.design
   });
 }
@@ -40518,6 +40708,12 @@ function applyWorkshopLayoutEdits(settings, patches, responsiveMode = settings.l
     }
   });
 }
+function workshopSaveLabel(view, target, hasVisualBuilder) {
+  if (hasVisualBuilder || target === "artifact") return "Save Revision";
+  if (view === "modules") return "Save Modules";
+  if (view === "layout") return "Save Layout";
+  return "Save";
+}
 function workshopSaveTarget(view, hasWorkingArtifact, settingsDirty, codeDirty) {
   if ((view === "modules" || view === "theme") && hasWorkingArtifact && codeDirty) {
     return "artifact";
@@ -40851,6 +41047,7 @@ function openCreatorWorkshop(options) {
   let codeDraft = "";
   let codeError = "";
   let visualError = "";
+  let visualDraftValid = true;
   let codeDirty = false;
   let settingsDirty = false;
   let previewSize = "mobile";
@@ -40885,6 +41082,23 @@ function openCreatorWorkshop(options) {
   modal.root.dataset.view = "workshop";
   function selectedRecord() {
     return selectedArtifactRecord(library, selectedId);
+  }
+  function readableError(error) {
+    if (isRecord3(error) && Array.isArray(error.issues)) {
+      return error.issues.slice(0, 4).map((issue) => {
+        if (!isRecord3(issue)) return String(issue);
+        const path = Array.isArray(issue.path) ? issue.path.join(".") : "";
+        return `${path ? `${path}: ` : ""}${String(issue.message ?? "Invalid value")}`;
+      }).join(" ");
+    }
+    return error instanceof Error ? error.message : String(error);
+  }
+  function showVisualError(message) {
+    visualError = message;
+    visualDraftValid = false;
+    const errorRoot = modal.root.querySelector("[data-visual-error]");
+    if (errorRoot) errorRoot.textContent = visualError;
+    updateDirtyActionState();
   }
   function stopTimer() {
     if (elapsedTimer) clearInterval(elapsedTimer);
@@ -41020,6 +41234,7 @@ function openCreatorWorkshop(options) {
     codeSection = codeSections(artifact)[0]?.id ?? "meta";
     codeError = "";
     visualError = "";
+    visualDraftValid = true;
     codeDirty = !saved;
   }
   function createArtifact(kind) {
@@ -41291,8 +41506,8 @@ function openCreatorWorkshop(options) {
           </select></label>
           <label class="loomos-widget-switch"><input type="checkbox" data-field-property="required"${field.required ? " checked" : ""}><span>Required</span></label>
           <label class="loomos-visual-span"><span>Description / help</span><input class="loomos-input" data-field-property="description" value="${escapeHtml(field.description)}"></label>
-          <label><span>Default</span><input class="loomos-input" data-field-property="default" value="${escapeHtml(field.defaultValue === void 0 ? "" : String(field.defaultValue))}"></label>
-          <label><span>Enum choices</span><input class="loomos-input" data-field-property="enum" value="${escapeHtml(field.enumOptions.join(", "))}" placeholder="calm, tense, critical"></label>
+          <label><span>Default</span><input class="loomos-input" data-field-property="default" value="${escapeHtml(field.defaultValue === void 0 ? "" : typeof field.defaultValue === "string" ? field.defaultValue : JSON.stringify(field.defaultValue))}"></label>
+          <label class="loomos-field-enum"><span>Enum choices</span><input class="loomos-input" data-field-property="enum" value="${escapeHtml(field.enumOptions.join(", "))}" placeholder="calm, tense, critical"></label>
           <label><span>Minimum</span><input type="number" class="loomos-input" data-field-property="min" value="${field.min ?? ""}"></label>
           <label><span>Maximum</span><input type="number" class="loomos-input" data-field-property="max" value="${field.max ?? ""}"></label>
           <label><span>Max items</span><input type="number" min="1" max="80" class="loomos-input" data-field-property="maxItems" value="${field.maxItems ?? ""}"></label>
@@ -41324,7 +41539,7 @@ function openCreatorWorkshop(options) {
           <summary><strong>Identity and purpose</strong><span>Names, ownership, and compiler intent</span></summary>
           <div class="loomos-visual-form-grid">
             <label><span>Name</span><input class="loomos-input" data-visual-input="name" value="${escapeHtml(module.meta.name)}"></label>
-            <label><span>Author</span><input class="loomos-input" data-visual-input="author" value="${escapeHtml(module.meta.author || "User")}"></label>
+            <label><span>Author</span><input class="loomos-input" data-visual-input="author" value="${escapeHtml(module.meta.author)}"></label>
             <label class="loomos-visual-span"><span>Description</span><textarea class="loomos-input" data-visual-input="description">${escapeHtml(module.meta.description)}</textarea></label>
             <label class="loomos-visual-span"><span>Tags</span><input class="loomos-input" data-visual-input="tags" value="${escapeHtml(module.meta.tags.join(", "))}"></label>
             <label><span>Group</span><input class="loomos-input" data-visual-input="group" value="${escapeHtml(module.defaults.group)}"></label>
@@ -41371,7 +41586,11 @@ function openCreatorWorkshop(options) {
               <p>Estimated compiler instruction size: ${Math.ceil(module.prompt.length / 4)} tokens.</p>
             </article>
           </div>
-          ${module.view.html || module.view.css ? `<div class="loomos-source-summary"><strong>Custom presentation detected</strong><span>HTML ${module.view.html.length} chars \xB7 CSS ${module.view.css.length} chars</span><button type="button" class="loomos-button" data-workshop-action="open-advanced-code">Edit HTML/CSS</button></div>` : ""}
+          <div class="loomos-source-summary">
+            <strong>${module.view.html || module.view.css || module.view.javascript ? "Custom presentation detected" : "Native presentation"}</strong>
+            <span>HTML ${module.view.html.length} chars \xB7 CSS ${module.view.css.length} chars \xB7 JavaScript ${module.view.javascript.length} chars \xB7 ${module.capabilities.length} capabilities</span>
+            <button type="button" class="loomos-button" data-workshop-action="open-advanced-code">Edit presentation source</button>
+          </div>
         </details>
       </section>`;
   }
@@ -41478,14 +41697,15 @@ function openCreatorWorkshop(options) {
           <summary><strong>Theme identity</strong><span>Metadata and runtime manifest</span></summary>
           <div class="loomos-visual-form-grid">
             <label><span>Name</span><input class="loomos-input" data-visual-input="name" value="${escapeHtml(theme2.meta.name)}"></label>
-            <label><span>Author</span><input class="loomos-input" data-visual-input="author" value="${escapeHtml(theme2.meta.author || "User")}"></label>
+            <label><span>Author</span><input class="loomos-input" data-visual-input="author" value="${escapeHtml(theme2.meta.author)}"></label>
             <label class="loomos-visual-span"><span>Description</span><textarea class="loomos-input" data-visual-input="description">${escapeHtml(theme2.meta.description)}</textarea></label>
             <label class="loomos-visual-span"><span>Tags</span><input class="loomos-input" data-visual-input="tags" value="${escapeHtml(theme2.meta.tags.join(", "))}"></label>
             <label><span>Preferred color scheme</span><select class="loomos-select" data-visual-input="preferredColorScheme">${["auto", "dark", "light"].map((value) => `<option${theme2.manifest.preferredColorScheme === value ? " selected" : ""}>${value}</option>`).join("")}</select></label>
             <label><span>Minimum width</span><input type="number" min="280" max="2400" class="loomos-input" data-visual-input="minWidth" value="${theme2.manifest.minWidth}"></label>
-            <label class="loomos-widget-switch"><input type="checkbox" data-visual-input="developerMode"${theme2.manifest.developerMode ? " checked" : ""}><span>Developer Mode</span></label>
+            <label class="loomos-widget-switch"><input type="checkbox" data-visual-input="developerMode"${theme2.manifest.developerMode ? " checked" : ""}><span>Developer Mode manifest flag</span></label>
             <label class="loomos-visual-span"><span>Declared slots</span><input class="loomos-input" data-visual-input="slots" value="${escapeHtml((theme2.manifest.slots ?? []).join(", "))}" placeholder="hero, main, cast"></label>
           </div>
+          <p class="loomos-hint">Theme JavaScript runs only when this flag and the user's LoomOS Developer Mode setting are both enabled.</p>
           <div class="loomos-capability-grid">${capabilities.map((capability) => `<label class="loomos-widget-switch"><input type="checkbox" data-theme-capability="${capability}"${theme2.manifest.capabilities.includes(capability) ? " checked" : ""}><span>${capability}</span></label>`).join("")}</div>
         </details>
         <details open class="loomos-builder-section">
@@ -42048,16 +42268,32 @@ function openCreatorWorkshop(options) {
       button.disabled = !settingsDirty;
     });
     modal.root.querySelectorAll("[data-workshop-code-save]").forEach((button) => {
-      button.disabled = !codeDirty;
+      button.disabled = !codeDirty || !visualDraftValid;
     });
     const contextSave = modal.root.querySelector("[data-workshop-context-save]");
     if (contextSave) {
-      contextSave.disabled = !workshopSaveTarget(
+      const saveTarget = workshopSaveTarget(
         activeView,
         Boolean(workingArtifact),
         settingsDirty,
         codeDirty
       );
+      const hasVisualBuilder = activeView === "modules" && workingArtifact?.kind === "module" || activeView === "theme" && workingArtifact?.kind === "theme";
+      contextSave.textContent = workshopSaveLabel(activeView, saveTarget, hasVisualBuilder);
+      contextSave.disabled = !saveTarget || !visualDraftValid;
+    }
+    const contextInstall = modal.root.querySelector(
+      ".loomos-workshop-bottom-actions [data-workshop-action='install']"
+    );
+    if (contextInstall && (activeView === "modules" || activeView === "theme")) {
+      const activeTheme = activeThemeRecord()?.artifact;
+      contextInstall.disabled = !visualDraftValid || !workshopInstallTarget(
+        activeView,
+        workingArtifact,
+        stagedArtifact,
+        activeTheme ?? null
+      );
+      contextInstall.title = visualDraftValid ? "" : "Fix the invalid visual draft before installing.";
     }
   }
   function render() {
@@ -42068,6 +42304,7 @@ function openCreatorWorkshop(options) {
     const artifact = stagedArtifact ?? workingArtifact;
     const currentNav = WORKSHOP_NAV.find((item) => item.id === activeView);
     const saveTarget = workshopSaveTarget(activeView, Boolean(workingArtifact), settingsDirty, codeDirty);
+    const hasVisualBuilder = activeView === "modules" && workingArtifact?.kind === "module" || activeView === "theme" && workingArtifact?.kind === "theme";
     const activeTheme = activeThemeRecord()?.artifact;
     const installTarget = workshopInstallTarget(
       activeView,
@@ -42075,7 +42312,7 @@ function openCreatorWorkshop(options) {
       stagedArtifact,
       activeTheme ?? null
     );
-    const saveLabel = saveTarget === "artifact" ? "Save Revision" : activeView === "modules" ? "Save Modules" : activeView === "layout" ? "Save Layout" : "Save";
+    const saveLabel = workshopSaveLabel(activeView, saveTarget, hasVisualBuilder);
     const installLabel = installTarget?.kind === "theme" ? "Install Theme" : "Install";
     modal.root.innerHTML = `
       <div class="loomos-workshop">
@@ -42487,13 +42724,18 @@ function openCreatorWorkshop(options) {
         return Number.isFinite(parsed) ? parsed : void 0;
       };
       const type = value("type");
-      const rawDefault = value("default");
+      const rawDefault = value("default").trim();
       let defaultValue = rawDefault || void 0;
       if (rawDefault && ["number", "integer", "gauge"].includes(type)) {
-        const parsed = Number(rawDefault);
-        if (Number.isFinite(parsed)) defaultValue = parsed;
+        defaultValue = Number(rawDefault);
+      } else if (rawDefault && type === "boolean") {
+        if (rawDefault !== "true" && rawDefault !== "false") {
+          throw new Error(`Boolean default for "${value("label") || value("key")}" must be true or false.`);
+        }
+        defaultValue = rawDefault === "true";
+      } else if (rawDefault && ["chips", "list", "array", "object", "character-linked", "item-linked", "timeline-event", "relationship-edge"].includes(type)) {
+        defaultValue = JSON.parse(rawDefault);
       }
-      if (rawDefault && type === "boolean") defaultValue = rawDefault === "true";
       return {
         key: value("key").trim(),
         label: value("label").trim(),
@@ -42533,7 +42775,7 @@ function openCreatorWorkshop(options) {
           slotRecommendation: visualValue(root, "slotRecommendation"),
           displayModeRecommendation: visualValue(root, "displayModeRecommendation"),
           tokenPriorityRecommendation: visualNumber(root, "tokenPriorityRecommendation", 5),
-          sampleData: JSON.parse(visualValue(root, "sampleData") || "{}"),
+          sampleData: parseVisualSampleData(visualValue(root, "sampleData")),
           fields: visualChecked(root, "advancedSchema") ? void 0 : collectVisualFields(root)
         });
       } else if (workingArtifact.kind === "theme" && root.dataset.visualBuilder === "theme") {
@@ -42570,15 +42812,14 @@ function openCreatorWorkshop(options) {
       }
       codeDirty = true;
       visualError = "";
+      visualDraftValid = true;
       const errorRoot = modal.root.querySelector("[data-visual-error]");
       if (errorRoot) errorRoot.textContent = "";
       updateDirtyActionState();
       mountPreviewFrames();
       return true;
     } catch (error) {
-      visualError = error instanceof Error ? error.message : String(error);
-      const errorRoot = modal.root.querySelector("[data-visual-error]");
-      if (errorRoot) errorRoot.textContent = visualError;
+      showVisualError(readableError(error));
       return false;
     }
   }
@@ -42755,8 +42996,7 @@ function openCreatorWorkshop(options) {
       if (action === "move-field-down" && card.nextElementSibling) {
         list.insertBefore(card.nextElementSibling, card);
       }
-      applyVisualBuilderFromDOM();
-      render();
+      if (applyVisualBuilderFromDOM()) render();
       return;
     }
     if (action === "save-context") {
@@ -42788,6 +43028,7 @@ function openCreatorWorkshop(options) {
       if (activeView === "advanced-code") {
         if (!prepareAdvancedCodeTransition()) return;
       } else if (!prepareForRender()) {
+        showVisualError(`Install blocked. Fix the invalid visual draft first. ${visualError}`);
         return;
       }
       const activeTheme = activeThemeRecord()?.artifact;
@@ -42887,15 +43128,19 @@ function openCreatorWorkshop(options) {
       return;
     }
     if (action === "preview-surface") {
-      if (!prepareForRender()) return;
+      const valid = prepareForRender();
       previewSurface = button.dataset.surface === "native" ? "native" : "theme";
-      render();
+      if (mobilePreviewOpen) syncMobilePreviewOverlay();
+      else if (valid) render();
+      else mountPreviewFrames();
       return;
     }
     if (action === "preview-size") {
-      if (!prepareForRender()) return;
+      const valid = prepareForRender();
       previewSize = button.dataset.size ?? "mobile";
-      render();
+      if (mobilePreviewOpen) syncMobilePreviewOverlay();
+      else if (valid) render();
+      else mountPreviewFrames();
       return;
     }
     if (action === "preview-data") {
@@ -43087,17 +43332,20 @@ function openCreatorWorkshop(options) {
           stagedArtifact = null;
         }
       }
+      if (!visualDraftValid) return;
       render();
     },
     updateSettings(nextSettings) {
       settings = LoomOSSettingsSchema.parse(nextSettings);
       if (activeView === "advanced-code" && codeEditor) return;
+      if (!visualDraftValid) return;
       render();
     },
     updateState(nextState, nextHistory) {
       state = nextState;
       history2 = nextHistory;
-      if (activeView === "test-lab" || mobilePreviewOpen) render();
+      if (activeView === "test-lab") render();
+      else if (mobilePreviewOpen) syncMobilePreviewOverlay();
     },
     handleBackendResponse(response) {
       if (response.type !== "artifact_generation_status") return false;
@@ -44159,7 +44407,7 @@ function setup(ctx) {
   function diagnosticText() {
     const layoutIssues = settings.layout ? inspectLayoutDiagnostics(settings.layout, settings, activeTheme()) : [];
     const lines = [
-      `version: 0.1.22`,
+      `version: 0.1.23`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,

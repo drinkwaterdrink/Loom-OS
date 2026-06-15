@@ -5525,27 +5525,105 @@ var ModuleVisualSchema = external_exports.object({
   tokenPriorityRecommendation: external_exports.number().int().min(0).max(100).default(5),
   fieldTypes: external_exports.record(VisualFieldTypeSchema).default({})
 }).strict();
-var safeCssToken = external_exports.string().trim().min(1).max(160).refine(
-  (value) => !/(?:url\s*\(|@import|https?:|javascript:|expression\s*\(|[\u0000-\u001f{};<>])/i.test(value),
-  "Design token contains an unsafe CSS value."
-);
+var COLOR_TOKEN_KEYS = /* @__PURE__ */ new Set([
+  "bg",
+  "panel",
+  "card",
+  "text",
+  "muted",
+  "accent",
+  "danger",
+  "warning",
+  "success",
+  "border"
+]);
+var LENGTH_TOKEN_KEYS = /* @__PURE__ */ new Set(["radiusSm", "radiusMd", "radiusLg", "gap"]);
+var SAFE_COLOR_KEYWORDS = /* @__PURE__ */ new Set([
+  "black",
+  "white",
+  "gray",
+  "grey",
+  "red",
+  "green",
+  "blue",
+  "yellow",
+  "orange",
+  "purple",
+  "pink",
+  "teal",
+  "transparent",
+  "currentcolor"
+]);
+var SAFE_FONT_KEYWORDS = /* @__PURE__ */ new Set([
+  "system-ui",
+  "sans-serif",
+  "serif",
+  "monospace",
+  "ui-sans-serif",
+  "ui-serif",
+  "ui-monospace",
+  "-apple-system",
+  "blinkmacsystemfont"
+]);
+var UNSAFE_TOKEN_SYNTAX = /(?:url\s*\(|@import|https?\s*:|javascript\s*:|data\s*:|expression\s*\(|\/\*|\*\/|<!--|-->|!important|[\u0000-\u001f\u007f{};<>\\@])/i;
+var LOCAL_LOOM_VAR = /^var\(\s*(--loom-[a-z0-9-]+)\s*\)$/i;
+var SAFE_LOOM_VARIABLES = /* @__PURE__ */ new Set([
+  "--loom-bg",
+  "--loom-panel",
+  "--loom-card",
+  "--loom-text",
+  "--loom-muted",
+  "--loom-accent",
+  "--loom-danger",
+  "--loom-warning",
+  "--loom-success",
+  "--loom-border",
+  "--loom-radius-sm",
+  "--loom-radius-md",
+  "--loom-radius-lg",
+  "--loom-gap",
+  "--loom-font-display",
+  "--loom-font-body"
+]);
+var SAFE_COLOR_FUNCTION = /^(?:rgb|rgba|hsl|hsla)\(\s*[0-9.%+\-,/\s]+\)$/i;
+var SAFE_LENGTH = /^(?:0|(?:\d+(?:\.\d+)?|\.\d+)(?:px|rem|em))$/i;
+var SAFE_FONT_NAME = /^(?:"[A-Za-z0-9 ._-]+"|'[A-Za-z0-9 ._-]+'|[A-Za-z][A-Za-z0-9 _-]*)$/;
+function validateThemeDesignTokenValue(key, rawValue) {
+  const value = rawValue.trim();
+  if (!value || value.length > 160 || UNSAFE_TOKEN_SYNTAX.test(value)) return false;
+  const variable = value.match(LOCAL_LOOM_VAR)?.[1]?.toLowerCase();
+  if (variable) return SAFE_LOOM_VARIABLES.has(variable);
+  if (COLOR_TOKEN_KEYS.has(key)) {
+    return /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value) || SAFE_COLOR_FUNCTION.test(value) || SAFE_COLOR_KEYWORDS.has(value.toLowerCase());
+  }
+  if (LENGTH_TOKEN_KEYS.has(key)) return SAFE_LENGTH.test(value);
+  return value.split(",").every((font) => {
+    const normalized = font.trim();
+    return SAFE_FONT_KEYWORDS.has(normalized.toLowerCase()) || SAFE_FONT_NAME.test(normalized);
+  });
+}
+function themeToken(key, fallback) {
+  return external_exports.string().trim().min(1).max(160).refine((value) => validateThemeDesignTokenValue(key, value), {
+    message: "Design token contains an unsafe CSS value or unsupported format."
+  }).default(fallback);
+}
 var ThemeDesignTokensSchema = external_exports.object({
-  bg: safeCssToken.default("#101114"),
-  panel: safeCssToken.default("#17191f"),
-  card: safeCssToken.default("#20232b"),
-  text: safeCssToken.default("#f4f4f5"),
-  muted: safeCssToken.default("#a1a1aa"),
-  accent: safeCssToken.default("#5eead4"),
-  danger: safeCssToken.default("#fb7185"),
-  warning: safeCssToken.default("#fbbf24"),
-  success: safeCssToken.default("#4ade80"),
-  border: safeCssToken.default("#303239"),
-  radiusSm: safeCssToken.default("6px"),
-  radiusMd: safeCssToken.default("10px"),
-  radiusLg: safeCssToken.default("16px"),
-  gap: safeCssToken.default("12px"),
-  fontDisplay: safeCssToken.default("system-ui, sans-serif"),
-  fontBody: safeCssToken.default("system-ui, sans-serif")
+  bg: themeToken("bg", "#101114"),
+  panel: themeToken("panel", "#17191f"),
+  card: themeToken("card", "#20232b"),
+  text: themeToken("text", "#f4f4f5"),
+  muted: themeToken("muted", "#a1a1aa"),
+  accent: themeToken("accent", "#5eead4"),
+  danger: themeToken("danger", "#fb7185"),
+  warning: themeToken("warning", "#fbbf24"),
+  success: themeToken("success", "#4ade80"),
+  border: themeToken("border", "#303239"),
+  radiusSm: themeToken("radiusSm", "6px"),
+  radiusMd: themeToken("radiusMd", "10px"),
+  radiusLg: themeToken("radiusLg", "16px"),
+  gap: themeToken("gap", "12px"),
+  fontDisplay: themeToken("fontDisplay", "system-ui, sans-serif"),
+  fontBody: themeToken("fontBody", "system-ui, sans-serif")
 }).strict();
 var ThemeDesignSchema = external_exports.object({
   tokens: ThemeDesignTokensSchema.default({}),

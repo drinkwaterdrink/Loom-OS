@@ -32,6 +32,8 @@ export interface ParsedVisualFields {
 const SIMPLE_TYPES = new Set<VisualFieldType>([
   "text", "longText", "number", "integer", "boolean", "enum", "gauge", "chips", "list",
 ]);
+const FIELD_KEY = /^[A-Za-z][A-Za-z0-9_]*$/;
+const MAX_VISUAL_ARRAY_ITEMS = 80;
 
 function titleForKey(key: string): string {
   return key.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -92,17 +94,64 @@ function semanticSchema(type: VisualFieldType): JsonSchemaSubset {
   return { type: "array", items: { type: "string", maxLength: 500 }, maxItems: 24 };
 }
 
+function validateFieldDefault(field: VisualField): void {
+  if (field.defaultValue === undefined) return;
+  const value = field.defaultValue;
+  if (
+    (field.type === "number" || field.type === "gauge")
+    && (typeof value !== "number" || !Number.isFinite(value))
+  ) {
+    throw new Error(`Default for "${field.label}" must be a number.`);
+  }
+  if (field.type === "integer" && (!Number.isInteger(value))) {
+    throw new Error(`Default for "${field.label}" must be an integer.`);
+  }
+  if (field.type === "boolean" && typeof value !== "boolean") {
+    throw new Error(`Default for "${field.label}" must be true or false.`);
+  }
+  if (field.type === "enum" && !field.enumOptions.includes(String(value))) {
+    throw new Error(`Default for "${field.label}" must match one of its enum choices.`);
+  }
+  if ((field.type === "chips" || field.type === "list" || field.type === "array") && !Array.isArray(value)) {
+    throw new Error(`Default for "${field.label}" must be a JSON array.`);
+  }
+  if (
+    ["object", "character-linked", "item-linked", "timeline-event", "relationship-edge"].includes(field.type)
+    && (typeof value !== "object" || value === null || Array.isArray(value))
+  ) {
+    throw new Error(`Default for "${field.label}" must be a JSON object.`);
+  }
+}
+
 export function visualFieldsToJsonSchema(fields: VisualField[]): JsonSchemaSubset {
   const properties: Record<string, JsonSchemaSubset> = {};
   const required: string[] = [];
   for (const field of fields) {
-    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(field.key)) {
+    if (!FIELD_KEY.test(field.key)) {
       throw new Error(`Field key "${field.key}" must begin with a letter and use letters, numbers, or underscores.`);
     }
     if (properties[field.key]) throw new Error(`Field key "${field.key}" is duplicated.`);
+    if (
+      field.min !== undefined
+      && field.max !== undefined
+      && field.min > field.max
+    ) {
+      throw new Error(`Minimum cannot exceed maximum for field "${field.label}".`);
+    }
+    if (
+      (field.type === "chips" || field.type === "list" || field.type === "array")
+      && field.maxItems !== undefined
+      && (!Number.isInteger(field.maxItems) || field.maxItems < 1 || field.maxItems > MAX_VISUAL_ARRAY_ITEMS)
+    ) {
+      throw new Error(`Max items for "${field.label}" must be an integer from 1 to ${MAX_VISUAL_ARRAY_ITEMS}.`);
+    }
+    validateFieldDefault(field);
     let schema: JsonSchemaSubset;
     if (!SIMPLE_TYPES.has(field.type)) {
       schema = semanticSchema(field.type);
+      if (field.type === "array" && field.maxItems !== undefined) {
+        schema = { ...schema, maxItems: field.maxItems };
+      }
     } else if (field.type === "number" || field.type === "integer" || field.type === "gauge") {
       schema = {
         type: field.type === "integer" ? "integer" : "number",
@@ -113,8 +162,9 @@ export function visualFieldsToJsonSchema(fields: VisualField[]): JsonSchemaSubse
     } else if (field.type === "boolean") {
       schema = { type: "boolean" };
     } else if (field.type === "enum") {
-      if (field.enumOptions.length === 0) throw new Error(`Enum field "${field.label}" needs at least one choice.`);
-      schema = { type: "string", enum: field.enumOptions };
+      const choices = [...new Set(field.enumOptions.map((choice) => choice.trim()).filter(Boolean))];
+      if (choices.length === 0) throw new Error(`Enum field "${field.label}" needs at least one choice.`);
+      schema = { type: "string", enum: choices };
     } else if (field.type === "chips" || field.type === "list") {
       schema = { type: "array", items: { type: "string", maxLength: 500 }, maxItems: field.maxItems ?? 24 };
     } else {
@@ -142,6 +192,48 @@ function inferFieldType(schema: JsonSchemaSubset): VisualFieldType | null {
   return null;
 }
 
+function stableShape(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableShape).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableShape(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function fieldTypeMatchesSchema(type: VisualFieldType, schema: JsonSchemaSubset): boolean {
+  const { title: _title, description: _description, default: _default, ...shape } = schema;
+  let expected: JsonSchemaSubset;
+  if (type === "text") expected = { type: "string", maxLength: 500 };
+  else if (type === "longText") expected = { type: "string", maxLength: 4000 };
+  else if (type === "enum") {
+    if (!schema.enum?.length) return false;
+    expected = { type: "string", enum: schema.enum };
+  }
+  else if (type === "number" || type === "integer" || type === "gauge") {
+    expected = {
+      type: type === "integer" ? "integer" : "number",
+      ...(schema.minimum !== undefined ? { minimum: schema.minimum } : {}),
+      ...(schema.maximum !== undefined ? { maximum: schema.maximum } : {}),
+    };
+    if (type === "gauge" && (schema.minimum === undefined || schema.maximum === undefined)) return false;
+  } else if (type === "boolean") expected = { type: "boolean" };
+  else if (type === "chips" || type === "list" || type === "array") {
+    if (schema.maxItems === undefined) return false;
+    expected = {
+      type: "array",
+      items: { type: "string", maxLength: 500 },
+      maxItems: schema.maxItems,
+    };
+  } else {
+    expected = semanticSchema(type);
+  }
+  return stableShape(shape) === stableShape(expected);
+}
+
 export function parseJsonSchemaToVisualFields(
   schema: JsonSchemaSubset,
   fieldTypes: Record<string, VisualFieldType> = {},
@@ -150,14 +242,24 @@ export function parseJsonSchemaToVisualFields(
     return { mode: "advanced", fields: [], reason: "The root schema is not a visual object schema." };
   }
   const required = new Set(schema.required ?? []);
-  const fields: VisualField[] = [];
-  for (const [key, property] of Object.entries(schema.properties)) {
-    const type = fieldTypes[key] ?? inferFieldType(property);
-    if (!type) {
+  const propertyKeys = new Set(Object.keys(schema.properties));
+  for (const key of required) {
+    if (!propertyKeys.has(key)) {
       return {
         mode: "advanced",
         fields: [],
-        reason: `Field "${key}" uses a nested or advanced schema that cannot be edited safely as a visual card.`,
+        reason: `Required field "${key}" is not declared in schema properties.`,
+      };
+    }
+  }
+  const fields: VisualField[] = [];
+  for (const [key, property] of Object.entries(schema.properties)) {
+    const type = fieldTypes[key] ?? inferFieldType(property);
+    if (!type || !fieldTypeMatchesSchema(type, property)) {
+      return {
+        mode: "advanced",
+        fields: [],
+        reason: `Field "${key}" uses a nested, mismatched, or advanced schema that cannot be edited safely as a visual card.`,
       };
     }
     fields.push({
@@ -192,6 +294,14 @@ export interface VisualModuleEdits {
   fields?: VisualField[];
 }
 
+export function parseVisualSampleData(raw: string): unknown {
+  try {
+    return JSON.parse(raw || "{}");
+  } catch {
+    throw new Error("Sample data must be valid JSON.");
+  }
+}
+
 export function applyVisualModuleEdits(
   artifact: ModuleCapsuleArtifact,
   edits: VisualModuleEdits,
@@ -203,7 +313,7 @@ export function applyVisualModuleEdits(
       ...artifact.meta,
       name: edits.name,
       description: edits.description,
-      author: edits.author || "User",
+      author: edits.author,
       tags: edits.tags,
     },
     prompt: edits.prompt,
@@ -292,6 +402,9 @@ export function applyVisualThemeEdits(
   artifact: ThemeArtifact,
   edits: VisualThemeEdits,
 ): ThemeArtifact {
+  const slots = edits.manifest.slots
+    ? [...new Set(edits.manifest.slots.map((slot) => slot.trim()).filter(Boolean))]
+    : undefined;
   return ThemeArtifactSchema.parse({
     ...artifact,
     updatedAt: new Date().toISOString(),
@@ -299,10 +412,13 @@ export function applyVisualThemeEdits(
       ...artifact.meta,
       name: edits.name,
       description: edits.description,
-      author: edits.author || "User",
+      author: edits.author,
       tags: edits.tags,
     },
-    manifest: edits.manifest,
+    manifest: {
+      ...edits.manifest,
+      ...(slots ? { slots } : {}),
+    },
     design: edits.design,
   });
 }

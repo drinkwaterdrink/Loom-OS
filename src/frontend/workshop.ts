@@ -29,6 +29,7 @@ import {
   applyVisualModuleEdits,
   applyVisualThemeEdits,
   parseJsonSchemaToVisualFields,
+  parseVisualSampleData,
   type VisualField,
 } from "../shared/visualBuilders";
 import type {
@@ -70,6 +71,7 @@ import {
   selectedArtifactRecord,
   widgetMatchesModuleFilter,
   workshopInstallTarget,
+  workshopSaveLabel,
   workshopSaveTarget,
   type PreviewDataMode,
   type PreviewSurface,
@@ -337,6 +339,7 @@ export function openCreatorWorkshop(
   let codeDraft = "";
   let codeError = "";
   let visualError = "";
+  let visualDraftValid = true;
   let codeDirty = false;
   let settingsDirty = false;
   let previewSize: PreviewSize = "mobile";
@@ -373,6 +376,25 @@ export function openCreatorWorkshop(
 
   function selectedRecord(): ArtifactRecord | null {
     return selectedArtifactRecord(library, selectedId);
+  }
+
+  function readableError(error: unknown): string {
+    if (isRecord(error) && Array.isArray(error.issues)) {
+      return error.issues.slice(0, 4).map((issue) => {
+        if (!isRecord(issue)) return String(issue);
+        const path = Array.isArray(issue.path) ? issue.path.join(".") : "";
+        return `${path ? `${path}: ` : ""}${String(issue.message ?? "Invalid value")}`;
+      }).join(" ");
+    }
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  function showVisualError(message: string): void {
+    visualError = message;
+    visualDraftValid = false;
+    const errorRoot = modal.root.querySelector<HTMLElement>("[data-visual-error]");
+    if (errorRoot) errorRoot.textContent = visualError;
+    updateDirtyActionState();
   }
 
   function stopTimer(): void {
@@ -518,6 +540,7 @@ export function openCreatorWorkshop(
     codeSection = codeSections(artifact)[0]?.id ?? "meta";
     codeError = "";
     visualError = "";
+    visualDraftValid = true;
     codeDirty = !saved;
   }
 
@@ -804,8 +827,8 @@ export function openCreatorWorkshop(
           </select></label>
           <label class="loomos-widget-switch"><input type="checkbox" data-field-property="required"${field.required ? " checked" : ""}><span>Required</span></label>
           <label class="loomos-visual-span"><span>Description / help</span><input class="loomos-input" data-field-property="description" value="${escapeHtml(field.description)}"></label>
-          <label><span>Default</span><input class="loomos-input" data-field-property="default" value="${escapeHtml(field.defaultValue === undefined ? "" : String(field.defaultValue))}"></label>
-          <label><span>Enum choices</span><input class="loomos-input" data-field-property="enum" value="${escapeHtml(field.enumOptions.join(", "))}" placeholder="calm, tense, critical"></label>
+          <label><span>Default</span><input class="loomos-input" data-field-property="default" value="${escapeHtml(field.defaultValue === undefined ? "" : typeof field.defaultValue === "string" ? field.defaultValue : JSON.stringify(field.defaultValue))}"></label>
+          <label class="loomos-field-enum"><span>Enum choices</span><input class="loomos-input" data-field-property="enum" value="${escapeHtml(field.enumOptions.join(", "))}" placeholder="calm, tense, critical"></label>
           <label><span>Minimum</span><input type="number" class="loomos-input" data-field-property="min" value="${field.min ?? ""}"></label>
           <label><span>Maximum</span><input type="number" class="loomos-input" data-field-property="max" value="${field.max ?? ""}"></label>
           <label><span>Max items</span><input type="number" min="1" max="80" class="loomos-input" data-field-property="maxItems" value="${field.maxItems ?? ""}"></label>
@@ -838,7 +861,7 @@ export function openCreatorWorkshop(
           <summary><strong>Identity and purpose</strong><span>Names, ownership, and compiler intent</span></summary>
           <div class="loomos-visual-form-grid">
             <label><span>Name</span><input class="loomos-input" data-visual-input="name" value="${escapeHtml(module.meta.name)}"></label>
-            <label><span>Author</span><input class="loomos-input" data-visual-input="author" value="${escapeHtml(module.meta.author || "User")}"></label>
+            <label><span>Author</span><input class="loomos-input" data-visual-input="author" value="${escapeHtml(module.meta.author)}"></label>
             <label class="loomos-visual-span"><span>Description</span><textarea class="loomos-input" data-visual-input="description">${escapeHtml(module.meta.description)}</textarea></label>
             <label class="loomos-visual-span"><span>Tags</span><input class="loomos-input" data-visual-input="tags" value="${escapeHtml(module.meta.tags.join(", "))}"></label>
             <label><span>Group</span><input class="loomos-input" data-visual-input="group" value="${escapeHtml(module.defaults.group)}"></label>
@@ -885,7 +908,11 @@ export function openCreatorWorkshop(
               <p>Estimated compiler instruction size: ${Math.ceil(module.prompt.length / 4)} tokens.</p>
             </article>
           </div>
-          ${module.view.html || module.view.css ? `<div class="loomos-source-summary"><strong>Custom presentation detected</strong><span>HTML ${module.view.html.length} chars · CSS ${module.view.css.length} chars</span><button type="button" class="loomos-button" data-workshop-action="open-advanced-code">Edit HTML/CSS</button></div>` : ""}
+          <div class="loomos-source-summary">
+            <strong>${module.view.html || module.view.css || module.view.javascript ? "Custom presentation detected" : "Native presentation"}</strong>
+            <span>HTML ${module.view.html.length} chars · CSS ${module.view.css.length} chars · JavaScript ${module.view.javascript.length} chars · ${module.capabilities.length} capabilities</span>
+            <button type="button" class="loomos-button" data-workshop-action="open-advanced-code">Edit presentation source</button>
+          </div>
         </details>
       </section>`;
   }
@@ -987,14 +1014,15 @@ export function openCreatorWorkshop(
           <summary><strong>Theme identity</strong><span>Metadata and runtime manifest</span></summary>
           <div class="loomos-visual-form-grid">
             <label><span>Name</span><input class="loomos-input" data-visual-input="name" value="${escapeHtml(theme.meta.name)}"></label>
-            <label><span>Author</span><input class="loomos-input" data-visual-input="author" value="${escapeHtml(theme.meta.author || "User")}"></label>
+            <label><span>Author</span><input class="loomos-input" data-visual-input="author" value="${escapeHtml(theme.meta.author)}"></label>
             <label class="loomos-visual-span"><span>Description</span><textarea class="loomos-input" data-visual-input="description">${escapeHtml(theme.meta.description)}</textarea></label>
             <label class="loomos-visual-span"><span>Tags</span><input class="loomos-input" data-visual-input="tags" value="${escapeHtml(theme.meta.tags.join(", "))}"></label>
             <label><span>Preferred color scheme</span><select class="loomos-select" data-visual-input="preferredColorScheme">${["auto", "dark", "light"].map((value) => `<option${theme.manifest.preferredColorScheme === value ? " selected" : ""}>${value}</option>`).join("")}</select></label>
             <label><span>Minimum width</span><input type="number" min="280" max="2400" class="loomos-input" data-visual-input="minWidth" value="${theme.manifest.minWidth}"></label>
-            <label class="loomos-widget-switch"><input type="checkbox" data-visual-input="developerMode"${theme.manifest.developerMode ? " checked" : ""}><span>Developer Mode</span></label>
+            <label class="loomos-widget-switch"><input type="checkbox" data-visual-input="developerMode"${theme.manifest.developerMode ? " checked" : ""}><span>Developer Mode manifest flag</span></label>
             <label class="loomos-visual-span"><span>Declared slots</span><input class="loomos-input" data-visual-input="slots" value="${escapeHtml((theme.manifest.slots ?? []).join(", "))}" placeholder="hero, main, cast"></label>
           </div>
+          <p class="loomos-hint">Theme JavaScript runs only when this flag and the user's LoomOS Developer Mode setting are both enabled.</p>
           <div class="loomos-capability-grid">${capabilities.map((capability) => `<label class="loomos-widget-switch"><input type="checkbox" data-theme-capability="${capability}"${theme.manifest.capabilities.includes(capability) ? " checked" : ""}><span>${capability}</span></label>`).join("")}</div>
         </details>
         <details open class="loomos-builder-section">
@@ -1616,16 +1644,33 @@ export function openCreatorWorkshop(
       button.disabled = !settingsDirty;
     });
     modal.root.querySelectorAll<HTMLButtonElement>("[data-workshop-code-save]").forEach((button) => {
-      button.disabled = !codeDirty;
+      button.disabled = !codeDirty || !visualDraftValid;
     });
     const contextSave = modal.root.querySelector<HTMLButtonElement>("[data-workshop-context-save]");
     if (contextSave) {
-      contextSave.disabled = !workshopSaveTarget(
+      const saveTarget = workshopSaveTarget(
         activeView,
         Boolean(workingArtifact),
         settingsDirty,
         codeDirty,
       );
+      const hasVisualBuilder = (activeView === "modules" && workingArtifact?.kind === "module")
+        || (activeView === "theme" && workingArtifact?.kind === "theme");
+      contextSave.textContent = workshopSaveLabel(activeView, saveTarget, hasVisualBuilder);
+      contextSave.disabled = !saveTarget || !visualDraftValid;
+    }
+    const contextInstall = modal.root.querySelector<HTMLButtonElement>(
+      ".loomos-workshop-bottom-actions [data-workshop-action='install']",
+    );
+    if (contextInstall && (activeView === "modules" || activeView === "theme")) {
+      const activeTheme = activeThemeRecord()?.artifact as ThemeArtifact | undefined;
+      contextInstall.disabled = !visualDraftValid || !workshopInstallTarget(
+        activeView,
+        workingArtifact,
+        stagedArtifact,
+        activeTheme ?? null,
+      );
+      contextInstall.title = visualDraftValid ? "" : "Fix the invalid visual draft before installing.";
     }
   }
 
@@ -1637,6 +1682,8 @@ export function openCreatorWorkshop(
     const artifact = stagedArtifact ?? workingArtifact;
     const currentNav = WORKSHOP_NAV.find((item) => item.id === activeView)!;
     const saveTarget = workshopSaveTarget(activeView, Boolean(workingArtifact), settingsDirty, codeDirty);
+    const hasVisualBuilder = (activeView === "modules" && workingArtifact?.kind === "module")
+      || (activeView === "theme" && workingArtifact?.kind === "theme");
     const activeTheme = activeThemeRecord()?.artifact as ThemeArtifact | undefined;
     const installTarget = workshopInstallTarget(
       activeView,
@@ -1644,13 +1691,7 @@ export function openCreatorWorkshop(
       stagedArtifact,
       activeTheme ?? null,
     );
-    const saveLabel = saveTarget === "artifact"
-      ? "Save Revision"
-      : activeView === "modules"
-      ? "Save Modules"
-      : activeView === "layout"
-      ? "Save Layout"
-      : "Save";
+    const saveLabel = workshopSaveLabel(activeView, saveTarget, hasVisualBuilder);
     const installLabel = installTarget?.kind === "theme" ? "Install Theme" : "Install";
     modal.root.innerHTML = `
       <div class="loomos-workshop">
@@ -2100,13 +2141,21 @@ export function openCreatorWorkshop(
         return Number.isFinite(parsed) ? parsed : undefined;
       };
       const type = value("type") as VisualField["type"];
-      const rawDefault = value("default");
+      const rawDefault = value("default").trim();
       let defaultValue: unknown = rawDefault || undefined;
       if (rawDefault && ["number", "integer", "gauge"].includes(type)) {
-        const parsed = Number(rawDefault);
-        if (Number.isFinite(parsed)) defaultValue = parsed;
+        defaultValue = Number(rawDefault);
+      } else if (rawDefault && type === "boolean") {
+        if (rawDefault !== "true" && rawDefault !== "false") {
+          throw new Error(`Boolean default for "${value("label") || value("key")}" must be true or false.`);
+        }
+        defaultValue = rawDefault === "true";
+      } else if (
+        rawDefault
+        && ["chips", "list", "array", "object", "character-linked", "item-linked", "timeline-event", "relationship-edge"].includes(type)
+      ) {
+        defaultValue = JSON.parse(rawDefault);
       }
-      if (rawDefault && type === "boolean") defaultValue = rawDefault === "true";
       return {
         key: value("key").trim(),
         label: value("label").trim(),
@@ -2147,7 +2196,7 @@ export function openCreatorWorkshop(
           slotRecommendation: visualValue(root, "slotRecommendation"),
           displayModeRecommendation: visualValue(root, "displayModeRecommendation") as NonNullable<ModuleCapsuleArtifact["visual"]>["displayModeRecommendation"],
           tokenPriorityRecommendation: visualNumber(root, "tokenPriorityRecommendation", 5),
-          sampleData: JSON.parse(visualValue(root, "sampleData") || "{}"),
+          sampleData: parseVisualSampleData(visualValue(root, "sampleData")),
           fields: visualChecked(root, "advancedSchema") ? undefined : collectVisualFields(root),
         });
       } else if (workingArtifact.kind === "theme" && root.dataset.visualBuilder === "theme") {
@@ -2186,15 +2235,14 @@ export function openCreatorWorkshop(
       }
       codeDirty = true;
       visualError = "";
+      visualDraftValid = true;
       const errorRoot = modal.root.querySelector<HTMLElement>("[data-visual-error]");
       if (errorRoot) errorRoot.textContent = "";
       updateDirtyActionState();
       mountPreviewFrames();
       return true;
     } catch (error) {
-      visualError = error instanceof Error ? error.message : String(error);
-      const errorRoot = modal.root.querySelector<HTMLElement>("[data-visual-error]");
-      if (errorRoot) errorRoot.textContent = visualError;
+      showVisualError(readableError(error));
       return false;
     }
   }
@@ -2381,8 +2429,7 @@ export function openCreatorWorkshop(
       if (action === "move-field-down" && card.nextElementSibling) {
         list.insertBefore(card.nextElementSibling, card);
       }
-      applyVisualBuilderFromDOM();
-      render();
+      if (applyVisualBuilderFromDOM()) render();
       return;
     }
     if (action === "save-context") {
@@ -2414,6 +2461,7 @@ export function openCreatorWorkshop(
       if (activeView === "advanced-code") {
         if (!prepareAdvancedCodeTransition()) return;
       } else if (!prepareForRender()) {
+        showVisualError(`Install blocked. Fix the invalid visual draft first. ${visualError}`);
         return;
       }
       const activeTheme = activeThemeRecord()?.artifact as ThemeArtifact | undefined;
@@ -2513,15 +2561,19 @@ export function openCreatorWorkshop(
       return;
     }
     if (action === "preview-surface") {
-      if (!prepareForRender()) return;
+      const valid = prepareForRender();
       previewSurface = button.dataset.surface === "native" ? "native" : "theme";
-      render();
+      if (mobilePreviewOpen) syncMobilePreviewOverlay();
+      else if (valid) render();
+      else mountPreviewFrames();
       return;
     }
     if (action === "preview-size") {
-      if (!prepareForRender()) return;
+      const valid = prepareForRender();
       previewSize = (button.dataset.size ?? "mobile") as PreviewSize;
-      render();
+      if (mobilePreviewOpen) syncMobilePreviewOverlay();
+      else if (valid) render();
+      else mountPreviewFrames();
       return;
     }
     if (action === "preview-data") {
@@ -2720,17 +2772,20 @@ export function openCreatorWorkshop(
           stagedArtifact = null;
         }
       }
+      if (!visualDraftValid) return;
       render();
     },
     updateSettings(nextSettings) {
       settings = LoomOSSettingsSchema.parse(nextSettings);
       if (activeView === "advanced-code" && codeEditor) return;
+      if (!visualDraftValid) return;
       render();
     },
     updateState(nextState, nextHistory) {
       state = nextState;
       history = nextHistory;
-      if (activeView === "test-lab" || mobilePreviewOpen) render();
+      if (activeView === "test-lab") render();
+      else if (mobilePreviewOpen) syncMobilePreviewOverlay();
     },
     handleBackendResponse(response) {
       if (response.type !== "artifact_generation_status") return false;

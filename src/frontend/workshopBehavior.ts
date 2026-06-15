@@ -174,6 +174,17 @@ export function applyWorkshopLayoutEdits(
 
 export type WorkshopSaveTarget = "settings" | "artifact" | null;
 
+export function workshopSaveLabel(
+  view: WorkshopView,
+  target: WorkshopSaveTarget,
+  hasVisualBuilder: boolean,
+): string {
+  if (hasVisualBuilder || target === "artifact") return "Save Revision";
+  if (view === "modules") return "Save Modules";
+  if (view === "layout") return "Save Layout";
+  return "Save";
+}
+
 export function workshopSaveTarget(
   view: WorkshopView,
   hasWorkingArtifact: boolean,

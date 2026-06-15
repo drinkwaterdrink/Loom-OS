@@ -284,28 +284,93 @@ const ModuleVisualSchema = z.object({
   fieldTypes: z.record(VisualFieldTypeSchema).default({}),
 }).strict();
 
-const safeCssToken = z.string().trim().min(1).max(160).refine((value) =>
-  !/(?:url\s*\(|@import|https?:|javascript:|expression\s*\(|[\u0000-\u001f{};<>])/i.test(value),
-  "Design token contains an unsafe CSS value.",
-);
+export type ThemeDesignTokenKey =
+  | "bg"
+  | "panel"
+  | "card"
+  | "text"
+  | "muted"
+  | "accent"
+  | "danger"
+  | "warning"
+  | "success"
+  | "border"
+  | "radiusSm"
+  | "radiusMd"
+  | "radiusLg"
+  | "gap"
+  | "fontDisplay"
+  | "fontBody";
+
+const COLOR_TOKEN_KEYS = new Set<ThemeDesignTokenKey>([
+  "bg", "panel", "card", "text", "muted", "accent", "danger", "warning", "success", "border",
+]);
+const LENGTH_TOKEN_KEYS = new Set<ThemeDesignTokenKey>(["radiusSm", "radiusMd", "radiusLg", "gap"]);
+const SAFE_COLOR_KEYWORDS = new Set([
+  "black", "white", "gray", "grey", "red", "green", "blue", "yellow", "orange", "purple",
+  "pink", "teal", "transparent", "currentcolor",
+]);
+const SAFE_FONT_KEYWORDS = new Set([
+  "system-ui", "sans-serif", "serif", "monospace", "ui-sans-serif", "ui-serif", "ui-monospace",
+  "-apple-system", "blinkmacsystemfont",
+]);
+const UNSAFE_TOKEN_SYNTAX =
+  /(?:url\s*\(|@import|https?\s*:|javascript\s*:|data\s*:|expression\s*\(|\/\*|\*\/|<!--|-->|!important|[\u0000-\u001f\u007f{};<>\\@])/i;
+const LOCAL_LOOM_VAR = /^var\(\s*(--loom-[a-z0-9-]+)\s*\)$/i;
+const SAFE_LOOM_VARIABLES = new Set([
+  "--loom-bg", "--loom-panel", "--loom-card", "--loom-text", "--loom-muted", "--loom-accent",
+  "--loom-danger", "--loom-warning", "--loom-success", "--loom-border", "--loom-radius-sm",
+  "--loom-radius-md", "--loom-radius-lg", "--loom-gap", "--loom-font-display", "--loom-font-body",
+]);
+const SAFE_COLOR_FUNCTION = /^(?:rgb|rgba|hsl|hsla)\(\s*[0-9.%+\-,/\s]+\)$/i;
+const SAFE_LENGTH = /^(?:0|(?:\d+(?:\.\d+)?|\.\d+)(?:px|rem|em))$/i;
+const SAFE_FONT_NAME = /^(?:"[A-Za-z0-9 ._-]+"|'[A-Za-z0-9 ._-]+'|[A-Za-z][A-Za-z0-9 _-]*)$/;
+
+export function validateThemeDesignTokenValue(
+  key: ThemeDesignTokenKey,
+  rawValue: string,
+): boolean {
+  const value = rawValue.trim();
+  if (!value || value.length > 160 || UNSAFE_TOKEN_SYNTAX.test(value)) return false;
+  const variable = value.match(LOCAL_LOOM_VAR)?.[1]?.toLowerCase();
+  if (variable) return SAFE_LOOM_VARIABLES.has(variable);
+  if (COLOR_TOKEN_KEYS.has(key)) {
+    return /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value)
+      || SAFE_COLOR_FUNCTION.test(value)
+      || SAFE_COLOR_KEYWORDS.has(value.toLowerCase());
+  }
+  if (LENGTH_TOKEN_KEYS.has(key)) return SAFE_LENGTH.test(value);
+  return value.split(",").every((font) => {
+    const normalized = font.trim();
+    return SAFE_FONT_KEYWORDS.has(normalized.toLowerCase()) || SAFE_FONT_NAME.test(normalized);
+  });
+}
+
+function themeToken(key: ThemeDesignTokenKey, fallback: string) {
+  return z.string().trim().min(1).max(160)
+    .refine((value) => validateThemeDesignTokenValue(key, value), {
+      message: "Design token contains an unsafe CSS value or unsupported format.",
+    })
+    .default(fallback);
+}
 
 export const ThemeDesignTokensSchema = z.object({
-  bg: safeCssToken.default("#101114"),
-  panel: safeCssToken.default("#17191f"),
-  card: safeCssToken.default("#20232b"),
-  text: safeCssToken.default("#f4f4f5"),
-  muted: safeCssToken.default("#a1a1aa"),
-  accent: safeCssToken.default("#5eead4"),
-  danger: safeCssToken.default("#fb7185"),
-  warning: safeCssToken.default("#fbbf24"),
-  success: safeCssToken.default("#4ade80"),
-  border: safeCssToken.default("#303239"),
-  radiusSm: safeCssToken.default("6px"),
-  radiusMd: safeCssToken.default("10px"),
-  radiusLg: safeCssToken.default("16px"),
-  gap: safeCssToken.default("12px"),
-  fontDisplay: safeCssToken.default("system-ui, sans-serif"),
-  fontBody: safeCssToken.default("system-ui, sans-serif"),
+  bg: themeToken("bg", "#101114"),
+  panel: themeToken("panel", "#17191f"),
+  card: themeToken("card", "#20232b"),
+  text: themeToken("text", "#f4f4f5"),
+  muted: themeToken("muted", "#a1a1aa"),
+  accent: themeToken("accent", "#5eead4"),
+  danger: themeToken("danger", "#fb7185"),
+  warning: themeToken("warning", "#fbbf24"),
+  success: themeToken("success", "#4ade80"),
+  border: themeToken("border", "#303239"),
+  radiusSm: themeToken("radiusSm", "6px"),
+  radiusMd: themeToken("radiusMd", "10px"),
+  radiusLg: themeToken("radiusLg", "16px"),
+  gap: themeToken("gap", "12px"),
+  fontDisplay: themeToken("fontDisplay", "system-ui, sans-serif"),
+  fontBody: themeToken("fontBody", "system-ui, sans-serif"),
 }).strict();
 
 export const ThemeDesignSchema = z.object({

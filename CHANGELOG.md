@@ -2,6 +2,33 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.23] - 2026-06-15
+
+### Added
+
+- Added behavioral coverage for field-key validation, enum/range/list constraints, typed defaults, semantic schema round trips, required-property integrity, and complex-schema preservation.
+- Added Module and Theme regression tests for metadata preservation, prompt and sample validation, slot normalization, manifest constraints, preview generation, and visual/code synchronization.
+- Added strict per-token color, length, and font validation tests covering local safe values and URL, import, protocol, script, delimiter, comment, and unknown-variable rejection.
+
+### Changed
+
+- Hardened the visual Field Builder so invalid keys, duplicates, empty enums, reversed ranges, unsafe item limits, missing required properties, and mismatched defaults cannot replace the last valid artifact.
+- Preserved imported Module authors, presentation source, capabilities, Theme view source, and complex schemas while normalizing only fields the visual builders own.
+- Kept visual validation errors and unsaved controls mounted while preview surface, viewport, data mode, settings, or library updates arrive.
+- Clarified Theme Developer Mode gating and expanded presentation-source diagnostics in the Module Builder.
+
+### Fixed
+
+- Disabled visual Save and Install actions for invalid drafts and prevented contextual mobile actions from installing stale or unrelated artifacts.
+- Corrected the sticky visual-builder Save label so Module and Theme edits clearly save an artifact revision instead of implying a settings save.
+- Fixed array field limits, stale visual metadata flattening, Theme slot trimming and deduplication, invalid sample-data handling, typed visual defaults, and malformed hex color acceptance.
+- Fixed mobile field cards, enum controls, token grids, text areas, and validation messages so they remain readable without horizontal overflow.
+- Kept the last valid preview active while invalid visual input remains editable, then restored Save and Install immediately after correction.
+
+### Preserved
+
+- Kept exact-swipe storage, compiler core behavior, legacy v1 imports, v2 artifacts, Loom Pack import/export, restricted raw `renderedContent`, sandbox/CSP, remote-asset blocking, and Theme host isolation unchanged.
+
 ## [0.1.22] - 2026-06-15
 
 ### Added
