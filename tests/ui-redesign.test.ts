@@ -163,6 +163,26 @@ test("creator workshop exposes unified module and theme controls", async () => {
   assert.match(workshop, /data-workshop-action="install"/);
 });
 
+test("Phase 4 visual builders remain mobile-first and keep Advanced Code available", async () => {
+  const workshop = await readFile("src/frontend/workshop.ts", "utf8");
+  const builders = await readFile("src/shared/visualBuilders.ts", "utf8");
+  const styles = await readFile("src/frontend/styles.ts", "utf8");
+  assert.match(workshop, /Module Builder/);
+  assert.match(workshop, /Field Builder/);
+  assert.match(workshop, /Theme Builder/);
+  assert.match(workshop, /Design Tokens/);
+  assert.match(workshop, /open-advanced-code/);
+  assert.match(workshop, /data-design-token/);
+  assert.match(workshop, /Invalid form input stays visible in the editor/);
+  assert.match(workshop, /syncMobilePreviewOverlay/);
+  assert.match(builders, /visualFieldsToJsonSchema/);
+  assert.match(builders, /parseJsonSchemaToVisualFields/);
+  assert.match(styles, /\.loomos-visual-form-grid/);
+  assert.match(styles, /\.loomos-token-grid/);
+  assert.doesNotMatch(builders, /\beval\s*\(|new Function|Function\s*\(/);
+  assert.doesNotMatch(builders, /fetch\s*\(|XMLHttpRequest|WebSocket/);
+});
+
 test("tracker updates avoid global widget and surface rebuilds", async () => {
   const source = await readFile("src/frontend.ts", "utf8");
   const renderAll = source.match(/function renderAll[\s\S]*?\n  }\n\n  function updateLiveStatusDom/)?.[0] ?? "";

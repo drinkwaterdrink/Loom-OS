@@ -3630,6 +3630,90 @@ export const LOOMOS_STYLES = `
   .loomos-preview-warning { color: #f0cf88; font-size: 10px; margin: 0; }
   .loomos-workshop-bottom-actions,
   .loomos-mobile-preview { display: none; }
+  .loomos-visual-builder {
+    border-bottom: 1px solid var(--loomos-border);
+    display: grid;
+    gap: 12px;
+    margin: -2px -2px 18px;
+    padding: 2px 2px 18px;
+  }
+  .loomos-builder-section {
+    background: color-mix(in srgb, var(--loomos-panel) 82%, var(--loomos-bg));
+    border: 1px solid var(--loomos-border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .loomos-builder-section > summary {
+    align-items: center;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    min-height: 48px;
+    padding: 10px 12px;
+  }
+  .loomos-builder-section > summary span { color: var(--loomos-muted); font-size: 10px; }
+  .loomos-builder-section[open] > summary { border-bottom: 1px solid var(--loomos-border); }
+  .loomos-builder-section > :not(summary) { margin: 12px; }
+  .loomos-visual-form-grid,
+  .loomos-token-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .loomos-visual-form-grid label,
+  .loomos-token-grid label {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+  .loomos-visual-form-grid label > span,
+  .loomos-token-grid label > span { color: var(--loomos-muted); font-size: 10px; }
+  .loomos-visual-span { grid-column: 1 / -1; }
+  .loomos-builder-prompt { min-height: 120px; }
+  .loomos-capability-grid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 12px;
+  }
+  .loomos-visual-field-list { display: grid; gap: 10px; }
+  .loomos-module-builder-preview {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: minmax(0, 2fr) minmax(180px, 1fr);
+  }
+  .loomos-module-builder-preview article {
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .loomos-module-builder-preview pre {
+    max-height: 220px;
+    overflow: auto;
+    white-space: pre-wrap;
+  }
+  .loomos-visual-field-card {
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    padding: 10px;
+  }
+  .loomos-visual-field-heading,
+  .loomos-field-card-actions,
+  .loomos-source-summary {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    justify-content: space-between;
+  }
+  .loomos-source-summary {
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    padding: 10px;
+  }
   .loomos-workshop button:focus-visible,
   .loomos-workshop input:focus-visible,
   .loomos-workshop select:focus-visible,
@@ -3703,6 +3787,17 @@ export const LOOMOS_STYLES = `
     }
     .loomos-workshop-heading h2,
     .loomos-workshop-hero h1 { font-size: 19px; }
+    .loomos-visual-form-grid,
+    .loomos-token-grid,
+    .loomos-capability-grid,
+    .loomos-module-builder-preview { grid-template-columns: 1fr; }
+    .loomos-builder-section > summary { min-height: 52px; }
+    .loomos-field-card-actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      width: 100%;
+    }
+    .loomos-field-card-actions .loomos-button { min-height: 44px; }
     .loomos-status-pill { align-self: start; }
     .loomos-setup-summary,
     .loomos-workshop-quick-grid,

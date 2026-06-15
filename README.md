@@ -1,13 +1,18 @@
 # LoomOS Command Deck
 
-Current release: **0.1.21**
+Current release: **0.1.22**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.21
+## Key Features & Upgrades in 0.1.22
 
+- **Phase 4 Visual Builders**: Module and Theme artifacts now have guided, mobile-first editors backed by the same v2 JSON contracts as Advanced Code.
+- **Visual Field Builder**: Create, rename, type, require, describe, default, constrain, delete, and reorder fields, including semantic character, item, timeline, and relationship templates.
+- **Safe Complex-Schema Fallback**: Existing nested schemas that cannot be represented faithfully switch to Advanced schema mode and remain untouched.
+- **Theme Design Tokens**: Themes may carry validated local color, spacing, radius, and typography tokens that compile to `--loom-*` variables without remote fonts, images, imports, or URLs.
+- **Live Visual Preview**: Valid visual edits update the current preview before saving; invalid edits stay in the form and never replace the last valid artifact.
 - **Phase 3.1 Functional Hardening**: Exercised and tightened real Workshop navigation, import, preview, edit, save, install, mobile, layout, module, and revision workflows after the mobile-first redesign.
 - **Behavioral Regression Coverage**: Added pure-helper tests for filtering, settings synchronization, contextual Save/Install routing, preview document selection, import detection, and valid versus invalid code saves.
 - **Safer Editing Transitions**: Invalid Advanced Code drafts remain local, valid dirty drafts save before navigation, and CodeMirror stays mounted while routine settings updates arrive.
@@ -284,6 +289,18 @@ The Packs browser and workspace actions accept raw JSON, fenced JSON copied from
 
 Module cards expose Track, Display, Inject, slot, display mode, priority, order, source, status, group, and system-lock state. Continuity-critical stock modules remain locked on for tracking while their presentation and injection settings remain configurable. Custom artifact modules can also be previewed, edited, exported, duplicated, installed, or removed from the same view.
 
+### Module Builder and Field Builder
+
+Selecting or creating a Module opens the guided **Module Builder** inside the Modules workspace. It edits identity, author, tags, group, tracking purpose, compiler instruction, output mode, Track/Display/Inject defaults, intensity, item limits, placement recommendations, sample data, and presentation status.
+
+The embedded **Field Builder** converts visual field cards into LoomOS's bounded JSON Schema subset. It supports text, long text, number, integer, boolean, enum, gauge, chips/list, object, array, character-linked, item-linked, timeline-event, and relationship-edge fields. Simple existing schemas are parsed back into cards. Schemas with structures the builder cannot reproduce exactly display **Advanced schema required** and remain unchanged.
+
+### Theme Builder and Design Tokens
+
+Selecting or creating a Theme opens the guided **Theme Builder**. It edits Theme metadata, preferred color scheme, minimum width, Developer Mode, capabilities, declared slots, typography, background, panel, border, density, header, widget style, mobile notes, and preferred preview surface.
+
+The **Design Tokens** section stores validated local values for `--loom-bg`, `--loom-panel`, `--loom-card`, text/status colors, borders, radii, spacing, and display/body font stacks. LoomOS generates CSS variable declarations inside the existing sandboxed Theme document. Token values cannot contain `url()`, `@import`, remote protocols, scripts, CSS rule delimiters, or external assets. Existing Themes without tokens render exactly as before.
+
 ### AI Creation
 
 The built-in creator supports Module, Theme, and Blueprint jobs. A job uses the selected Lumiverse connection and the normal generation timeout. LoomOS sends the exact artifact contract, validates the result, and performs one repair generation if the first result is malformed. The draft remains separate until **Accept Draft**, after which it can be edited, saved, previewed, or installed.
@@ -297,6 +314,8 @@ Module editors expose identity, nested data schema, AI instructions, HTML, CSS, 
 Valid code drafts autosave after a short pause and create a new library revision. Invalid JSON or schema changes stay local in the editor with an error message; the last valid saved artifact remains available. **Save Revision** performs an explicit save, while **Duplicate** creates a new inactive artifact with a conflict-safe ID.
 
 Leaving Advanced Code validates the current draft first. Invalid drafts keep the editor open; valid unsaved drafts are committed before the view changes. Layout and Modules preserve active filters and unsaved controls while rerendering, and their contextual Save action synchronizes layout widgets with both stock `moduleSettings` and artifact-backed `customModules`.
+
+Advanced Code remains fully available from both visual builders. Valid code changes are parsed back into visual forms when representable, while invalid code and invalid visual input remain local. Both editing modes preview and save the same validated artifact rather than maintaining separate copies.
 
 ### Installation
 

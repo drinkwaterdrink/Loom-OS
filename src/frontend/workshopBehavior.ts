@@ -180,6 +180,9 @@ export function workshopSaveTarget(
   settingsDirty: boolean,
   codeDirty: boolean,
 ): WorkshopSaveTarget {
+  if ((view === "modules" || view === "theme") && hasWorkingArtifact && codeDirty) {
+    return "artifact";
+  }
   if (view === "modules" || view === "layout") {
     return settingsDirty ? "settings" : null;
   }
@@ -195,7 +198,8 @@ export function workshopInstallTarget(
   stagedArtifact: LoomOSArtifact | null,
   activeTheme: ThemeArtifact | null,
 ): LoomOSArtifact | null {
-  if (view === "home" || view === "modules" || view === "layout") return null;
+  if (view === "home" || view === "layout") return null;
+  if (view === "modules") return workingArtifact?.kind === "module" ? workingArtifact : null;
   if (view === "theme") {
     return workingArtifact?.kind === "theme" ? workingArtifact : activeTheme;
   }
@@ -262,9 +266,10 @@ export function applyWorkshopCodeValue(
     if (section === "prompt") next.prompt = raw;
     if (section === "sample") next.sampleData = json();
     if (section === "defaults") {
-      const value = json() as { defaults?: unknown; capabilities?: unknown };
+      const value = json() as { defaults?: unknown; capabilities?: unknown; visual?: unknown };
       next.defaults = value.defaults as ModuleCapsuleArtifact["defaults"];
       next.capabilities = value.capabilities as ModuleCapsuleArtifact["capabilities"];
+      next.visual = value.visual as ModuleCapsuleArtifact["visual"];
     }
     if (section === "html" || section === "css" || section === "javascript") {
       next.view[section] = raw;
@@ -275,7 +280,15 @@ export function applyWorkshopCodeValue(
     });
   }
   if (next.kind === "theme") {
-    if (section === "manifest") next.manifest = json();
+    if (section === "manifest") {
+      const value = json() as { manifest?: unknown; design?: unknown };
+      if (value && typeof value === "object" && "manifest" in value) {
+        next.manifest = value.manifest as ThemeArtifact["manifest"];
+        next.design = value.design as ThemeArtifact["design"];
+      } else {
+        next.manifest = value as unknown as ThemeArtifact["manifest"];
+      }
+    }
     if (section === "partials") next.view.partials = json();
     if (section === "sample") next.sampleData = json();
     if (section === "html" || section === "css" || section === "javascript") {

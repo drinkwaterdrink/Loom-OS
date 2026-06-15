@@ -11152,6 +11152,90 @@ var LOOMOS_STYLES = `
   .loomos-preview-warning { color: #f0cf88; font-size: 10px; margin: 0; }
   .loomos-workshop-bottom-actions,
   .loomos-mobile-preview { display: none; }
+  .loomos-visual-builder {
+    border-bottom: 1px solid var(--loomos-border);
+    display: grid;
+    gap: 12px;
+    margin: -2px -2px 18px;
+    padding: 2px 2px 18px;
+  }
+  .loomos-builder-section {
+    background: color-mix(in srgb, var(--loomos-panel) 82%, var(--loomos-bg));
+    border: 1px solid var(--loomos-border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .loomos-builder-section > summary {
+    align-items: center;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    min-height: 48px;
+    padding: 10px 12px;
+  }
+  .loomos-builder-section > summary span { color: var(--loomos-muted); font-size: 10px; }
+  .loomos-builder-section[open] > summary { border-bottom: 1px solid var(--loomos-border); }
+  .loomos-builder-section > :not(summary) { margin: 12px; }
+  .loomos-visual-form-grid,
+  .loomos-token-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .loomos-visual-form-grid label,
+  .loomos-token-grid label {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+  .loomos-visual-form-grid label > span,
+  .loomos-token-grid label > span { color: var(--loomos-muted); font-size: 10px; }
+  .loomos-visual-span { grid-column: 1 / -1; }
+  .loomos-builder-prompt { min-height: 120px; }
+  .loomos-capability-grid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 12px;
+  }
+  .loomos-visual-field-list { display: grid; gap: 10px; }
+  .loomos-module-builder-preview {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: minmax(0, 2fr) minmax(180px, 1fr);
+  }
+  .loomos-module-builder-preview article {
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .loomos-module-builder-preview pre {
+    max-height: 220px;
+    overflow: auto;
+    white-space: pre-wrap;
+  }
+  .loomos-visual-field-card {
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    padding: 10px;
+  }
+  .loomos-visual-field-heading,
+  .loomos-field-card-actions,
+  .loomos-source-summary {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    justify-content: space-between;
+  }
+  .loomos-source-summary {
+    background: var(--loomos-bg);
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    padding: 10px;
+  }
   .loomos-workshop button:focus-visible,
   .loomos-workshop input:focus-visible,
   .loomos-workshop select:focus-visible,
@@ -11225,6 +11309,17 @@ var LOOMOS_STYLES = `
     }
     .loomos-workshop-heading h2,
     .loomos-workshop-hero h1 { font-size: 19px; }
+    .loomos-visual-form-grid,
+    .loomos-token-grid,
+    .loomos-capability-grid,
+    .loomos-module-builder-preview { grid-template-columns: 1fr; }
+    .loomos-builder-section > summary { min-height: 52px; }
+    .loomos-field-card-actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      width: 100%;
+    }
+    .loomos-field-card-actions .loomos-button { min-height: 44px; }
     .loomos-status-pill { align-self: start; }
     .loomos-setup-summary,
     .loomos-workshop-quick-grid,
@@ -11486,6 +11581,65 @@ var ThemeCapabilitySchema = external_exports.enum([
   "generation",
   "history"
 ]);
+var VisualFieldTypeSchema = external_exports.enum([
+  "text",
+  "longText",
+  "number",
+  "integer",
+  "boolean",
+  "enum",
+  "gauge",
+  "chips",
+  "list",
+  "object",
+  "array",
+  "character-linked",
+  "item-linked",
+  "timeline-event",
+  "relationship-edge"
+]);
+var ModuleVisualSchema = external_exports.object({
+  trackingPurpose: external_exports.string().trim().max(1200).default(""),
+  outputMode: external_exports.enum(["cards", "bullets", "chips", "gauge", "template"]).default("cards"),
+  slotRecommendation: external_exports.string().trim().max(160).default("main"),
+  displayModeRecommendation: external_exports.enum(["hero", "card", "compact", "rail", "timeline", "hidden"]).default("card"),
+  tokenPriorityRecommendation: external_exports.number().int().min(0).max(100).default(5),
+  fieldTypes: external_exports.record(VisualFieldTypeSchema).default({})
+}).strict();
+var safeCssToken = external_exports.string().trim().min(1).max(160).refine(
+  (value) => !/(?:url\s*\(|@import|https?:|javascript:|expression\s*\(|[\u0000-\u001f{};<>])/i.test(value),
+  "Design token contains an unsafe CSS value."
+);
+var ThemeDesignTokensSchema = external_exports.object({
+  bg: safeCssToken.default("#101114"),
+  panel: safeCssToken.default("#17191f"),
+  card: safeCssToken.default("#20232b"),
+  text: safeCssToken.default("#f4f4f5"),
+  muted: safeCssToken.default("#a1a1aa"),
+  accent: safeCssToken.default("#5eead4"),
+  danger: safeCssToken.default("#fb7185"),
+  warning: safeCssToken.default("#fbbf24"),
+  success: safeCssToken.default("#4ade80"),
+  border: safeCssToken.default("#303239"),
+  radiusSm: safeCssToken.default("6px"),
+  radiusMd: safeCssToken.default("10px"),
+  radiusLg: safeCssToken.default("16px"),
+  gap: safeCssToken.default("12px"),
+  fontDisplay: safeCssToken.default("system-ui, sans-serif"),
+  fontBody: safeCssToken.default("system-ui, sans-serif")
+}).strict();
+var ThemeDesignSchema = external_exports.object({
+  tokens: ThemeDesignTokensSchema.default({}),
+  typography: external_exports.enum(["system", "editorial", "compact", "technical"]).default("system"),
+  backgroundStyle: external_exports.enum(["solid", "soft-gradient", "layered"]).default("solid"),
+  panelStyle: external_exports.enum(["flat", "raised", "glass"]).default("flat"),
+  borderStyle: external_exports.enum(["subtle", "strong", "none"]).default("subtle"),
+  density: external_exports.enum(["compact", "comfortable", "spacious"]).default("comfortable"),
+  headerStyle: external_exports.enum(["plain", "accent-line", "panel"]).default("accent-line"),
+  widgetStyle: external_exports.enum(["cards", "divided", "minimal"]).default("cards"),
+  mobileNotes: external_exports.string().trim().max(1200).default(""),
+  previewSurface: external_exports.enum(["theme", "native"]).default("theme")
+}).strict();
 var ArtifactViewSchema = external_exports.object({
   html: external_exports.string().max(12e4).default(""),
   css: external_exports.string().max(12e4).default(""),
@@ -11515,7 +11669,8 @@ var ModuleCapsuleArtifactSchema = ArtifactBaseSchema.extend({
     intensity: external_exports.enum(["light", "medium", "heavy", "experimental"]).default("medium"),
     displayOrder: external_exports.number().int().default(1e4)
   }).strict().default({}),
-  capabilities: external_exports.array(ThemeCapabilitySchema).max(8).default([])
+  capabilities: external_exports.array(ThemeCapabilitySchema).max(8).default([]),
+  visual: ModuleVisualSchema.optional()
 }).strict();
 var ThemeArtifactSchema = ArtifactBaseSchema.extend({
   kind: external_exports.literal("theme"),
@@ -11528,7 +11683,8 @@ var ThemeArtifactSchema = ArtifactBaseSchema.extend({
     slots: external_exports.array(external_exports.string()).optional()
   }).strict(),
   view: ArtifactViewSchema,
-  sampleData: external_exports.unknown().default({})
+  sampleData: external_exports.unknown().default({}),
+  design: ThemeDesignSchema.optional()
 }).strict();
 var BlueprintArtifactSchema = ArtifactBaseSchema.extend({
   kind: external_exports.literal("blueprint"),
@@ -11733,6 +11889,7 @@ function createStarterModuleArtifact() {
     meta: {
       name: "New Tracker Module",
       description: "A portable LoomOS tracker module.",
+      author: "User",
       tags: []
     },
     schema: {
@@ -11763,7 +11920,15 @@ function createStarterModuleArtifact() {
       partials: {}
     },
     sampleData: { summary: "Sample tracked state." },
-    defaults: {}
+    defaults: {},
+    visual: {
+      trackingPurpose: "Track grounded state that should remain consistent across roleplay turns.",
+      outputMode: "cards",
+      slotRecommendation: "main",
+      displayModeRecommendation: "card",
+      tokenPriorityRecommendation: 5,
+      fieldTypes: { summary: "longText" }
+    }
   });
 }
 function createStarterThemeArtifact() {
@@ -11778,6 +11943,7 @@ function createStarterThemeArtifact() {
     meta: {
       name: "New Tracker Theme",
       description: "A full-screen LoomOS tracker theme.",
+      author: "User",
       tags: []
     },
     manifest: {
@@ -11849,7 +12015,8 @@ h1, h2, p {
       javascript: "",
       partials: {}
     },
-    sampleData: {}
+    sampleData: {},
+    design: {}
   });
 }
 function createStarterBlueprintArtifact() {
@@ -12042,6 +12209,238 @@ function buildViewerModel(state, settings, history2 = [], status = "", activeTab
     audit: state?.auditLog ?? fallback.audit,
     modules
   };
+}
+
+// src/shared/visualBuilders.ts
+var SIMPLE_TYPES = /* @__PURE__ */ new Set([
+  "text",
+  "longText",
+  "number",
+  "integer",
+  "boolean",
+  "enum",
+  "gauge",
+  "chips",
+  "list"
+]);
+function titleForKey(key) {
+  return key.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+function semanticSchema(type) {
+  if (type === "character-linked") {
+    return {
+      type: "object",
+      properties: {
+        characterId: { type: "string", title: "Character ID", maxLength: 160 },
+        name: { type: "string", title: "Name", maxLength: 160 }
+      },
+      required: ["name"],
+      additionalProperties: false
+    };
+  }
+  if (type === "item-linked") {
+    return {
+      type: "object",
+      properties: {
+        itemId: { type: "string", title: "Item ID", maxLength: 160 },
+        name: { type: "string", title: "Name", maxLength: 160 },
+        quantity: { type: "integer", title: "Quantity", minimum: 0 },
+        status: { type: "string", title: "Status", maxLength: 240 }
+      },
+      required: ["name"],
+      additionalProperties: false
+    };
+  }
+  if (type === "timeline-event") {
+    return {
+      type: "object",
+      properties: {
+        title: { type: "string", maxLength: 240 },
+        time: { type: "string", maxLength: 160 },
+        status: { type: "string", maxLength: 160 }
+      },
+      required: ["title"],
+      additionalProperties: false
+    };
+  }
+  if (type === "relationship-edge") {
+    return {
+      type: "object",
+      properties: {
+        target: { type: "string", maxLength: 160 },
+        axis: { type: "string", maxLength: 160 },
+        value: { type: "number", minimum: -100, maximum: 100 }
+      },
+      required: ["target", "axis"],
+      additionalProperties: false
+    };
+  }
+  if (type === "object") {
+    return { type: "object", properties: {}, required: [], additionalProperties: false };
+  }
+  return { type: "array", items: { type: "string", maxLength: 500 }, maxItems: 24 };
+}
+function visualFieldsToJsonSchema(fields) {
+  const properties2 = {};
+  const required = [];
+  for (const field of fields) {
+    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(field.key)) {
+      throw new Error(`Field key "${field.key}" must begin with a letter and use letters, numbers, or underscores.`);
+    }
+    if (properties2[field.key]) throw new Error(`Field key "${field.key}" is duplicated.`);
+    let schema;
+    if (!SIMPLE_TYPES.has(field.type)) {
+      schema = semanticSchema(field.type);
+    } else if (field.type === "number" || field.type === "integer" || field.type === "gauge") {
+      schema = {
+        type: field.type === "integer" ? "integer" : "number",
+        ...field.type === "gauge" ? { minimum: field.min ?? 0, maximum: field.max ?? 100 } : {},
+        ...field.min !== void 0 ? { minimum: field.min } : {},
+        ...field.max !== void 0 ? { maximum: field.max } : {}
+      };
+    } else if (field.type === "boolean") {
+      schema = { type: "boolean" };
+    } else if (field.type === "enum") {
+      if (field.enumOptions.length === 0) throw new Error(`Enum field "${field.label}" needs at least one choice.`);
+      schema = { type: "string", enum: field.enumOptions };
+    } else if (field.type === "chips" || field.type === "list") {
+      schema = { type: "array", items: { type: "string", maxLength: 500 }, maxItems: field.maxItems ?? 24 };
+    } else {
+      schema = { type: "string", maxLength: field.type === "longText" ? 4e3 : 500 };
+    }
+    properties2[field.key] = {
+      ...schema,
+      title: field.label || titleForKey(field.key),
+      description: field.description,
+      ...field.defaultValue !== void 0 ? { default: field.defaultValue } : {}
+    };
+    if (field.required) required.push(field.key);
+  }
+  return { type: "object", properties: properties2, required, additionalProperties: false };
+}
+function inferFieldType(schema) {
+  if (schema.enum?.length) return "enum";
+  if (schema.type === "boolean") return "boolean";
+  if (schema.type === "integer") return "integer";
+  if (schema.type === "number") return schema.minimum === 0 && schema.maximum === 100 ? "gauge" : "number";
+  if (schema.type === "string") return (schema.maxLength ?? 0) > 500 ? "longText" : "text";
+  if (schema.type === "array" && schema.items?.type === "string") return "list";
+  if (schema.type === "object" && Object.keys(schema.properties ?? {}).length === 0) return "object";
+  return null;
+}
+function parseJsonSchemaToVisualFields(schema, fieldTypes = {}) {
+  if (schema.type !== "object" || !schema.properties) {
+    return { mode: "advanced", fields: [], reason: "The root schema is not a visual object schema." };
+  }
+  const required = new Set(schema.required ?? []);
+  const fields = [];
+  for (const [key, property] of Object.entries(schema.properties)) {
+    const type = fieldTypes[key] ?? inferFieldType(property);
+    if (!type) {
+      return {
+        mode: "advanced",
+        fields: [],
+        reason: `Field "${key}" uses a nested or advanced schema that cannot be edited safely as a visual card.`
+      };
+    }
+    fields.push({
+      key,
+      label: property.title || titleForKey(key),
+      type,
+      required: required.has(key),
+      description: property.description ?? "",
+      defaultValue: property.default,
+      enumOptions: (property.enum ?? []).map(String),
+      min: property.minimum,
+      max: property.maximum,
+      maxItems: property.maxItems
+    });
+  }
+  return { mode: "visual", fields, reason: "" };
+}
+function applyVisualModuleEdits(artifact, edits) {
+  return ModuleCapsuleArtifactSchema.parse({
+    ...artifact,
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    meta: {
+      ...artifact.meta,
+      name: edits.name,
+      description: edits.description,
+      author: edits.author || "User",
+      tags: edits.tags
+    },
+    prompt: edits.prompt,
+    schema: edits.fields ? visualFieldsToJsonSchema(edits.fields) : artifact.schema,
+    sampleData: edits.sampleData,
+    defaults: edits.defaults,
+    visual: {
+      trackingPurpose: edits.trackingPurpose,
+      outputMode: edits.outputMode,
+      slotRecommendation: edits.slotRecommendation,
+      displayModeRecommendation: edits.displayModeRecommendation,
+      tokenPriorityRecommendation: edits.tokenPriorityRecommendation,
+      fieldTypes: edits.fields ? Object.fromEntries(edits.fields.map((field) => [field.key, field.type])) : artifact.visual?.fieldTypes ?? {}
+    }
+  });
+}
+var TOKEN_NAMES = {
+  bg: "--loom-bg",
+  panel: "--loom-panel",
+  card: "--loom-card",
+  text: "--loom-text",
+  muted: "--loom-muted",
+  accent: "--loom-accent",
+  danger: "--loom-danger",
+  warning: "--loom-warning",
+  success: "--loom-success",
+  border: "--loom-border",
+  radiusSm: "--loom-radius-sm",
+  radiusMd: "--loom-radius-md",
+  radiusLg: "--loom-radius-lg",
+  gap: "--loom-gap",
+  fontDisplay: "--loom-font-display",
+  fontBody: "--loom-font-body"
+};
+function generateThemeDesignCss(designInput) {
+  if (!designInput) return "";
+  const design = ThemeDesignSchema.parse(designInput);
+  const declarations = Object.entries(design.tokens).map(
+    ([key, value]) => `  ${TOKEN_NAMES[key]}: ${value};`
+  ).join("\n");
+  const density = design.density === "compact" ? ".75" : design.density === "spacious" ? "1.25" : "1";
+  const background = design.backgroundStyle === "soft-gradient" ? "linear-gradient(145deg, var(--loom-bg), var(--loom-panel))" : design.backgroundStyle === "layered" ? "linear-gradient(180deg, var(--loom-panel), var(--loom-bg) 38%)" : "var(--loom-bg)";
+  const shadow = design.panelStyle === "raised" ? "0 10px 30px rgba(0,0,0,.22)" : design.panelStyle === "glass" ? "0 8px 24px rgba(0,0,0,.16)" : "none";
+  const border = design.borderStyle === "none" ? "transparent" : design.borderStyle === "strong" ? "var(--loom-accent)" : "var(--loom-border)";
+  const headerBorder = design.headerStyle === "accent-line" ? "3px solid var(--loom-accent)" : "0";
+  const widgetBorder = design.widgetStyle === "minimal" ? "transparent" : border;
+  return `:root {
+${declarations}
+}
+body { background: ${background}; color: var(--loom-text); font-family: var(--loom-font-body); }
+h1, h2, h3, strong { font-family: var(--loom-font-display); }
+.tracker { gap: calc(var(--loom-gap) * ${density}); }
+.tracker > header { border-left: ${headerBorder}; }
+.tracker section, .tracker article, .summary {
+  background: var(--loom-card);
+  border-color: ${widgetBorder};
+  border-radius: var(--loom-radius-md);
+  box-shadow: ${shadow};
+}`;
+}
+function applyVisualThemeEdits(artifact, edits) {
+  return ThemeArtifactSchema.parse({
+    ...artifact,
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    meta: {
+      ...artifact.meta,
+      name: edits.name,
+      description: edits.description,
+      author: edits.author || "User",
+      tags: edits.tags
+    },
+    manifest: edits.manifest,
+    design: edits.design
+  });
 }
 
 // src/shared/themeRuntime.ts
@@ -12238,6 +12637,7 @@ function jsonForScript(value) {
 }
 function buildThemeDocument(theme2, model, options) {
   const rendered = renderThemeTemplate(theme2, model);
+  const designCss = generateThemeDesignCss(theme2.design);
   const allowed = theme2.manifest.capabilities;
   const javascriptEnabled = theme2.manifest.developerMode && options.developerModeEnabled && theme2.view.javascript.trim().length > 0;
   const themeScript = javascriptEnabled ? `try {
@@ -12255,6 +12655,7 @@ ${theme2.view.javascript.replace(/<\/script/gi, "<\\/script")}
     body { margin: 0; overflow-wrap: anywhere; }
     button, input, select, textarea { font: inherit; }
     :focus-visible { outline: 2px solid #5eead4; outline-offset: 2px; }
+    ${designCss}
     ${theme2.view.css}
   </style>
 </head>
@@ -40118,6 +40519,9 @@ function applyWorkshopLayoutEdits(settings, patches, responsiveMode = settings.l
   });
 }
 function workshopSaveTarget(view, hasWorkingArtifact, settingsDirty, codeDirty) {
+  if ((view === "modules" || view === "theme") && hasWorkingArtifact && codeDirty) {
+    return "artifact";
+  }
   if (view === "modules" || view === "layout") {
     return settingsDirty ? "settings" : null;
   }
@@ -40127,7 +40531,8 @@ function workshopSaveTarget(view, hasWorkingArtifact, settingsDirty, codeDirty) 
   return null;
 }
 function workshopInstallTarget(view, workingArtifact, stagedArtifact, activeTheme) {
-  if (view === "home" || view === "modules" || view === "layout") return null;
+  if (view === "home" || view === "layout") return null;
+  if (view === "modules") return workingArtifact?.kind === "module" ? workingArtifact : null;
   if (view === "theme") {
     return workingArtifact?.kind === "theme" ? workingArtifact : activeTheme;
   }
@@ -40173,6 +40578,7 @@ function applyWorkshopCodeValue(artifact, section2, raw) {
       const value = json2();
       next.defaults = value.defaults;
       next.capabilities = value.capabilities;
+      next.visual = value.visual;
     }
     if (section2 === "html" || section2 === "css" || section2 === "javascript") {
       next.view[section2] = raw;
@@ -40183,7 +40589,15 @@ function applyWorkshopCodeValue(artifact, section2, raw) {
     });
   }
   if (next.kind === "theme") {
-    if (section2 === "manifest") next.manifest = json2();
+    if (section2 === "manifest") {
+      const value = json2();
+      if (value && typeof value === "object" && "manifest" in value) {
+        next.manifest = value.manifest;
+        next.design = value.design;
+      } else {
+        next.manifest = value;
+      }
+    }
     if (section2 === "partials") next.view.partials = json2();
     if (section2 === "sample") next.sampleData = json2();
     if (section2 === "html" || section2 === "css" || section2 === "javascript") {
@@ -40313,7 +40727,8 @@ function codeValue(artifact, section2) {
     if (section2 === "defaults") {
       return JSON.stringify({
         defaults: artifact.defaults,
-        capabilities: artifact.capabilities
+        capabilities: artifact.capabilities,
+        visual: artifact.visual
       }, null, 2);
     }
     if (section2 === "html" || section2 === "css" || section2 === "javascript") {
@@ -40321,7 +40736,10 @@ function codeValue(artifact, section2) {
     }
   }
   if (artifact.kind === "theme") {
-    if (section2 === "manifest") return JSON.stringify(artifact.manifest, null, 2);
+    if (section2 === "manifest") return JSON.stringify({
+      manifest: artifact.manifest,
+      design: artifact.design
+    }, null, 2);
     if (section2 === "partials") return JSON.stringify(artifact.view.partials, null, 2);
     if (section2 === "sample") return JSON.stringify(artifact.sampleData, null, 2);
     if (section2 === "html" || section2 === "css" || section2 === "javascript") {
@@ -40432,6 +40850,7 @@ function openCreatorWorkshop(options) {
   let codeEditor = null;
   let codeDraft = "";
   let codeError = "";
+  let visualError = "";
   let codeDirty = false;
   let settingsDirty = false;
   let previewSize = "mobile";
@@ -40576,6 +40995,7 @@ function openCreatorWorkshop(options) {
   }
   function prepareForRender() {
     if (activeView === "advanced-code" && !commitCodeDraft()) return false;
+    if ((activeView === "modules" || activeView === "theme") && !applyVisualBuilderFromDOM()) return false;
     if ((activeView === "modules" || activeView === "layout") && settingsDirty) {
       captureLayoutFromDOM(false);
     }
@@ -40583,6 +41003,7 @@ function openCreatorWorkshop(options) {
   }
   function prepareViewTransition() {
     if (activeView === "advanced-code") return prepareAdvancedCodeTransition();
+    if ((activeView === "modules" || activeView === "theme") && !applyVisualBuilderFromDOM()) return false;
     if (codeDirty && !saveCommittedArtifact("artifact-transition-save")) return false;
     if ((activeView === "modules" || activeView === "layout") && settingsDirty) {
       captureLayoutFromDOM(false);
@@ -40598,12 +41019,13 @@ function openCreatorWorkshop(options) {
     stagedArtifact = null;
     codeSection = codeSections(artifact)[0]?.id ?? "meta";
     codeError = "";
+    visualError = "";
     codeDirty = !saved;
   }
   function createArtifact(kind) {
     const artifact = kind === "module" ? createStarterModuleArtifact() : kind === "theme" ? createStarterThemeArtifact() : createStarterBlueprintArtifact();
     chooseArtifact(artifact, false);
-    activeView = "advanced-code";
+    activeView = kind === "module" ? "modules" : kind === "theme" ? "theme" : "advanced-code";
     render();
   }
   function activeThemeRecord() {
@@ -40833,6 +41255,126 @@ function openCreatorWorkshop(options) {
         </div>
       </section>`;
   }
+  function visualFieldCard(field, index) {
+    const types2 = [
+      "text",
+      "longText",
+      "number",
+      "integer",
+      "boolean",
+      "enum",
+      "gauge",
+      "chips",
+      "list",
+      "object",
+      "array",
+      "character-linked",
+      "item-linked",
+      "timeline-event",
+      "relationship-edge"
+    ];
+    return `
+      <article class="loomos-visual-field-card" data-visual-field>
+        <div class="loomos-visual-field-heading">
+          <strong>Field ${index + 1}</strong>
+          <div class="loomos-field-card-actions">
+            <button type="button" class="loomos-button" data-workshop-action="move-field-up" data-field-index="${index}" aria-label="Move field up">Up</button>
+            <button type="button" class="loomos-button" data-workshop-action="move-field-down" data-field-index="${index}" aria-label="Move field down">Down</button>
+            <button type="button" class="loomos-button loomos-button-danger" data-workshop-action="delete-field" data-field-index="${index}">Delete</button>
+          </div>
+        </div>
+        <div class="loomos-visual-form-grid">
+          <label><span>Key</span><input class="loomos-input" data-field-property="key" value="${escapeHtml(field.key)}"></label>
+          <label><span>Label</span><input class="loomos-input" data-field-property="label" value="${escapeHtml(field.label)}"></label>
+          <label><span>Type</span><select class="loomos-select" data-field-property="type">
+            ${types2.map((type) => `<option value="${type}"${field.type === type ? " selected" : ""}>${type}</option>`).join("")}
+          </select></label>
+          <label class="loomos-widget-switch"><input type="checkbox" data-field-property="required"${field.required ? " checked" : ""}><span>Required</span></label>
+          <label class="loomos-visual-span"><span>Description / help</span><input class="loomos-input" data-field-property="description" value="${escapeHtml(field.description)}"></label>
+          <label><span>Default</span><input class="loomos-input" data-field-property="default" value="${escapeHtml(field.defaultValue === void 0 ? "" : String(field.defaultValue))}"></label>
+          <label><span>Enum choices</span><input class="loomos-input" data-field-property="enum" value="${escapeHtml(field.enumOptions.join(", "))}" placeholder="calm, tense, critical"></label>
+          <label><span>Minimum</span><input type="number" class="loomos-input" data-field-property="min" value="${field.min ?? ""}"></label>
+          <label><span>Maximum</span><input type="number" class="loomos-input" data-field-property="max" value="${field.max ?? ""}"></label>
+          <label><span>Max items</span><input type="number" min="1" max="80" class="loomos-input" data-field-property="maxItems" value="${field.maxItems ?? ""}"></label>
+        </div>
+      </article>`;
+  }
+  function moduleBuilderHtml(module) {
+    const parsed = parseJsonSchemaToVisualFields(module.schema, module.visual?.fieldTypes);
+    const visual = module.visual ?? {
+      trackingPurpose: module.meta.description,
+      outputMode: module.view.html ? "template" : "cards",
+      slotRecommendation: "main",
+      displayModeRecommendation: "card",
+      tokenPriorityRecommendation: 5,
+      fieldTypes: {}
+    };
+    return `
+      <section class="loomos-visual-builder" data-visual-builder="module">
+        <div class="loomos-workshop-heading">
+          <div><span class="loomos-kicker">Guided artifact editor</span><h2>Module Builder</h2>
+          <p class="loomos-workshop-lede">Visual controls write the same v2 Module artifact used by Advanced Code.</p></div>
+          <div class="loomos-workshop-actions">
+            <button type="button" class="loomos-button" data-workshop-action="open-advanced-code">Advanced Code</button>
+            <button type="button" class="loomos-button loomos-button-primary" data-workshop-action="save-context" data-workshop-code-save${codeDirty ? "" : " disabled"}>Save Revision</button>
+          </div>
+        </div>
+        <p class="loomos-dialog-error" data-visual-error role="alert">${escapeHtml(visualError)}</p>
+        <details open class="loomos-builder-section">
+          <summary><strong>Identity and purpose</strong><span>Names, ownership, and compiler intent</span></summary>
+          <div class="loomos-visual-form-grid">
+            <label><span>Name</span><input class="loomos-input" data-visual-input="name" value="${escapeHtml(module.meta.name)}"></label>
+            <label><span>Author</span><input class="loomos-input" data-visual-input="author" value="${escapeHtml(module.meta.author || "User")}"></label>
+            <label class="loomos-visual-span"><span>Description</span><textarea class="loomos-input" data-visual-input="description">${escapeHtml(module.meta.description)}</textarea></label>
+            <label class="loomos-visual-span"><span>Tags</span><input class="loomos-input" data-visual-input="tags" value="${escapeHtml(module.meta.tags.join(", "))}"></label>
+            <label><span>Group</span><input class="loomos-input" data-visual-input="group" value="${escapeHtml(module.defaults.group)}"></label>
+            <label><span>Output mode</span><select class="loomos-select" data-visual-input="outputMode">${["cards", "bullets", "chips", "gauge", "template"].map((value) => `<option${visual.outputMode === value ? " selected" : ""}>${value}</option>`).join("")}</select></label>
+            <label class="loomos-visual-span"><span>Tracking purpose</span><textarea class="loomos-input" data-visual-input="trackingPurpose">${escapeHtml(visual.trackingPurpose)}</textarea></label>
+            <label class="loomos-visual-span"><span>Compiler instruction</span><textarea class="loomos-input loomos-builder-prompt" data-visual-input="prompt">${escapeHtml(module.prompt)}</textarea></label>
+          </div>
+        </details>
+        <details open class="loomos-builder-section">
+          <summary><strong>Defaults and placement</strong><span>Install recommendations</span></summary>
+          <div class="loomos-visual-form-grid">
+            <label class="loomos-widget-switch"><input type="checkbox" data-visual-input="track"${module.defaults.track ? " checked" : ""}><span>Track</span></label>
+            <label class="loomos-widget-switch"><input type="checkbox" data-visual-input="display"${module.defaults.display ? " checked" : ""}><span>Display</span></label>
+            <label class="loomos-widget-switch"><input type="checkbox" data-visual-input="inject"${module.defaults.inject ? " checked" : ""}><span>Inject</span></label>
+            <label><span>Display order</span><input type="number" class="loomos-input" data-visual-input="displayOrder" value="${module.defaults.displayOrder}"></label>
+            <label><span>Intensity</span><select class="loomos-select" data-visual-input="intensity">${["light", "medium", "heavy", "experimental"].map((value) => `<option${module.defaults.intensity === value ? " selected" : ""}>${value}</option>`).join("")}</select></label>
+            <label><span>Max items</span><input type="number" min="1" max="80" class="loomos-input" data-visual-input="maxItems" value="${module.defaults.maxItems}"></label>
+            <label><span>Slot</span><input class="loomos-input" data-visual-input="slotRecommendation" value="${escapeHtml(visual.slotRecommendation)}"></label>
+            <label><span>Display mode</span><select class="loomos-select" data-visual-input="displayModeRecommendation">${["hero", "card", "compact", "rail", "timeline", "hidden"].map((value) => `<option${visual.displayModeRecommendation === value ? " selected" : ""}>${value}</option>`).join("")}</select></label>
+            <label><span>Token priority</span><input type="number" min="0" max="100" class="loomos-input" data-visual-input="tokenPriorityRecommendation" value="${visual.tokenPriorityRecommendation}"></label>
+          </div>
+        </details>
+        <details open class="loomos-builder-section">
+          <summary><strong>Field Builder</strong><span>${parsed.mode === "visual" ? `${parsed.fields.length} visual fields` : "Advanced schema required"}</span></summary>
+          ${parsed.mode === "advanced" ? `<div class="loomos-inline-warning"><strong>Advanced schema required.</strong> ${escapeHtml(parsed.reason)} The existing schema is preserved until edited in Advanced Code.</div>` : `
+            <div class="loomos-workshop-actions"><button type="button" class="loomos-button loomos-button-primary" data-workshop-action="add-field">Add field</button></div>
+            <div class="loomos-visual-field-list">${parsed.fields.map(visualFieldCard).join("")}</div>
+          `}
+          <label class="loomos-widget-switch"><input type="checkbox" data-visual-input="advancedSchema"${parsed.mode === "advanced" ? " checked disabled" : ""}><span>Advanced schema mode</span></label>
+        </details>
+        <details class="loomos-builder-section">
+          <summary><strong>Sample data and presentation</strong><span>Preview content and optional custom HTML/CSS</span></summary>
+          <label class="loomos-field"><span>Sample data JSON</span><textarea class="loomos-input loomos-portable-json" data-visual-input="sampleData">${escapeHtml(JSON.stringify(module.sampleData, null, 2))}</textarea></label>
+          <div class="loomos-module-builder-preview">
+            <article>
+              <span class="loomos-kicker">Native card preview</span>
+              <h3>${escapeHtml(module.meta.name)}</h3>
+              <p>${escapeHtml(module.meta.description)}</p>
+              <pre>${escapeHtml(JSON.stringify(sampleForArtifact(module), null, 2))}</pre>
+            </article>
+            <article>
+              <span class="loomos-kicker">Generated schema</span>
+              <strong>${parsed.mode === "visual" ? `${parsed.fields.length} fields \xB7 ${parsed.fields.filter((field) => field.required).length} required` : "Advanced schema"}</strong>
+              <p>Estimated compiler instruction size: ${Math.ceil(module.prompt.length / 4)} tokens.</p>
+            </article>
+          </div>
+          ${module.view.html || module.view.css ? `<div class="loomos-source-summary"><strong>Custom presentation detected</strong><span>HTML ${module.view.html.length} chars \xB7 CSS ${module.view.css.length} chars</span><button type="button" class="loomos-button" data-workshop-action="open-advanced-code">Edit HTML/CSS</button></div>` : ""}
+        </details>
+      </section>`;
+  }
   function modulesHtml() {
     const layout = settings.layout;
     if (!layout) {
@@ -40843,8 +41385,10 @@ function openCreatorWorkshop(options) {
       ...catalog.map((module) => module.group),
       ...settings.customModules.map((module) => module.group)
     ])].sort();
+    const builder = workingArtifact?.kind === "module" ? moduleBuilderHtml(workingArtifact) : "";
     return `
       <section class="loomos-workshop-panel loomos-modules-studio">
+        ${builder}
         <div class="loomos-workshop-heading">
           <div>
             <span class="loomos-kicker">Unified module manager</span>
@@ -40898,11 +41442,81 @@ function openCreatorWorkshop(options) {
         <div><dt>Minimum width</dt><dd>${theme2.manifest.minWidth}px</dd></div>
       </dl>`;
   }
+  function themeBuilderHtml(theme2) {
+    const design = ThemeDesignSchema.parse(theme2.design ?? {});
+    const tokenLabels = [
+      ["bg", "Background"],
+      ["panel", "Panel"],
+      ["card", "Card"],
+      ["text", "Text"],
+      ["muted", "Muted"],
+      ["accent", "Accent"],
+      ["danger", "Danger"],
+      ["warning", "Warning"],
+      ["success", "Success"],
+      ["border", "Border"],
+      ["radiusSm", "Radius small"],
+      ["radiusMd", "Radius medium"],
+      ["radiusLg", "Radius large"],
+      ["gap", "Spacing"],
+      ["fontDisplay", "Display font"],
+      ["fontBody", "Body font"]
+    ];
+    const capabilities = ["copy", "collapse", "navigation", "reload", "generation", "history"];
+    return `
+      <section class="loomos-visual-builder" data-visual-builder="theme">
+        <div class="loomos-workshop-heading">
+          <div><span class="loomos-kicker">Guided artifact editor</span><h2>Theme Builder</h2>
+          <p class="loomos-workshop-lede">Manifest controls and safe design tokens update the same Theme artifact used by Advanced Code.</p></div>
+          <div class="loomos-workshop-actions">
+            <button type="button" class="loomos-button" data-workshop-action="open-advanced-code">Advanced Code</button>
+            <button type="button" class="loomos-button loomos-button-primary" data-workshop-action="save-context" data-workshop-code-save${codeDirty ? "" : " disabled"}>Save Revision</button>
+          </div>
+        </div>
+        <p class="loomos-dialog-error" data-visual-error role="alert">${escapeHtml(visualError)}</p>
+        <details open class="loomos-builder-section">
+          <summary><strong>Theme identity</strong><span>Metadata and runtime manifest</span></summary>
+          <div class="loomos-visual-form-grid">
+            <label><span>Name</span><input class="loomos-input" data-visual-input="name" value="${escapeHtml(theme2.meta.name)}"></label>
+            <label><span>Author</span><input class="loomos-input" data-visual-input="author" value="${escapeHtml(theme2.meta.author || "User")}"></label>
+            <label class="loomos-visual-span"><span>Description</span><textarea class="loomos-input" data-visual-input="description">${escapeHtml(theme2.meta.description)}</textarea></label>
+            <label class="loomos-visual-span"><span>Tags</span><input class="loomos-input" data-visual-input="tags" value="${escapeHtml(theme2.meta.tags.join(", "))}"></label>
+            <label><span>Preferred color scheme</span><select class="loomos-select" data-visual-input="preferredColorScheme">${["auto", "dark", "light"].map((value) => `<option${theme2.manifest.preferredColorScheme === value ? " selected" : ""}>${value}</option>`).join("")}</select></label>
+            <label><span>Minimum width</span><input type="number" min="280" max="2400" class="loomos-input" data-visual-input="minWidth" value="${theme2.manifest.minWidth}"></label>
+            <label class="loomos-widget-switch"><input type="checkbox" data-visual-input="developerMode"${theme2.manifest.developerMode ? " checked" : ""}><span>Developer Mode</span></label>
+            <label class="loomos-visual-span"><span>Declared slots</span><input class="loomos-input" data-visual-input="slots" value="${escapeHtml((theme2.manifest.slots ?? []).join(", "))}" placeholder="hero, main, cast"></label>
+          </div>
+          <div class="loomos-capability-grid">${capabilities.map((capability) => `<label class="loomos-widget-switch"><input type="checkbox" data-theme-capability="${capability}"${theme2.manifest.capabilities.includes(capability) ? " checked" : ""}><span>${capability}</span></label>`).join("")}</div>
+        </details>
+        <details open class="loomos-builder-section">
+          <summary><strong>Design system</strong><span>Safe structured visual choices</span></summary>
+          <div class="loomos-visual-form-grid">
+            ${[
+      ["typography", design.typography, ["system", "editorial", "compact", "technical"]],
+      ["backgroundStyle", design.backgroundStyle, ["solid", "soft-gradient", "layered"]],
+      ["panelStyle", design.panelStyle, ["flat", "raised", "glass"]],
+      ["borderStyle", design.borderStyle, ["subtle", "strong", "none"]],
+      ["density", design.density, ["compact", "comfortable", "spacious"]],
+      ["headerStyle", design.headerStyle, ["plain", "accent-line", "panel"]],
+      ["widgetStyle", design.widgetStyle, ["cards", "divided", "minimal"]],
+      ["previewSurface", design.previewSurface, ["theme", "native"]]
+    ].map(([key, current, values2]) => `<label><span>${key.replace(/([A-Z])/g, " $1")}</span><select class="loomos-select" data-visual-input="${key}">${values2.map((value) => `<option${current === value ? " selected" : ""}>${value}</option>`).join("")}</select></label>`).join("")}
+            <label class="loomos-visual-span"><span>Mobile behavior notes</span><textarea class="loomos-input" data-visual-input="mobileNotes">${escapeHtml(design.mobileNotes)}</textarea></label>
+          </div>
+        </details>
+        <details open class="loomos-builder-section">
+          <summary><strong>Design Tokens</strong><span>Local CSS variables only; no remote assets or URL values</span></summary>
+          <div class="loomos-token-grid">${tokenLabels.map(([key, label]) => `<label><span>${label}</span><input class="loomos-input" data-design-token="${key}" value="${escapeHtml(design.tokens[key])}"></label>`).join("")}</div>
+        </details>
+      </section>`;
+  }
   function themeHtml() {
     const themes = library.records.filter((record) => record.artifact.kind === "theme");
     const active = activeThemeRecord();
+    const builder = workingArtifact?.kind === "theme" ? themeBuilderHtml(workingArtifact) : "";
     return `
       <section class="loomos-workshop-panel loomos-theme-studio">
+        ${builder}
         <div class="loomos-workshop-heading">
           <div>
             <span class="loomos-kicker">Visual shell</span>
@@ -40937,7 +41551,7 @@ function openCreatorWorkshop(options) {
                 ${warnings.length > 0 ? `<div class="loomos-inline-warning">${warnings.map(escapeHtml).join("<br>")}</div>` : ""}
                 <div class="loomos-artifact-card-actions">
                   <button type="button" class="loomos-button" data-workshop-action="preview-artifact" data-artifact-id="${escapeHtml(theme2.id)}">Preview</button>
-                  <button type="button" class="loomos-button" data-workshop-action="edit-artifact" data-artifact-id="${escapeHtml(theme2.id)}">Advanced Code</button>
+                  <button type="button" class="loomos-button" data-workshop-action="edit-artifact" data-artifact-id="${escapeHtml(theme2.id)}">Visual Builder</button>
                   <button type="button" class="loomos-button loomos-button-primary" data-workshop-action="install-artifact" data-artifact-id="${escapeHtml(theme2.id)}">${isActive ? "Reinstall" : "Install & Activate"}</button>
                 </div>
               </article>`;
@@ -41410,6 +42024,13 @@ function openCreatorWorkshop(options) {
         ${previewFrameHtml(previewSurface, previewDataMode)}
       </section>`;
   }
+  function syncMobilePreviewOverlay() {
+    modal.root.querySelector(".loomos-mobile-preview")?.remove();
+    if (!mobilePreviewOpen) return;
+    const workshop = modal.root.querySelector(".loomos-workshop");
+    workshop?.insertAdjacentHTML("beforeend", mobilePreviewHtml());
+    mountPreviewFrames();
+  }
   function mountPreviewFrames() {
     const artifact = previewArtifact();
     modal.root.querySelectorAll("[data-workshop-preview-frame]").forEach((iframe) => {
@@ -41454,7 +42075,7 @@ function openCreatorWorkshop(options) {
       stagedArtifact,
       activeTheme ?? null
     );
-    const saveLabel = activeView === "modules" ? "Save Modules" : activeView === "layout" ? "Save Layout" : saveTarget === "artifact" ? "Save Revision" : "Save";
+    const saveLabel = saveTarget === "artifact" ? "Save Revision" : activeView === "modules" ? "Save Modules" : activeView === "layout" ? "Save Layout" : "Save";
     const installLabel = installTarget?.kind === "theme" ? "Install Theme" : "Install";
     modal.root.innerHTML = `
       <div class="loomos-workshop">
@@ -41844,6 +42465,123 @@ function openCreatorWorkshop(options) {
       artifactId: record.artifact.id
     });
   }
+  function visualValue(root, key) {
+    return root.querySelector(
+      `[data-visual-input="${key}"]`
+    )?.value ?? "";
+  }
+  function visualChecked(root, key) {
+    return root.querySelector(`[data-visual-input="${key}"]`)?.checked ?? false;
+  }
+  function visualNumber(root, key, fallback) {
+    const value = Number(visualValue(root, key));
+    return Number.isFinite(value) ? value : fallback;
+  }
+  function collectVisualFields(root) {
+    return [...root.querySelectorAll("[data-visual-field]")].map((card) => {
+      const value = (key) => card.querySelector(`[data-field-property="${key}"]`)?.value ?? "";
+      const numeric = (key) => {
+        const raw = value(key);
+        if (!raw.trim()) return void 0;
+        const parsed = Number(raw);
+        return Number.isFinite(parsed) ? parsed : void 0;
+      };
+      const type = value("type");
+      const rawDefault = value("default");
+      let defaultValue = rawDefault || void 0;
+      if (rawDefault && ["number", "integer", "gauge"].includes(type)) {
+        const parsed = Number(rawDefault);
+        if (Number.isFinite(parsed)) defaultValue = parsed;
+      }
+      if (rawDefault && type === "boolean") defaultValue = rawDefault === "true";
+      return {
+        key: value("key").trim(),
+        label: value("label").trim(),
+        type,
+        required: card.querySelector("[data-field-property='required']")?.checked ?? false,
+        description: value("description").trim(),
+        defaultValue,
+        enumOptions: value("enum").split(",").map((item) => item.trim()).filter(Boolean),
+        min: numeric("min"),
+        max: numeric("max"),
+        maxItems: numeric("maxItems")
+      };
+    });
+  }
+  function applyVisualBuilderFromDOM() {
+    const root = modal.root.querySelector("[data-visual-builder]");
+    if (!root || !workingArtifact) return true;
+    try {
+      if (workingArtifact.kind === "module" && root.dataset.visualBuilder === "module") {
+        workingArtifact = applyVisualModuleEdits(workingArtifact, {
+          name: visualValue(root, "name"),
+          description: visualValue(root, "description"),
+          author: visualValue(root, "author"),
+          tags: visualValue(root, "tags").split(",").map((tag) => tag.trim()).filter(Boolean),
+          trackingPurpose: visualValue(root, "trackingPurpose"),
+          prompt: visualValue(root, "prompt"),
+          outputMode: visualValue(root, "outputMode"),
+          defaults: {
+            track: visualChecked(root, "track"),
+            display: visualChecked(root, "display"),
+            inject: visualChecked(root, "inject"),
+            group: visualValue(root, "group"),
+            maxItems: visualNumber(root, "maxItems", workingArtifact.defaults.maxItems),
+            intensity: visualValue(root, "intensity"),
+            displayOrder: visualNumber(root, "displayOrder", workingArtifact.defaults.displayOrder)
+          },
+          slotRecommendation: visualValue(root, "slotRecommendation"),
+          displayModeRecommendation: visualValue(root, "displayModeRecommendation"),
+          tokenPriorityRecommendation: visualNumber(root, "tokenPriorityRecommendation", 5),
+          sampleData: JSON.parse(visualValue(root, "sampleData") || "{}"),
+          fields: visualChecked(root, "advancedSchema") ? void 0 : collectVisualFields(root)
+        });
+      } else if (workingArtifact.kind === "theme" && root.dataset.visualBuilder === "theme") {
+        const design = ThemeDesignSchema.parse({
+          typography: visualValue(root, "typography"),
+          backgroundStyle: visualValue(root, "backgroundStyle"),
+          panelStyle: visualValue(root, "panelStyle"),
+          borderStyle: visualValue(root, "borderStyle"),
+          density: visualValue(root, "density"),
+          headerStyle: visualValue(root, "headerStyle"),
+          widgetStyle: visualValue(root, "widgetStyle"),
+          mobileNotes: visualValue(root, "mobileNotes"),
+          previewSurface: visualValue(root, "previewSurface"),
+          tokens: Object.fromEntries(
+            [...root.querySelectorAll("[data-design-token]")].map((input) => [input.dataset.designToken, input.value])
+          )
+        });
+        workingArtifact = applyVisualThemeEdits(workingArtifact, {
+          name: visualValue(root, "name"),
+          description: visualValue(root, "description"),
+          author: visualValue(root, "author"),
+          tags: visualValue(root, "tags").split(",").map((tag) => tag.trim()).filter(Boolean),
+          manifest: {
+            viewerModelVersion: 1,
+            developerMode: visualChecked(root, "developerMode"),
+            capabilities: [...root.querySelectorAll("[data-theme-capability]:checked")].map((input) => input.dataset.themeCapability),
+            minWidth: visualNumber(root, "minWidth", workingArtifact.manifest.minWidth),
+            preferredColorScheme: visualValue(root, "preferredColorScheme"),
+            slots: visualValue(root, "slots").split(",").map((slot) => slot.trim()).filter(Boolean)
+          },
+          design
+        });
+        previewSurface = design.previewSurface;
+      }
+      codeDirty = true;
+      visualError = "";
+      const errorRoot = modal.root.querySelector("[data-visual-error]");
+      if (errorRoot) errorRoot.textContent = "";
+      updateDirtyActionState();
+      mountPreviewFrames();
+      return true;
+    } catch (error) {
+      visualError = error instanceof Error ? error.message : String(error);
+      const errorRoot = modal.root.querySelector("[data-visual-error]");
+      if (errorRoot) errorRoot.textContent = visualError;
+      return false;
+    }
+  }
   function applyPackFilters() {
     modal.root.querySelectorAll("[data-artifact-row]").forEach((row) => {
       const record = artifactRecordById(
@@ -41925,15 +42663,14 @@ function openCreatorWorkshop(options) {
       return;
     }
     if (action === "mobile-preview") {
-      if (!prepareForRender()) return;
+      prepareForRender();
       mobilePreviewOpen = mobilePreviewState(mobilePreviewOpen, "open");
-      render();
+      syncMobilePreviewOverlay();
       return;
     }
     if (action === "close-mobile-preview") {
-      if (!prepareForRender()) return;
       mobilePreviewOpen = mobilePreviewState(mobilePreviewOpen, "close");
-      render();
+      syncMobilePreviewOverlay();
       return;
     }
     if (action === "import") {
@@ -41960,7 +42697,7 @@ function openCreatorWorkshop(options) {
         render();
       } else if (action === "edit-artifact") {
         chooseArtifact(record.artifact);
-        activeView = "advanced-code";
+        activeView = record.artifact.kind === "module" ? "modules" : record.artifact.kind === "theme" ? "theme" : "advanced-code";
         render();
       } else if (action === "export-artifact") {
         downloadJson(`${safeFilename(record.artifact.meta.name)}.loomos.json`, record.artifact);
@@ -41985,7 +42722,48 @@ function openCreatorWorkshop(options) {
       render();
       return;
     }
+    if (action === "open-advanced-code") {
+      if (!applyVisualBuilderFromDOM()) return;
+      activeView = "advanced-code";
+      render();
+      return;
+    }
+    if (action === "add-field") {
+      const root = modal.root.querySelector("[data-visual-builder='module']");
+      const list = root?.querySelector(".loomos-visual-field-list");
+      if (!root || !list || !applyVisualBuilderFromDOM()) return;
+      const index = list.querySelectorAll("[data-visual-field]").length;
+      list.insertAdjacentHTML("beforeend", visualFieldCard({
+        key: `field${index + 1}`,
+        label: `Field ${index + 1}`,
+        type: "text",
+        required: false,
+        description: "",
+        enumOptions: []
+      }, index));
+      applyVisualBuilderFromDOM();
+      return;
+    }
+    if (["delete-field", "move-field-up", "move-field-down"].includes(action)) {
+      const card = button.closest("[data-visual-field]");
+      const list = card?.parentElement;
+      if (!card || !list) return;
+      if (action === "delete-field") card.remove();
+      if (action === "move-field-up" && card.previousElementSibling) {
+        list.insertBefore(card, card.previousElementSibling);
+      }
+      if (action === "move-field-down" && card.nextElementSibling) {
+        list.insertBefore(card.nextElementSibling, card);
+      }
+      applyVisualBuilderFromDOM();
+      render();
+      return;
+    }
     if (action === "save-context") {
+      if ((activeView === "modules" || activeView === "theme") && modal.root.querySelector("[data-visual-builder]")) {
+        if (applyVisualBuilderFromDOM()) saveCommittedArtifact();
+        return;
+      }
       const saveTarget = workshopSaveTarget(
         activeView,
         Boolean(workingArtifact),
@@ -42007,7 +42785,11 @@ function openCreatorWorkshop(options) {
       return;
     }
     if (action === "install") {
-      if (!prepareAdvancedCodeTransition()) return;
+      if (activeView === "advanced-code") {
+        if (!prepareAdvancedCodeTransition()) return;
+      } else if (!prepareForRender()) {
+        return;
+      }
       const activeTheme = activeThemeRecord()?.artifact;
       const installTarget = workshopInstallTarget(
         activeView,
@@ -42186,6 +42968,10 @@ function openCreatorWorkshop(options) {
   };
   const onInput = (event) => {
     const input = event.target;
+    if (input?.matches("[data-visual-input], [data-field-property], [data-design-token]")) {
+      applyVisualBuilderFromDOM();
+      return;
+    }
     if (input?.matches("[data-workshop-search]")) {
       packQuery = input.value;
       applyPackFilters();
@@ -42223,6 +43009,10 @@ function openCreatorWorkshop(options) {
   };
   const onChange = (event) => {
     const target = event.target;
+    if (target?.matches("[data-visual-input], [data-field-property], [data-design-token], [data-theme-capability]")) {
+      applyVisualBuilderFromDOM();
+      return;
+    }
     if (target?.matches("[data-workshop-view-select]")) {
       if (!prepareViewTransition()) return;
       activeView = target.value;
@@ -43369,7 +44159,7 @@ function setup(ctx) {
   function diagnosticText() {
     const layoutIssues = settings.layout ? inspectLayoutDiagnostics(settings.layout, settings, activeTheme()) : [];
     const lines = [
-      `version: 0.1.21`,
+      `version: 0.1.22`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,

@@ -2,6 +2,35 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.22] - 2026-06-15
+
+### Added
+
+- Added a guided Module Builder for artifact metadata, tracking purpose, compiler instructions, output mode, defaults, placement recommendations, sample data, and optional presentation status.
+- Added a visual Field Builder with add, delete, rename, type, required, default, enum, numeric range, help text, and reorder controls.
+- Added semantic visual fields for character links, item links, timeline events, and relationship edges that compile to the existing bounded JSON Schema subset.
+- Added a guided Theme Builder for manifest capabilities, slots, sizing, color scheme, typography, background, panel, border, density, header, widget, mobile, and preview preferences.
+- Added optional schema-backed Theme design tokens and safe `--loom-*` CSS generation.
+- Added Phase 4 tests for schema conversion, complex-schema fallback, visual artifact validity, token security, legacy compatibility, visual/code synchronization, and invalid visual saves.
+
+### Changed
+
+- Module and Theme artifact Edit actions now open their visual builders first while keeping Advanced Code directly accessible.
+- Advanced Code exposes Module visual metadata and Theme design metadata so valid raw edits synchronize back into guided forms.
+- Theme previews apply validated design tokens before existing Theme CSS without changing the sandbox or CSP.
+- New Module and Theme artifacts default their author to `User`; imported artifacts retain their existing author.
+
+### Fixed
+
+- Preserved complex existing schemas when the Field Builder cannot represent them exactly instead of flattening or overwriting them.
+- Prevented invalid sample JSON, invalid field definitions, invalid metadata, and unsafe token values from replacing or saving the last valid artifact.
+- Kept mobile Preview usable with invalid visual input by rendering the last valid artifact without discarding the draft or inline error.
+- Scoped mobile Save and Install actions to visual Module and Theme artifacts while retaining existing Modules/Layout settings saves.
+
+### Preserved
+
+- Kept Advanced Code, legacy v1 imports, v2 artifacts, Loom Packs, exact-swipe storage, compiler behavior, restricted raw `renderedContent`, sandbox/CSP, and Theme isolation unchanged.
+
 ## [0.1.21] - 2026-06-14
 
 ### Added

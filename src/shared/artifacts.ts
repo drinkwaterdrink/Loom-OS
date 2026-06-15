@@ -257,6 +257,70 @@ export const ThemeCapabilitySchema = z.enum([
   "history",
 ]);
 
+export const VisualFieldTypeSchema = z.enum([
+  "text",
+  "longText",
+  "number",
+  "integer",
+  "boolean",
+  "enum",
+  "gauge",
+  "chips",
+  "list",
+  "object",
+  "array",
+  "character-linked",
+  "item-linked",
+  "timeline-event",
+  "relationship-edge",
+]);
+
+const ModuleVisualSchema = z.object({
+  trackingPurpose: z.string().trim().max(1200).default(""),
+  outputMode: z.enum(["cards", "bullets", "chips", "gauge", "template"]).default("cards"),
+  slotRecommendation: z.string().trim().max(160).default("main"),
+  displayModeRecommendation: z.enum(["hero", "card", "compact", "rail", "timeline", "hidden"]).default("card"),
+  tokenPriorityRecommendation: z.number().int().min(0).max(100).default(5),
+  fieldTypes: z.record(VisualFieldTypeSchema).default({}),
+}).strict();
+
+const safeCssToken = z.string().trim().min(1).max(160).refine((value) =>
+  !/(?:url\s*\(|@import|https?:|javascript:|expression\s*\(|[\u0000-\u001f{};<>])/i.test(value),
+  "Design token contains an unsafe CSS value.",
+);
+
+export const ThemeDesignTokensSchema = z.object({
+  bg: safeCssToken.default("#101114"),
+  panel: safeCssToken.default("#17191f"),
+  card: safeCssToken.default("#20232b"),
+  text: safeCssToken.default("#f4f4f5"),
+  muted: safeCssToken.default("#a1a1aa"),
+  accent: safeCssToken.default("#5eead4"),
+  danger: safeCssToken.default("#fb7185"),
+  warning: safeCssToken.default("#fbbf24"),
+  success: safeCssToken.default("#4ade80"),
+  border: safeCssToken.default("#303239"),
+  radiusSm: safeCssToken.default("6px"),
+  radiusMd: safeCssToken.default("10px"),
+  radiusLg: safeCssToken.default("16px"),
+  gap: safeCssToken.default("12px"),
+  fontDisplay: safeCssToken.default("system-ui, sans-serif"),
+  fontBody: safeCssToken.default("system-ui, sans-serif"),
+}).strict();
+
+export const ThemeDesignSchema = z.object({
+  tokens: ThemeDesignTokensSchema.default({}),
+  typography: z.enum(["system", "editorial", "compact", "technical"]).default("system"),
+  backgroundStyle: z.enum(["solid", "soft-gradient", "layered"]).default("solid"),
+  panelStyle: z.enum(["flat", "raised", "glass"]).default("flat"),
+  borderStyle: z.enum(["subtle", "strong", "none"]).default("subtle"),
+  density: z.enum(["compact", "comfortable", "spacious"]).default("comfortable"),
+  headerStyle: z.enum(["plain", "accent-line", "panel"]).default("accent-line"),
+  widgetStyle: z.enum(["cards", "divided", "minimal"]).default("cards"),
+  mobileNotes: z.string().trim().max(1200).default(""),
+  previewSurface: z.enum(["theme", "native"]).default("theme"),
+}).strict();
+
 const ArtifactViewSchema = z.object({
   html: z.string().max(120_000).default(""),
   css: z.string().max(120_000).default(""),
@@ -289,6 +353,7 @@ export const ModuleCapsuleArtifactSchema = ArtifactBaseSchema.extend({
     displayOrder: z.number().int().default(10_000),
   }).strict().default({}),
   capabilities: z.array(ThemeCapabilitySchema).max(8).default([]),
+  visual: ModuleVisualSchema.optional(),
 }).strict();
 
 export const ThemeArtifactSchema = ArtifactBaseSchema.extend({
@@ -303,6 +368,7 @@ export const ThemeArtifactSchema = ArtifactBaseSchema.extend({
   }).strict(),
   view: ArtifactViewSchema,
   sampleData: z.unknown().default({}),
+  design: ThemeDesignSchema.optional(),
 }).strict();
 
 export const BlueprintArtifactSchema = ArtifactBaseSchema.extend({
@@ -329,6 +395,9 @@ export type ThemeArtifact = z.infer<typeof ThemeArtifactSchema>;
 export type BlueprintArtifact = z.infer<typeof BlueprintArtifactSchema>;
 export type LoomOSArtifact = z.infer<typeof LoomOSArtifactSchema>;
 export type ThemeCapability = z.infer<typeof ThemeCapabilitySchema>;
+export type VisualFieldType = z.infer<typeof VisualFieldTypeSchema>;
+export type ThemeDesignTokens = z.infer<typeof ThemeDesignTokensSchema>;
+export type ThemeDesign = z.infer<typeof ThemeDesignSchema>;
 
 export const ArtifactRevisionSchema = z.object({
   revision: z.number().int().positive(),
@@ -604,6 +673,7 @@ export function createStarterModuleArtifact(): ModuleCapsuleArtifact {
     meta: {
       name: "New Tracker Module",
       description: "A portable LoomOS tracker module.",
+      author: "User",
       tags: [],
     },
     schema: {
@@ -635,6 +705,14 @@ export function createStarterModuleArtifact(): ModuleCapsuleArtifact {
     },
     sampleData: { summary: "Sample tracked state." },
     defaults: {},
+    visual: {
+      trackingPurpose: "Track grounded state that should remain consistent across roleplay turns.",
+      outputMode: "cards",
+      slotRecommendation: "main",
+      displayModeRecommendation: "card",
+      tokenPriorityRecommendation: 5,
+      fieldTypes: { summary: "longText" },
+    },
   });
 }
 
@@ -650,6 +728,7 @@ export function createStarterThemeArtifact(): ThemeArtifact {
     meta: {
       name: "New Tracker Theme",
       description: "A full-screen LoomOS tracker theme.",
+      author: "User",
       tags: [],
     },
     manifest: {
@@ -722,6 +801,7 @@ h1, h2, p {
       partials: {},
     },
     sampleData: {},
+    design: {},
   });
 }
 

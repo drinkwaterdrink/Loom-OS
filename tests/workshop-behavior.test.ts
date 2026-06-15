@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   WORKSHOP_NAV,
   activeSetupCounts,
+  applyWorkshopCodeValue,
   applyWorkshopLayoutEdits,
   artifactMatchesPackFilter,
   buildWorkshopNativePreviewDocument,
@@ -208,6 +209,35 @@ test("invalid code drafts never send save_artifact while valid drafts do", () =>
   assert.equal((sent[0] as { type?: string }).type, "save_artifact");
 });
 
+test("valid Advanced Code edits synchronize visual Module and Theme metadata", () => {
+  const module = createStarterModuleArtifact();
+  const editedModule = applyWorkshopCodeValue(module, "defaults", JSON.stringify({
+    defaults: module.defaults,
+    capabilities: module.capabilities,
+    visual: {
+      ...module.visual,
+      trackingPurpose: "Track a revised purpose.",
+      outputMode: "chips",
+    },
+  }));
+  assert.equal(editedModule.kind, "module");
+  if (editedModule.kind === "module") {
+    assert.equal(editedModule.visual?.trackingPurpose, "Track a revised purpose.");
+    assert.equal(editedModule.visual?.outputMode, "chips");
+  }
+
+  const theme = createStarterThemeArtifact();
+  const editedTheme = applyWorkshopCodeValue(theme, "manifest", JSON.stringify({
+    manifest: theme.manifest,
+    design: {
+      ...theme.design,
+      tokens: { ...theme.design?.tokens, accent: "#abcdef" },
+    },
+  }));
+  assert.equal(editedTheme.kind, "theme");
+  if (editedTheme.kind === "theme") assert.equal(editedTheme.design?.tokens.accent, "#abcdef");
+});
+
 test("selection, contextual installs, and mobile preview routing stay explicit", () => {
   const module = createStarterModuleArtifact();
   const theme = createStarterThemeArtifact();
@@ -220,7 +250,7 @@ test("selection, contextual installs, and mobile preview routing stay explicit",
 
   assert.equal(selectedArtifactRecord(saved, module.id)?.artifact.id, module.id);
   assert.equal(selectedArtifactRecord(saved, "missing"), null);
-  assert.equal(workshopInstallTarget("modules", module, null, theme), null);
+  assert.equal(workshopInstallTarget("modules", module, null, theme)?.id, module.id);
   assert.equal(workshopInstallTarget("theme", module, null, theme)?.id, theme.id);
   assert.equal(workshopInstallTarget("test-lab", module, blueprint, theme)?.id, blueprint.id);
   assert.equal(mobilePreviewState(false, "open"), true);

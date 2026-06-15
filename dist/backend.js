@@ -5500,6 +5500,65 @@ var ThemeCapabilitySchema = external_exports.enum([
   "generation",
   "history"
 ]);
+var VisualFieldTypeSchema = external_exports.enum([
+  "text",
+  "longText",
+  "number",
+  "integer",
+  "boolean",
+  "enum",
+  "gauge",
+  "chips",
+  "list",
+  "object",
+  "array",
+  "character-linked",
+  "item-linked",
+  "timeline-event",
+  "relationship-edge"
+]);
+var ModuleVisualSchema = external_exports.object({
+  trackingPurpose: external_exports.string().trim().max(1200).default(""),
+  outputMode: external_exports.enum(["cards", "bullets", "chips", "gauge", "template"]).default("cards"),
+  slotRecommendation: external_exports.string().trim().max(160).default("main"),
+  displayModeRecommendation: external_exports.enum(["hero", "card", "compact", "rail", "timeline", "hidden"]).default("card"),
+  tokenPriorityRecommendation: external_exports.number().int().min(0).max(100).default(5),
+  fieldTypes: external_exports.record(VisualFieldTypeSchema).default({})
+}).strict();
+var safeCssToken = external_exports.string().trim().min(1).max(160).refine(
+  (value) => !/(?:url\s*\(|@import|https?:|javascript:|expression\s*\(|[\u0000-\u001f{};<>])/i.test(value),
+  "Design token contains an unsafe CSS value."
+);
+var ThemeDesignTokensSchema = external_exports.object({
+  bg: safeCssToken.default("#101114"),
+  panel: safeCssToken.default("#17191f"),
+  card: safeCssToken.default("#20232b"),
+  text: safeCssToken.default("#f4f4f5"),
+  muted: safeCssToken.default("#a1a1aa"),
+  accent: safeCssToken.default("#5eead4"),
+  danger: safeCssToken.default("#fb7185"),
+  warning: safeCssToken.default("#fbbf24"),
+  success: safeCssToken.default("#4ade80"),
+  border: safeCssToken.default("#303239"),
+  radiusSm: safeCssToken.default("6px"),
+  radiusMd: safeCssToken.default("10px"),
+  radiusLg: safeCssToken.default("16px"),
+  gap: safeCssToken.default("12px"),
+  fontDisplay: safeCssToken.default("system-ui, sans-serif"),
+  fontBody: safeCssToken.default("system-ui, sans-serif")
+}).strict();
+var ThemeDesignSchema = external_exports.object({
+  tokens: ThemeDesignTokensSchema.default({}),
+  typography: external_exports.enum(["system", "editorial", "compact", "technical"]).default("system"),
+  backgroundStyle: external_exports.enum(["solid", "soft-gradient", "layered"]).default("solid"),
+  panelStyle: external_exports.enum(["flat", "raised", "glass"]).default("flat"),
+  borderStyle: external_exports.enum(["subtle", "strong", "none"]).default("subtle"),
+  density: external_exports.enum(["compact", "comfortable", "spacious"]).default("comfortable"),
+  headerStyle: external_exports.enum(["plain", "accent-line", "panel"]).default("accent-line"),
+  widgetStyle: external_exports.enum(["cards", "divided", "minimal"]).default("cards"),
+  mobileNotes: external_exports.string().trim().max(1200).default(""),
+  previewSurface: external_exports.enum(["theme", "native"]).default("theme")
+}).strict();
 var ArtifactViewSchema = external_exports.object({
   html: external_exports.string().max(12e4).default(""),
   css: external_exports.string().max(12e4).default(""),
@@ -5529,7 +5588,8 @@ var ModuleCapsuleArtifactSchema = ArtifactBaseSchema.extend({
     intensity: external_exports.enum(["light", "medium", "heavy", "experimental"]).default("medium"),
     displayOrder: external_exports.number().int().default(1e4)
   }).strict().default({}),
-  capabilities: external_exports.array(ThemeCapabilitySchema).max(8).default([])
+  capabilities: external_exports.array(ThemeCapabilitySchema).max(8).default([]),
+  visual: ModuleVisualSchema.optional()
 }).strict();
 var ThemeArtifactSchema = ArtifactBaseSchema.extend({
   kind: external_exports.literal("theme"),
@@ -5542,7 +5602,8 @@ var ThemeArtifactSchema = ArtifactBaseSchema.extend({
     slots: external_exports.array(external_exports.string()).optional()
   }).strict(),
   view: ArtifactViewSchema,
-  sampleData: external_exports.unknown().default({})
+  sampleData: external_exports.unknown().default({}),
+  design: ThemeDesignSchema.optional()
 }).strict();
 var BlueprintArtifactSchema = ArtifactBaseSchema.extend({
   kind: external_exports.literal("blueprint"),
@@ -5800,6 +5861,7 @@ function createStarterModuleArtifact() {
     meta: {
       name: "New Tracker Module",
       description: "A portable LoomOS tracker module.",
+      author: "User",
       tags: []
     },
     schema: {
@@ -5830,7 +5892,15 @@ function createStarterModuleArtifact() {
       partials: {}
     },
     sampleData: { summary: "Sample tracked state." },
-    defaults: {}
+    defaults: {},
+    visual: {
+      trackingPurpose: "Track grounded state that should remain consistent across roleplay turns.",
+      outputMode: "cards",
+      slotRecommendation: "main",
+      displayModeRecommendation: "card",
+      tokenPriorityRecommendation: 5,
+      fieldTypes: { summary: "longText" }
+    }
   });
 }
 function createStarterThemeArtifact() {
@@ -5845,6 +5915,7 @@ function createStarterThemeArtifact() {
     meta: {
       name: "New Tracker Theme",
       description: "A full-screen LoomOS tracker theme.",
+      author: "User",
       tags: []
     },
     manifest: {
@@ -5916,7 +5987,8 @@ h1, h2, p {
       javascript: "",
       partials: {}
     },
-    sampleData: {}
+    sampleData: {},
+    design: {}
   });
 }
 function createStarterBlueprintArtifact() {

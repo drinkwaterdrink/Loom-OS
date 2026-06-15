@@ -4,6 +4,7 @@ import type {
   ThemeCapability,
 } from "./artifacts";
 import type { ViewerModelV1 } from "./viewerModel";
+import { generateThemeDesignCss } from "./visualBuilders";
 
 interface TemplateScope {
   value: unknown;
@@ -260,6 +261,7 @@ export function buildThemeDocument(
   options: ThemeDocumentOptions,
 ): string {
   const rendered = renderThemeTemplate(theme, model);
+  const designCss = generateThemeDesignCss(theme.design);
   const allowed = theme.manifest.capabilities;
   const javascriptEnabled = theme.manifest.developerMode
     && options.developerModeEnabled
@@ -279,6 +281,7 @@ export function buildThemeDocument(
     body { margin: 0; overflow-wrap: anywhere; }
     button, input, select, textarea { font: inherit; }
     :focus-visible { outline: 2px solid #5eead4; outline-offset: 2px; }
+    ${designCss}
     ${theme.view.css}
   </style>
 </head>
