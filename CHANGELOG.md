@@ -2,6 +2,21 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.25] - 2026-06-16
+
+### Added
+
+- Added Phase 5 block-level AI refinement for Module, Theme, Blueprint, Advanced Code, Module Builder, and Theme Builder sections.
+- Added additive `refine_artifact_block`, `cancel_artifact_block_refinement`, and `artifact_block_refinement_status` protocol messages alongside the existing full-artifact `generate_artifact` flow.
+- Added shared block target enumeration, bounded block context, block replacement application, full-artifact-output extraction, unrelated-path rejection, and full-artifact validation helpers.
+- Added backend block refinement with strict JSON output prompts, one repair pass, selected-block-only context, and validation by applying the replacement to a cloned artifact.
+- Added a mobile-friendly Workshop block-refine panel with target selection, instruction textarea, Before/After preview, warnings, Preview, Apply Block Change, Discard, and Open in Advanced Code actions.
+- Added behavioral tests for Module/Theme/Blueprint block enumeration, prompt/schema/CSS/token application, invalid schema rejection, unsafe token rejection, unrelated-path rejection, full-artifact-output bounding, bounded prompt context, repair pass behavior, staged apply/discard, and UI/protocol exposure.
+
+### Preserved
+
+- Kept full-artifact AI Creator Create New / Refine Selected behavior, Advanced Code, visual builders, Loom Pack import/export, legacy imports, exact-swipe storage, compiler core behavior, sandbox/CSP, Developer Mode gating, and restricted raw `renderedContent` behavior unchanged.
+
 ## [0.1.24] - 2026-06-16
 
 ### Added

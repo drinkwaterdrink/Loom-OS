@@ -9,6 +9,7 @@ import type {
 import { compileStateWithRepair } from "./backend/compiler";
 import { runQuietGeneration } from "./backend/generation";
 import { generateArtifactWithRepair } from "./backend/artifactGeneration";
+import { refineArtifactBlockWithRepair } from "./backend/artifactBlockRefinement";
 import {
   deleteArtifact,
   loadArtifactLibrary,
@@ -59,6 +60,7 @@ import {
   type ThemeArtifact,
   type LoomPack,
 } from "./shared/artifacts";
+import type { ArtifactBlockTarget } from "./shared/artifactBlocks";
 
 declare const spindle: import("lumiverse-spindle-types").SpindleAPI;
 
@@ -781,6 +783,105 @@ async function generateArtifactDraft(
   }
 }
 
+async function refineArtifactBlockDraft(
+  requestId: string,
+  artifactValue: LoomOSArtifact,
+  targetValue: ArtifactBlockTarget,
+  instruction: string,
+  userId: string,
+): Promise<void> {
+  if (!spindle.permissions.has("generation")) {
+    throw new Error("PERMISSION_DENIED: generation is required to refine LoomOS artifact blocks.");
+  }
+  if (!instruction.trim()) throw new Error("Describe the block change you want AI to make.");
+
+  const startedAt = Date.now();
+  const artifact = LoomOSArtifactSchema.parse(artifactValue);
+  const target = targetValue;
+  const settings = await getSettings(userId);
+  const connections = await listConnections(userId);
+  const connection = chooseConnection(connections, settings.connectionId);
+  if (!connection) {
+    throw new Error("No ready Lumiverse LLM connection is available. Configure a connection, then retry.");
+  }
+
+  const controller = new AbortController();
+  const jobKey = requestJobKey(userId, requestId);
+  jobs.set(jobKey, { controller, identityKey: `artifact-block:${requestId}` });
+  send({
+    type: "artifact_block_refinement_status",
+    requestId,
+    status: "started",
+    message: `Preparing ${connection.name} for block refinement.`,
+    elapsedMs: 0,
+    attempt: 1,
+  }, userId);
+
+  try {
+    const result = await refineArtifactBlockWithRepair({
+      artifact,
+      target,
+      instruction: instruction.slice(0, 8000),
+      signal: controller.signal,
+      onProgress: (attempt, message) => {
+        send({
+          type: "artifact_block_refinement_status",
+          requestId,
+          status: "progress",
+          message,
+          elapsedMs: Date.now() - startedAt,
+          attempt,
+        }, userId);
+      },
+      generate: async (messages, signal) =>
+        runQuietGeneration(spindle, {
+          messages,
+          connectionId: connection.id,
+          userId,
+          timeoutMs: settings.generationTimeoutSeconds * 1000,
+          parentSignal: signal,
+        }),
+    });
+    if (controller.signal.aborted) throw new DOMException("Block refinement cancelled.", "AbortError");
+    send({
+      type: "artifact_block_refinement_status",
+      requestId,
+      status: "completed",
+      message: result.repaired
+        ? "Block replacement validated after one repair pass."
+        : "Block replacement validated.",
+      elapsedMs: Date.now() - startedAt,
+      attempt: result.repaired ? 2 : 1,
+      artifact: result.artifact,
+      result: result.result,
+      issues: result.issues.slice(0, 8),
+    }, userId);
+  } catch (error) {
+    if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
+      send({
+        type: "artifact_block_refinement_status",
+        requestId,
+        status: "cancelled",
+        message: "Block refinement cancelled.",
+        elapsedMs: Date.now() - startedAt,
+        attempt: 1,
+      }, userId);
+      return;
+    }
+    send({
+      type: "artifact_block_refinement_status",
+      requestId,
+      status: "failed",
+      message: errorMessage(error),
+      elapsedMs: Date.now() - startedAt,
+      attempt: 1,
+      issues: [errorMessage(error)],
+    }, userId);
+  } finally {
+    if (jobs.get(jobKey)?.controller === controller) jobs.delete(jobKey);
+  }
+}
+
 function mergeInstalledModule(
   modules: LoomOSSettings["customModules"],
   artifact: ModuleCapsuleArtifact,
@@ -1204,6 +1305,28 @@ async function handleFrontendRequest(payload: unknown, userId: string): Promise<
         });
         return;
       case "cancel_artifact_generation":
+        abortJob(requestJobKey(userId, request.requestId));
+        return;
+      case "refine_artifact_block":
+        void refineArtifactBlockDraft(
+          request.requestId,
+          request.artifact,
+          request.target,
+          request.instruction,
+          userId,
+        ).catch((error) => {
+          send({
+            type: "artifact_block_refinement_status",
+            requestId: request.requestId,
+            status: "failed",
+            message: errorMessage(error),
+            elapsedMs: 0,
+            attempt: 1,
+            issues: [errorMessage(error)],
+          }, userId);
+        });
+        return;
+      case "cancel_artifact_block_refinement":
         abortJob(requestJobKey(userId, request.requestId));
         return;
       case "install_artifact": {

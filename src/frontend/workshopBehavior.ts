@@ -17,6 +17,7 @@ import {
   type ThemeArtifact,
 } from "../shared/artifacts";
 import type { FrontendRequest } from "../shared/protocol";
+import type { ArtifactBlockTarget } from "../shared/artifactBlocks";
 import { LoomOSSettingsSchema } from "../shared/schemas";
 import type {
   LoomOSSettings,
@@ -265,6 +266,7 @@ export function aiCreatorCurrentArtifact(
 }
 
 export type GenerateArtifactRequest = Extract<FrontendRequest, { type: "generate_artifact" }>;
+export type RefineArtifactBlockRequest = Extract<FrontendRequest, { type: "refine_artifact_block" }>;
 
 export function aiCreatorGenerateRequest(
   mode: AiCreatorMode,
@@ -279,6 +281,21 @@ export function aiCreatorGenerateRequest(
     kind: aiCreatorSelectedKind(mode, aiKind, workingArtifact),
     brief,
     currentArtifact: aiCreatorCurrentArtifact(mode, workingArtifact),
+  };
+}
+
+export function artifactBlockRefineRequest(
+  artifact: LoomOSArtifact,
+  target: ArtifactBlockTarget,
+  requestId: string,
+  instruction: string,
+): RefineArtifactBlockRequest {
+  return {
+    type: "refine_artifact_block",
+    requestId,
+    artifact,
+    target,
+    instruction,
   };
 }
 

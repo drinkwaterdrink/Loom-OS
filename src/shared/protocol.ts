@@ -14,6 +14,10 @@ import type {
   LoomOSArtifact,
   LoomPack,
 } from "./artifacts";
+import type {
+  ArtifactBlockRefinementResult,
+  ArtifactBlockTarget,
+} from "./artifactBlocks";
 
 export interface IdentityRequest {
   chatId: string;
@@ -50,6 +54,14 @@ export type FrontendRequest =
       currentArtifact?: LoomOSArtifact | null;
     }
   | { type: "cancel_artifact_generation"; requestId: string }
+  | {
+      type: "refine_artifact_block";
+      requestId: string;
+      artifact: LoomOSArtifact;
+      target: ArtifactBlockTarget;
+      instruction: string;
+    }
+  | { type: "cancel_artifact_block_refinement"; requestId: string }
   | {
       type: "install_artifact";
       requestId: string;
@@ -142,6 +154,17 @@ export type BackendResponse =
       elapsedMs: number;
       attempt: 1 | 2;
       artifact?: LoomOSArtifact;
+      issues?: string[];
+    }
+  | {
+      type: "artifact_block_refinement_status";
+      requestId: string;
+      status: "started" | "progress" | "completed" | "cancelled" | "failed";
+      message: string;
+      elapsedMs: number;
+      attempt: 1 | 2;
+      artifact?: LoomOSArtifact;
+      result?: ArtifactBlockRefinementResult;
       issues?: string[];
     }
   | {

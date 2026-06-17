@@ -1,13 +1,17 @@
 # LoomOS Command Deck
 
-Current release: **0.1.24**
+Current release: **0.1.25**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.24
+## Key Features & Upgrades in 0.1.25
 
+- **Phase 5 Block-Level AI Refinement**: Modules, Themes, Blueprints, Advanced Code sections, and visual-builder sections can now ask AI to refine one selected block without rewriting the whole artifact.
+- **Safe Apply/Discard Workflow**: Block refinements send bounded context, validate the returned replacement against the full artifact, show before/after preview, and only update the working draft after **Apply Block Change**.
+- **Precise Builder Shortcuts**: Advanced Code exposes **Refine this block** for each source section, while Module Builder and Theme Builder expose targeted actions for metadata, prompt/schema, sample data, design tokens, slots, HTML, and CSS.
+- **Bounded AI Security**: Block refinement preserves the existing sandbox/CSP, Developer Mode gating, no-remote-asset rules, design-token validation, schema validation, exact-swipe storage, compiler core, and restricted raw `renderedContent` behavior.
 - **Phase 4.2 AI Creator Modes**: AI Creator now clearly separates **Create New** from **Refine Selected**, so choosing an existing Theme no longer locks new drafts to Theme.
 - **Correct AI Kind Routing**: Create mode always uses the selected Module, Theme, or Blueprint type and sends no current artifact. Refine mode uses the selected artifact kind and includes that artifact for revision work.
 - **Creator Workflow Hardening**: External AI prompts, brief text, staged draft accept/preview/discard, and mobile tap targets now follow the active Creator mode predictably.
@@ -318,6 +322,10 @@ Theme slots are trimmed and deduplicated, manifest capabilities and minimum widt
 The built-in creator supports Module, Theme, and Blueprint jobs. A job uses the selected Lumiverse connection and the normal generation timeout. LoomOS sends the exact artifact contract, validates the result, and performs one repair generation if the first result is malformed. The draft remains separate until **Accept Draft**, after which it can be edited, saved, previewed, or installed.
 
 Phase 4.2 splits AI Creator into **Create New** and **Refine Selected** modes. Create New generates a separate Module, Theme, or Blueprint using the visible type selector, even when another artifact is selected in the Workshop. Refine Selected targets the currently selected artifact, includes it as context, and labels the action as a revision.
+
+Phase 5 adds block-level AI refinement beside the full-artifact AI Creator. Use **Refine this block** in Advanced Code, or the targeted buttons in Module Builder and Theme Builder, to update only one artifact slice such as a Module prompt, field schema, sample data, HTML/CSS, Theme design tokens, declared slots, or Blueprint module/theme/settings block. LoomOS sends the selected block plus bounded surrounding context, not the whole working artifact, and requires the model to return a strict JSON replacement for that path.
+
+Returned block changes are staged separately from full AI drafts. The drawer shows the target path, summary, warnings, changed paths, and Before/After views. **Preview** renders the validated staged artifact without saving it. **Apply Block Change** revalidates the replacement against the current working artifact and marks the artifact dirty for a later **Save Revision**. **Discard** leaves the working artifact untouched. If a model returns a whole artifact during a block request, LoomOS extracts only the selected block when safe and ignores unrelated fields.
 
 **Copy External AI Prompt** produces a self-contained builder prompt for ChatGPT or another coding model. Give that model your design request, then paste the returned JSON into Import. This is the fastest way to create a deeply customized tracker without manually filling every field.
 

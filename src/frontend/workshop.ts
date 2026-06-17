@@ -59,6 +59,7 @@ import {
 } from "./render";
 import {
   WORKSHOP_NAV,
+  artifactBlockRefineRequest,
   aiCreatorCurrentArtifact,
   aiCreatorGenerateRequest,
   aiCreatorSelectedKind,
@@ -84,6 +85,13 @@ import {
   type WidgetControlPatch,
   type WorkshopView,
 } from "./workshopBehavior";
+import {
+  applyArtifactBlockReplacement,
+  enumerateArtifactBlockTargets,
+  findArtifactBlockTarget,
+  type ArtifactBlockRefinementResult,
+  type ArtifactBlockTarget,
+} from "../shared/artifactBlocks";
 
 type PreviewSize = "mobile" | "tablet" | "desktop";
 
@@ -339,6 +347,14 @@ export function openCreatorWorkshop(
   let generationStatus = "";
   let generationStartedAt = 0;
   let generationElapsedMs = 0;
+  let blockRefineRequestId: string | null = null;
+  let blockRefineTarget: ArtifactBlockTarget | null = null;
+  let blockRefineInstruction = "";
+  let blockRefineStatus = "";
+  let stagedBlockRefinement: {
+    artifact: LoomOSArtifact;
+    result: ArtifactBlockRefinementResult;
+  } | null = null;
   let aiKind: LoomOSArtifact["kind"] = "module";
   let aiMode: AiCreatorMode = workingArtifact ? "refine" : "create";
   let aiBrief = "";
@@ -378,6 +394,80 @@ export function openCreatorWorkshop(
       }).join(" ");
     }
     return error instanceof Error ? error.message : String(error);
+  }
+
+  function blockTargets(): ArtifactBlockTarget[] {
+    return workingArtifact ? enumerateArtifactBlockTargets(workingArtifact) : [];
+  }
+
+  function refreshBlockTarget(path: string | null | undefined = blockRefineTarget?.path): ArtifactBlockTarget | null {
+    if (!workingArtifact || !path) return null;
+    return findArtifactBlockTarget(workingArtifact, path);
+  }
+
+  function blockRefineButton(path: string, label = "Refine with AI"): string {
+    return `<button type="button" class="loomos-button loomos-button-ai loomos-btn-sm" data-workshop-action="open-block-refine" data-block-path="${escapeHtml(path)}">${escapeHtml(label)}</button>`;
+  }
+
+  function blockValueText(value: unknown, language: ArtifactBlockTarget["language"] = "json"): string {
+    if (language === "json") return JSON.stringify(value, null, 2);
+    return String(value ?? "");
+  }
+
+  function blockRefinePanelHtml(): string {
+    if (!workingArtifact || !blockRefineTarget) return "";
+    const currentTarget = refreshBlockTarget(blockRefineTarget.path) ?? blockRefineTarget;
+    const targets = blockTargets();
+    const proposed = stagedBlockRefinement?.result.replacementValue;
+    const beforeText = blockValueText(currentTarget.currentValue, currentTarget.language);
+    const afterText = stagedBlockRefinement
+      ? blockValueText(proposed, currentTarget.language)
+      : "";
+    return `
+      <section class="loomos-block-refine" role="region" aria-label="Block-level AI refinement">
+        <div class="loomos-block-refine-heading">
+          <div>
+            <span class="loomos-kicker">Block AI refinement</span>
+            <h3>Refine ${escapeHtml(currentTarget.label)}</h3>
+            <p>Only <code>${escapeHtml(currentTarget.path)}</code> is eligible to change. Apply keeps this as an unsaved Workshop draft.</p>
+          </div>
+          <button type="button" class="loomos-button" data-workshop-action="close-block-refine">Close</button>
+        </div>
+        <label class="loomos-field">
+          <span>Target block</span>
+          <select class="loomos-select" data-block-target-select>
+            ${targets.map((target) => `<option value="${escapeHtml(target.path)}"${target.path === currentTarget.path ? " selected" : ""}>${escapeHtml(target.label)} (${escapeHtml(target.path)})</option>`).join("")}
+          </select>
+        </label>
+        <label class="loomos-field">
+          <span>Instruction</span>
+          <textarea class="loomos-input loomos-block-refine-instruction" data-block-refine-instruction placeholder="Ask AI to rewrite only this block.">${escapeHtml(blockRefineInstruction)}</textarea>
+        </label>
+        <div class="loomos-workshop-actions loomos-block-refine-actions">
+          ${blockRefineRequestId
+            ? `<button type="button" class="loomos-button loomos-button-danger" data-workshop-action="cancel-block-refine">Stop</button>`
+            : `<button type="button" class="loomos-button loomos-button-primary" data-workshop-action="start-block-refine">Refine this block</button>`
+          }
+          <span class="loomos-workshop-live-status">${escapeHtml(blockRefineStatus || "No library save happens until you apply and Save Revision.")}</span>
+        </div>
+        ${stagedBlockRefinement ? `
+          <div class="loomos-block-diff">
+            <div class="loomos-block-diff-summary">
+              <strong>${escapeHtml(stagedBlockRefinement.result.summary)}</strong>
+              <span>Changed: ${stagedBlockRefinement.result.changedPaths.map(escapeHtml).join(", ") || escapeHtml(currentTarget.path)}</span>
+              ${stagedBlockRefinement.result.warnings.length ? `<small>${stagedBlockRefinement.result.warnings.map(escapeHtml).join(" ")}</small>` : ""}
+            </div>
+            <details open><summary>Before</summary><pre>${escapeHtml(beforeText)}</pre></details>
+            <details open><summary>After</summary><pre>${escapeHtml(afterText)}</pre></details>
+            <div class="loomos-workshop-actions loomos-block-apply-row">
+              <button type="button" class="loomos-button" data-workshop-action="preview-block-refine">Preview</button>
+              <button type="button" class="loomos-button loomos-button-primary" data-workshop-action="apply-block-refine">Apply Block Change</button>
+              <button type="button" class="loomos-button loomos-button-danger" data-workshop-action="discard-block-refine">Discard</button>
+              <button type="button" class="loomos-button" data-workshop-action="open-advanced-code">Open in Advanced Code</button>
+            </div>
+          </div>
+        ` : ""}
+      </section>`;
   }
 
   function showVisualError(message: string): void {
@@ -528,6 +618,9 @@ export function openCreatorWorkshop(
     workingArtifact = cloneArtifact(artifact);
     originalArtifact = cloneArtifact(artifact);
     stagedArtifact = null;
+    stagedBlockRefinement = null;
+    blockRefineTarget = null;
+    blockRefineStatus = "";
     codeSection = codeSections(artifact)[0]?.id ?? "meta";
     codeError = "";
     visualError = "";
@@ -799,9 +892,13 @@ export function openCreatorWorkshop(
         </div>
         <nav class="loomos-code-files" aria-label="Artifact files">
           ${sections.map((section) => `
-            <button type="button" data-workshop-action="code-section" data-code-section="${section.id}" class="${codeSection === section.id ? "active" : ""}">${escapeHtml(section.label)}</button>
+            <div class="loomos-code-file-row">
+              <button type="button" data-workshop-action="code-section" data-code-section="${section.id}" class="${codeSection === section.id ? "active" : ""}">${escapeHtml(section.label)}</button>
+              ${blockRefineButton(section.id === "sample" ? "sampleData" : section.id === "html" || section.id === "css" || section.id === "javascript" || section.id === "partials" ? `view.${section.id}` : section.id, "AI")}
+            </div>
           `).join("")}
         </nav>
+        ${blockRefineButton(codeSection === "sample" ? "sampleData" : codeSection === "html" || codeSection === "css" || codeSection === "javascript" || codeSection === "partials" ? `view.${codeSection}` : codeSection, "Refine this block")}
         <div class="loomos-code-editor-host" data-code-editor></div>
         <p class="loomos-dialog-error" data-code-error role="alert">${escapeHtml(codeError)}</p>
         <div class="loomos-workshop-actions">
@@ -867,6 +964,11 @@ export function openCreatorWorkshop(
         <p class="loomos-dialog-error" data-visual-error role="alert">${escapeHtml(visualError)}</p>
         <details open class="loomos-builder-section">
           <summary><strong>Identity and purpose</strong><span>Names, ownership, and compiler intent</span></summary>
+          <div class="loomos-builder-ai-actions">
+            ${blockRefineButton("meta", "Refine metadata")}
+            ${blockRefineButton("visual", "Refine tracking purpose")}
+            ${blockRefineButton("prompt", "Refine prompt")}
+          </div>
           <div class="loomos-visual-form-grid">
             <label><span>Name</span><input class="loomos-input" data-visual-input="name" value="${escapeHtml(module.meta.name)}"></label>
             <label><span>Author</span><input class="loomos-input" data-visual-input="author" value="${escapeHtml(module.meta.author)}"></label>
@@ -880,6 +982,10 @@ export function openCreatorWorkshop(
         </details>
         <details open class="loomos-builder-section">
           <summary><strong>Defaults and placement</strong><span>Install recommendations</span></summary>
+          <div class="loomos-builder-ai-actions">
+            ${blockRefineButton("defaults", "Refine defaults")}
+            ${blockRefineButton("visual", "Refine visual metadata")}
+          </div>
           <div class="loomos-visual-form-grid">
             <label class="loomos-widget-switch"><input type="checkbox" data-visual-input="track"${module.defaults.track ? " checked" : ""}><span>Track</span></label>
             <label class="loomos-widget-switch"><input type="checkbox" data-visual-input="display"${module.defaults.display ? " checked" : ""}><span>Display</span></label>
@@ -894,6 +1000,10 @@ export function openCreatorWorkshop(
         </details>
         <details open class="loomos-builder-section">
           <summary><strong>Field Builder</strong><span>${parsed.mode === "visual" ? `${parsed.fields.length} visual fields` : "Advanced schema required"}</span></summary>
+          <div class="loomos-builder-ai-actions">
+            ${blockRefineButton("schema", "Refine field schema")}
+            ${blockRefineButton("fieldBuilder.fields", "Refine fields")}
+          </div>
           ${parsed.mode === "advanced" ? `<div class="loomos-inline-warning"><strong>Advanced schema required.</strong> ${escapeHtml(parsed.reason)} The existing schema is preserved until edited in Advanced Code.</div>` : `
             <div class="loomos-workshop-actions"><button type="button" class="loomos-button loomos-button-primary" data-workshop-action="add-field">Add field</button></div>
             <div class="loomos-visual-field-list">${parsed.fields.map(visualFieldCard).join("")}</div>
@@ -902,6 +1012,11 @@ export function openCreatorWorkshop(
         </details>
         <details class="loomos-builder-section">
           <summary><strong>Sample data and presentation</strong><span>Preview content and optional custom HTML/CSS</span></summary>
+          <div class="loomos-builder-ai-actions">
+            ${blockRefineButton("sampleData", "Refine sample data")}
+            ${blockRefineButton("view.html", "Refine module HTML")}
+            ${blockRefineButton("view.css", "Refine module CSS")}
+          </div>
           <label class="loomos-field"><span>Sample data JSON</span><textarea class="loomos-input loomos-portable-json" data-visual-input="sampleData">${escapeHtml(JSON.stringify(module.sampleData, null, 2))}</textarea></label>
           <div class="loomos-module-builder-preview">
             <article>
@@ -1020,6 +1135,11 @@ export function openCreatorWorkshop(
         <p class="loomos-dialog-error" data-visual-error role="alert">${escapeHtml(visualError)}</p>
         <details open class="loomos-builder-section">
           <summary><strong>Theme identity</strong><span>Metadata and runtime manifest</span></summary>
+          <div class="loomos-builder-ai-actions">
+            ${blockRefineButton("meta", "Refine metadata")}
+            ${blockRefineButton("manifest", "Refine manifest")}
+            ${blockRefineButton("manifest.slots", "Refine declared slots")}
+          </div>
           <div class="loomos-visual-form-grid">
             <label><span>Name</span><input class="loomos-input" data-visual-input="name" value="${escapeHtml(theme.meta.name)}"></label>
             <label><span>Author</span><input class="loomos-input" data-visual-input="author" value="${escapeHtml(theme.meta.author)}"></label>
@@ -1035,6 +1155,9 @@ export function openCreatorWorkshop(
         </details>
         <details open class="loomos-builder-section">
           <summary><strong>Design system</strong><span>Safe structured visual choices</span></summary>
+          <div class="loomos-builder-ai-actions">
+            ${blockRefineButton("design.style", "Refine typography/style")}
+          </div>
           <div class="loomos-visual-form-grid">
             ${([
               ["typography", design.typography, ["system", "editorial", "compact", "technical"]],
@@ -1051,6 +1174,12 @@ export function openCreatorWorkshop(
         </details>
         <details open class="loomos-builder-section">
           <summary><strong>Design Tokens</strong><span>Local CSS variables only; no remote assets or URL values</span></summary>
+          <div class="loomos-builder-ai-actions">
+            ${blockRefineButton("design.tokens", "Refine design tokens")}
+            ${blockRefineButton("view.html", "Refine theme HTML")}
+            ${blockRefineButton("view.css", "Refine theme CSS")}
+            ${blockRefineButton("sampleData", "Refine sample data")}
+          </div>
           <div class="loomos-token-grid">${tokenLabels.map(([key, label]) => `<label><span>${label}</span><input class="loomos-input" data-design-token="${key}" value="${escapeHtml(design.tokens[key])}"></label>`).join("")}</div>
         </details>
       </section>`;
@@ -1107,6 +1236,7 @@ export function openCreatorWorkshop(
   }
 
   function previewArtifact(): LoomOSArtifact | null {
+    if (stagedBlockRefinement) return stagedBlockRefinement.artifact;
     if (stagedArtifact) return stagedArtifact;
     if (workingArtifact) return workingArtifact;
     return activeThemeRecord()?.artifact ?? null;
@@ -1726,6 +1856,7 @@ export function openCreatorWorkshop(
           ${leftRailHtml()}
           <main class="loomos-workshop-center">
             ${viewHtml()}
+            ${blockRefinePanelHtml()}
           </main>
           ${rightPreviewHtml()}
         </div>
@@ -2411,6 +2542,111 @@ export function openCreatorWorkshop(
       render();
       return;
     }
+    if (action === "open-block-refine") {
+      if (!workingArtifact) return;
+      if (activeView === "advanced-code") {
+        if (!commitCodeDraft()) {
+          blockRefineStatus = `Current block is invalid: ${codeError}`;
+          render();
+          return;
+        }
+      } else if ((activeView === "modules" || activeView === "theme") && !applyVisualBuilderFromDOM()) {
+        blockRefineStatus = `Current visual draft is invalid: ${visualError}`;
+        render();
+        return;
+      }
+      const target = findArtifactBlockTarget(workingArtifact, button.dataset.blockPath ?? "");
+      if (!target) {
+        blockRefineStatus = "That block cannot be refined for the selected artifact.";
+        render();
+        return;
+      }
+      blockRefineTarget = target;
+      stagedBlockRefinement = null;
+      blockRefineStatus = "";
+      render();
+      return;
+    }
+    if (action === "close-block-refine") {
+      blockRefineTarget = null;
+      blockRefineStatus = "";
+      render();
+      return;
+    }
+    if (action === "start-block-refine" && workingArtifact && blockRefineTarget) {
+      blockRefineInstruction = modal.root.querySelector<HTMLTextAreaElement>("[data-block-refine-instruction]")?.value ?? blockRefineInstruction;
+      if (!blockRefineInstruction.trim()) {
+        blockRefineStatus = "Describe the block change first.";
+        render();
+        return;
+      }
+      if (activeView === "advanced-code") {
+        if (!commitCodeDraft()) {
+          blockRefineStatus = `Current block is invalid: ${codeError}`;
+          render();
+          return;
+        }
+      } else if ((activeView === "modules" || activeView === "theme") && !applyVisualBuilderFromDOM()) {
+        blockRefineStatus = `Current visual draft is invalid: ${visualError}`;
+        render();
+        return;
+      }
+      const freshTarget = refreshBlockTarget(blockRefineTarget.path);
+      if (!freshTarget) {
+        blockRefineStatus = "The selected block is no longer available.";
+        render();
+        return;
+      }
+      blockRefineTarget = freshTarget;
+      blockRefineRequestId = options.requestId("artifact-block-refine");
+      blockRefineStatus = "Starting block refinement";
+      stagedBlockRefinement = null;
+      options.send(artifactBlockRefineRequest(
+        workingArtifact,
+        freshTarget,
+        blockRefineRequestId,
+        blockRefineInstruction.trim(),
+      ));
+      render();
+      return;
+    }
+    if (action === "cancel-block-refine" && blockRefineRequestId) {
+      options.send({ type: "cancel_artifact_block_refinement", requestId: blockRefineRequestId });
+      return;
+    }
+    if (action === "discard-block-refine") {
+      stagedBlockRefinement = null;
+      blockRefineStatus = "Block refinement discarded.";
+      render();
+      return;
+    }
+    if (action === "preview-block-refine" && stagedBlockRefinement) {
+      activeView = "test-lab";
+      render();
+      return;
+    }
+    if (action === "apply-block-refine" && workingArtifact && stagedBlockRefinement) {
+      try {
+        const replacement = stagedBlockRefinement.result.replacementValue;
+        const appliedPath = stagedBlockRefinement.result.target.path;
+        const applied = replacement === undefined
+          ? { artifact: LoomOSArtifactSchema.parse(stagedBlockRefinement.artifact) }
+          : applyArtifactBlockReplacement(workingArtifact, stagedBlockRefinement.result.target, replacement);
+        workingArtifact = LoomOSArtifactSchema.parse(applied.artifact);
+        stagedBlockRefinement = null;
+        codeDirty = true;
+        visualDraftValid = true;
+        visualError = "";
+        codeError = "Block change applied. Save Revision when ready.";
+        blockRefineStatus = "Block change applied as an unsaved draft.";
+        blockRefineTarget = refreshBlockTarget(appliedPath);
+        render();
+      } catch (error) {
+        blockRefineStatus = `Could not apply block: ${readableError(error)}`;
+        render();
+      }
+      return;
+    }
     if (action === "add-field") {
       const root = modal.root.querySelector<HTMLElement>("[data-visual-builder='module']");
       const list = root?.querySelector<HTMLElement>(".loomos-visual-field-list");
@@ -2676,6 +2912,10 @@ export function openCreatorWorkshop(
       aiBrief = input.value;
       return;
     }
+    if (input?.matches("[data-block-refine-instruction]")) {
+      blockRefineInstruction = input.value;
+      return;
+    }
     if (input?.matches("[data-workshop-search]")) {
       packQuery = input.value;
       applyPackFilters();
@@ -2722,6 +2962,16 @@ export function openCreatorWorkshop(
       if (!prepareViewTransition()) return;
       activeView = (target as HTMLSelectElement).value as WorkshopView;
       render();
+      return;
+    }
+    if (target?.matches("[data-block-target-select]")) {
+      const selectedTarget = refreshBlockTarget((target as HTMLSelectElement).value);
+      if (selectedTarget) {
+        blockRefineTarget = selectedTarget;
+        stagedBlockRefinement = null;
+        blockRefineStatus = "";
+        render();
+      }
       return;
     }
     if (target?.matches("[data-pack-kind-filter]")) {
@@ -2813,6 +3063,24 @@ export function openCreatorWorkshop(
       else if (mobilePreviewOpen) syncMobilePreviewOverlay();
     },
     handleBackendResponse(response) {
+      if (response.type === "artifact_block_refinement_status") {
+        if (blockRefineRequestId && response.requestId !== blockRefineRequestId) return false;
+        blockRefineStatus = response.message;
+        if (response.status === "started" || response.status === "progress") {
+          if (!blockRefineRequestId) blockRefineRequestId = response.requestId;
+        } else {
+          blockRefineRequestId = null;
+          if (response.status === "completed" && response.artifact && response.result) {
+            stagedBlockRefinement = {
+              artifact: response.artifact,
+              result: response.result,
+            };
+            blockRefineTarget = refreshBlockTarget(response.result.target.path) ?? response.result.target;
+          }
+        }
+        render();
+        return true;
+      }
       if (response.type !== "artifact_generation_status") return false;
       if (generationRequestId && response.requestId !== generationRequestId) return false;
       generationStatus = response.message;

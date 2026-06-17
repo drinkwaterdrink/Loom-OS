@@ -7942,6 +7942,430 @@ Repair the malformed artifact. Satisfy every contract exactly and return only th
   }
 }
 
+// src/shared/artifactBlocks.ts
+var TEXT_SECURITY_RULES = [
+  "Do not introduce remote assets, URLs, network calls, eval, Function constructors, storage access, external scripts, or parent DOM access.",
+  "Return only the selected block replacement. Do not change unrelated artifact paths."
+];
+function cloneArtifact(artifact) {
+  return structuredClone(artifact);
+}
+function jsonTarget(artifact, path, label, currentValue, surroundingContext = {}) {
+  return {
+    artifactId: artifact.id,
+    kind: artifact.kind,
+    path,
+    label,
+    language: "json",
+    mode: "replace",
+    currentValue,
+    surroundingContext,
+    safetyRules: TEXT_SECURITY_RULES
+  };
+}
+function textTarget(artifact, path, label, language, currentValue, surroundingContext = {}) {
+  return {
+    artifactId: artifact.id,
+    kind: artifact.kind,
+    path,
+    label,
+    language,
+    mode: "replace",
+    currentValue,
+    surroundingContext,
+    safetyRules: TEXT_SECURITY_RULES
+  };
+}
+function moduleTargets(module) {
+  const properties = module.schema.properties ?? {};
+  return [
+    jsonTarget(module, "meta", "Metadata", module.meta, { artifactName: module.meta.name }),
+    jsonTarget(module, "schema", "Field schema", module.schema, {
+      required: module.schema.required ?? [],
+      propertyKeys: Object.keys(properties)
+    }),
+    textTarget(module, "prompt", "Tracking purpose / prompt", "text", module.prompt, {
+      schemaKeys: Object.keys(properties),
+      sampleKeys: module.sampleData && typeof module.sampleData === "object" ? Object.keys(module.sampleData) : []
+    }),
+    jsonTarget(module, "sampleData", "Sample data", module.sampleData, {
+      schemaKeys: Object.keys(properties)
+    }),
+    jsonTarget(module, "defaults", "Defaults", module.defaults, { group: module.defaults.group }),
+    jsonTarget(module, "visual", "Visual metadata", module.visual ?? {}, {
+      outputMode: module.visual?.outputMode ?? "cards"
+    }),
+    textTarget(module, "view.html", "Module HTML", "html", module.view.html, {
+      cssLength: module.view.css.length,
+      javascriptLength: module.view.javascript.length
+    }),
+    textTarget(module, "view.css", "Module CSS", "css", module.view.css, {
+      htmlLength: module.view.html.length
+    }),
+    textTarget(module, "view.javascript", "Module JavaScript", "javascript", module.view.javascript, {
+      developerNote: "Module JavaScript is isolated and optional."
+    }),
+    jsonTarget(module, "view.partials", "Module partials", module.view.partials, {
+      partialNames: Object.keys(module.view.partials)
+    }),
+    jsonTarget(module, "fieldBuilder.fields", "Field Builder fields", properties, {
+      required: module.schema.required ?? []
+    }),
+    ...Object.entries(properties).map(
+      ([key, value]) => jsonTarget(module, `schema.properties.${key}`, `Field definition: ${key}`, value, {
+        required: module.schema.required?.includes(key) ?? false
+      })
+    )
+  ];
+}
+function themeTargets(theme) {
+  const design = ThemeDesignSchema.parse(theme.design ?? {});
+  return [
+    jsonTarget(theme, "meta", "Metadata", theme.meta, { artifactName: theme.meta.name }),
+    jsonTarget(theme, "manifest", "Manifest", theme.manifest, {
+      slots: theme.manifest.slots ?? [],
+      capabilities: theme.manifest.capabilities
+    }),
+    jsonTarget(theme, "design.tokens", "Design tokens", design.tokens, {
+      tokenNames: Object.keys(design.tokens)
+    }),
+    jsonTarget(theme, "design.style", "Design style settings", {
+      typography: design.typography,
+      backgroundStyle: design.backgroundStyle,
+      panelStyle: design.panelStyle,
+      borderStyle: design.borderStyle,
+      density: design.density,
+      headerStyle: design.headerStyle,
+      widgetStyle: design.widgetStyle,
+      mobileNotes: design.mobileNotes,
+      previewSurface: design.previewSurface
+    }, {
+      tokenNames: Object.keys(design.tokens)
+    }),
+    textTarget(theme, "view.html", "Theme HTML", "html", theme.view.html, {
+      slots: theme.manifest.slots ?? [],
+      partialNames: Object.keys(theme.view.partials)
+    }),
+    textTarget(theme, "view.css", "Theme CSS", "css", theme.view.css, {
+      tokenNames: Object.keys(design.tokens)
+    }),
+    textTarget(theme, "view.javascript", "Theme JavaScript", "javascript", theme.view.javascript, {
+      developerMode: theme.manifest.developerMode
+    }),
+    jsonTarget(theme, "view.partials", "Theme partials", theme.view.partials, {
+      partialNames: Object.keys(theme.view.partials)
+    }),
+    jsonTarget(theme, "sampleData", "Sample data", theme.sampleData, {}),
+    jsonTarget(theme, "manifest.slots", "Declared slots", theme.manifest.slots ?? [], {}),
+    ...(theme.manifest.slots ?? []).map(
+      (slot) => textTarget(theme, `manifest.slots.${slot}`, `Slot section: ${slot}`, "text", slot, {
+        declaredSlots: theme.manifest.slots ?? []
+      })
+    )
+  ];
+}
+function blueprintTargets(blueprint) {
+  return [
+    jsonTarget(blueprint, "meta", "Metadata", blueprint.meta, { artifactName: blueprint.meta.name }),
+    jsonTarget(blueprint, "settings", "Recommended settings", blueprint.settings, {}),
+    jsonTarget(blueprint, "modules", "Module list", blueprint.modules, {
+      moduleIds: blueprint.modules.map((module) => module.id)
+    }),
+    jsonTarget(blueprint, "theme", "Embedded theme", blueprint.theme, {
+      themeId: blueprint.theme?.id ?? null
+    }),
+    ...blueprint.modules.map(
+      (module) => jsonTarget(blueprint, `modules.${module.id}`, `Embedded module: ${module.meta.name}`, module, {
+        moduleIds: blueprint.modules.map((candidate) => candidate.id)
+      })
+    )
+  ];
+}
+function enumerateArtifactBlockTargets(artifact) {
+  if (artifact.kind === "module") return moduleTargets(artifact);
+  if (artifact.kind === "theme") return themeTargets(artifact);
+  return blueprintTargets(artifact);
+}
+function findArtifactBlockTarget(artifact, path) {
+  return enumerateArtifactBlockTargets(artifact).find((target) => target.path === path) ?? null;
+}
+function getBlockValue(artifact, path) {
+  return enumerateArtifactBlockTargets(artifact).find((target) => target.path === path)?.currentValue;
+}
+function assertTargetMatches(artifact, target) {
+  if (artifact.id !== target.artifactId) {
+    throw new Error(`Block target artifact "${target.artifactId}" does not match "${artifact.id}".`);
+  }
+  if (artifact.kind !== target.kind) {
+    throw new Error(`Block target kind "${target.kind}" does not match "${artifact.kind}".`);
+  }
+  if (!findArtifactBlockTarget(artifact, target.path)) {
+    throw new Error(`Block target path "${target.path}" is not available for ${artifact.kind} artifacts.`);
+  }
+}
+function applyToModule(artifact, path, replacement) {
+  const next = cloneArtifact(artifact);
+  if (path === "meta") next.meta = replacement;
+  else if (path === "schema") next.schema = replacement;
+  else if (path === "prompt") next.prompt = String(replacement);
+  else if (path === "sampleData") next.sampleData = replacement;
+  else if (path === "defaults") next.defaults = replacement;
+  else if (path === "visual") next.visual = replacement;
+  else if (path === "view.html") next.view.html = String(replacement);
+  else if (path === "view.css") next.view.css = String(replacement);
+  else if (path === "view.javascript") next.view.javascript = String(replacement);
+  else if (path === "view.partials") next.view.partials = replacement;
+  else if (path === "fieldBuilder.fields") {
+    next.schema = {
+      ...next.schema,
+      type: "object",
+      properties: replacement
+    };
+  } else if (path.startsWith("schema.properties.")) {
+    const key = path.slice("schema.properties.".length);
+    next.schema = {
+      ...next.schema,
+      type: "object",
+      properties: {
+        ...next.schema.properties ?? {},
+        [key]: replacement
+      }
+    };
+  } else {
+    throw new Error(`Unsupported Module block path "${path}".`);
+  }
+  if (path === "schema" || path === "fieldBuilder.fields" || path.startsWith("schema.properties.")) {
+    const diagnostics = validateJsonSchemaSubset(next.schema);
+    if (diagnostics.length) throw new Error(diagnostics.map((issue) => `${issue.path}: ${issue.message}`).join(" "));
+  }
+  return ModuleCapsuleArtifactSchema.parse({ ...next, updatedAt: (/* @__PURE__ */ new Date()).toISOString() });
+}
+function applyToTheme(artifact, path, replacement) {
+  const next = cloneArtifact(artifact);
+  const design = ThemeDesignSchema.parse(next.design ?? {});
+  if (path === "meta") next.meta = replacement;
+  else if (path === "manifest") next.manifest = replacement;
+  else if (path === "design.tokens") next.design = { ...design, tokens: replacement };
+  else if (path === "design.style") next.design = { ...design, ...replacement };
+  else if (path === "view.html") next.view.html = String(replacement);
+  else if (path === "view.css") next.view.css = String(replacement);
+  else if (path === "view.javascript") next.view.javascript = String(replacement);
+  else if (path === "view.partials") next.view.partials = replacement;
+  else if (path === "sampleData") next.sampleData = replacement;
+  else if (path === "manifest.slots") next.manifest.slots = replacement;
+  else if (path.startsWith("manifest.slots.")) {
+    const previous = path.slice("manifest.slots.".length);
+    const value = String(replacement).trim();
+    next.manifest.slots = (next.manifest.slots ?? []).map((slot) => slot === previous ? value : slot);
+  } else {
+    throw new Error(`Unsupported Theme block path "${path}".`);
+  }
+  return ThemeArtifactSchema.parse({ ...next, updatedAt: (/* @__PURE__ */ new Date()).toISOString() });
+}
+function applyToBlueprint(artifact, path, replacement) {
+  const next = cloneArtifact(artifact);
+  if (path === "meta") next.meta = replacement;
+  else if (path === "settings") next.settings = replacement;
+  else if (path === "modules") next.modules = replacement;
+  else if (path === "theme") next.theme = replacement;
+  else if (path.startsWith("modules.")) {
+    const moduleId = path.slice("modules.".length);
+    const module = ModuleCapsuleArtifactSchema.parse(replacement);
+    next.modules = next.modules.map((candidate) => candidate.id === moduleId ? module : candidate);
+  } else {
+    throw new Error(`Unsupported Blueprint block path "${path}".`);
+  }
+  return BlueprintArtifactSchema.parse({ ...next, updatedAt: (/* @__PURE__ */ new Date()).toISOString() });
+}
+function applyArtifactBlockReplacement(artifact, target, replacement) {
+  assertTargetMatches(artifact, target);
+  const next = artifact.kind === "module" ? applyToModule(artifact, target.path, replacement) : artifact.kind === "theme" ? applyToTheme(artifact, target.path, replacement) : applyToBlueprint(artifact, target.path, replacement);
+  return {
+    artifact: next,
+    result: {
+      target,
+      replacementValue: replacement,
+      summary: `Prepared replacement for ${target.label}.`,
+      warnings: [],
+      changedPaths: [target.path],
+      repaired: false,
+      issues: []
+    }
+  };
+}
+function isRecord4(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function pathAllowedForTarget(path, targetPath) {
+  return path === targetPath || path.startsWith(`${targetPath}.`);
+}
+function boundedBlockContext(artifact, target) {
+  return {
+    artifactId: artifact.id,
+    kind: artifact.kind,
+    name: artifact.meta.name,
+    target: {
+      path: target.path,
+      label: target.label,
+      language: target.language,
+      mode: target.mode,
+      currentValue: target.currentValue
+    },
+    surroundingContext: target.surroundingContext ?? {},
+    availableSiblingPaths: enumerateArtifactBlockTargets(artifact).map((candidate) => candidate.path).filter((path) => path !== target.path).slice(0, 20)
+  };
+}
+function parseArtifactBlockRefinementText(raw, artifact, target, repaired = false) {
+  const value = extractJsonText(raw);
+  let payload = value;
+  let summary = "Block refinement prepared.";
+  let warnings = [];
+  let changedPaths = [target.path];
+  if (isRecord4(value) && value.target && value.replacementValue !== void 0) {
+    const outputTarget = isRecord4(value.target) ? value.target : {};
+    const outputPath = String(outputTarget.path ?? target.path);
+    if (outputPath !== target.path) {
+      throw new Error(`Model returned target path "${outputPath}" but "${target.path}" was requested.`);
+    }
+    const outputChangedPaths = Array.isArray(value.changedPaths) ? value.changedPaths.map(String) : [target.path];
+    const unrelated = outputChangedPaths.filter((path) => !pathAllowedForTarget(path, target.path));
+    if (unrelated.length) {
+      throw new Error(`Model attempted to change unrelated paths: ${unrelated.join(", ")}.`);
+    }
+    payload = value.replacementValue;
+    summary = typeof value.summary === "string" ? value.summary : summary;
+    warnings = Array.isArray(value.warnings) ? value.warnings.map(String).slice(0, 8) : [];
+    changedPaths = outputChangedPaths.length ? outputChangedPaths : [target.path];
+  } else if (isRecord4(value) && value.format === "loomos-artifact") {
+    const fullArtifact = LoomOSArtifactSchema.parse(value);
+    if (fullArtifact.id !== artifact.id || fullArtifact.kind !== artifact.kind) {
+      throw new Error("Full-artifact block output did not match the selected artifact.");
+    }
+    payload = getBlockValue(fullArtifact, target.path);
+    if (payload === void 0) throw new Error(`Could not extract "${target.path}" from full artifact output.`);
+    summary = "Model returned a full artifact; only the requested block was extracted.";
+    warnings = ["Full artifact output was bounded to the selected block."];
+  }
+  const applied = applyArtifactBlockReplacement(artifact, target, payload);
+  return {
+    artifact: applied.artifact,
+    result: {
+      ...applied.result,
+      summary,
+      warnings,
+      changedPaths,
+      repaired
+    }
+  };
+}
+
+// src/backend/artifactBlockRefinement.ts
+function artifactBlockContract(artifact, target) {
+  const common = `Artifact contract:
+- format is "${ARTIFACT_FORMAT}", version is ${ARTIFACT_VERSION}
+- selected artifact kind is "${artifact.kind}" and id is "${artifact.id}"
+- selected block path is "${target.path}"
+- selected block language is "${target.language}"
+- output must be strict JSON with target.path, replacementValue, summary, warnings, changedPaths, repaired, and issues
+- changedPaths must contain only "${target.path}" or child paths under it
+- do not rewrite unrelated fields or return commentary outside JSON`;
+  if (artifact.kind === "module") {
+    return `${common}
+Module blocks must preserve the v2 Module Capsule contract. Schema replacements must remain in the allowed JSON Schema subset. Prompt replacements must request semantic story state only. HTML, CSS, JavaScript, and partials must not include remote assets, network calls, eval, Function constructors, storage access, parent DOM access, or external scripts.`;
+  }
+  if (artifact.kind === "theme") {
+    return `${common}
+Theme blocks must preserve ViewerModelV${VIEWER_MODEL_VERSION} compatibility. Design token replacements must use local safe token values only. Theme JavaScript remains optional and gated by Developer Mode; never add network, storage, parent DOM, eval, Function constructors, or external assets.`;
+  }
+  return `${common}
+Blueprint blocks must preserve embedded Module and Theme v2 contracts. Do not alter embedded artifacts outside the selected Blueprint block.`;
+}
+function systemPrompt2(artifact, target) {
+  return `You are the LoomOS Creator Workshop block-refinement engineer.
+Return exactly one JSON object and no Markdown fences.
+Change only the selected block. The backend will apply only that block and validate the full artifact afterward.
+If the user asks for unrelated changes, keep them as warnings instead of changing other paths.
+
+Security rules:
+- no remote assets, URLs, network calls, eval, Function constructors, storage access, parent DOM access, external scripts, or Spindle APIs
+- do not weaken sandbox, CSP, Developer Mode gating, exact-swipe storage, compiler behavior, or restricted raw renderedContent behavior
+- keep outputs bounded to the selected block
+
+${artifactBlockContract(artifact, target)}
+
+Expected JSON shape:
+{
+  "target": { "artifactId": "${artifact.id}", "kind": "${artifact.kind}", "path": "${target.path}" },
+  "replacementValue": <${target.language === "json" ? "JSON value" : "string"}>,
+  "summary": "short user-facing summary",
+  "warnings": [],
+  "changedPaths": ["${target.path}"],
+  "repaired": false,
+  "issues": []
+}`;
+}
+function userPrompt2(request) {
+  return [
+    "USER INSTRUCTION:",
+    request.instruction.trim(),
+    "",
+    "BOUNDED BLOCK CONTEXT:",
+    JSON.stringify(boundedBlockContext(request.artifact, request.target), null, 2)
+  ].join("\n");
+}
+function buildArtifactBlockRefinementMessages(request) {
+  return [
+    { role: "system", content: systemPrompt2(request.artifact, request.target) },
+    { role: "user", content: userPrompt2(request) }
+  ];
+}
+async function refineArtifactBlockWithRepair(request) {
+  if (!request.instruction.trim()) throw new Error("Describe the block change you want AI to make.");
+  request.onProgress?.(1, `Refining ${request.target.label}.`);
+  const messages = buildArtifactBlockRefinementMessages(request);
+  const firstRaw = await request.generate(messages, request.signal, 1);
+  try {
+    const applied = parseArtifactBlockRefinementText(firstRaw, request.artifact, request.target, false);
+    return { ...applied, repaired: false, issues: applied.result.issues };
+  } catch (error) {
+    const issue = error instanceof Error ? error.message : String(error);
+    request.onProgress?.(2, `Repairing block output: ${issue.split("\n")[0] ?? "invalid output"}`);
+    const repairMessages = [
+      {
+        role: "system",
+        content: `${systemPrompt2(request.artifact, request.target)}
+
+Repair the malformed block result. Return only the strict JSON object for target path "${request.target.path}".`
+      },
+      {
+        role: "user",
+        content: [
+          "VALIDATION FAILURE:",
+          issue.slice(0, 6e3),
+          "",
+          "MALFORMED OUTPUT:",
+          firstRaw.slice(0, 8e4),
+          "",
+          "BOUNDED BLOCK CONTEXT:",
+          JSON.stringify(boundedBlockContext(request.artifact, request.target), null, 2)
+        ].join("\n")
+      }
+    ];
+    const repairedRaw = await request.generate(repairMessages, request.signal, 2);
+    const applied = parseArtifactBlockRefinementText(repairedRaw, request.artifact, request.target, true);
+    return {
+      ...applied,
+      result: {
+        ...applied.result,
+        repaired: true,
+        issues: [issue, ...applied.result.issues]
+      },
+      repaired: true,
+      issues: [issue]
+    };
+  }
+}
+
 // src/backend/artifactStorage.ts
 async function loadArtifactLibrary(spindle2, userId) {
   const raw = await spindle2.userStorage.getJson(ARTIFACT_LIBRARY_PATH, {
@@ -8498,7 +8922,7 @@ var automaticGenerationKeys = /* @__PURE__ */ new Set();
 var interceptorRegistered = false;
 var interceptorEnabled = spindle.permissions.has("interceptor");
 var disposed = false;
-function isRecord4(value) {
+function isRecord5(value) {
   return typeof value === "object" && value !== null;
 }
 function errorMessage(error) {
@@ -8544,7 +8968,7 @@ async function getSettings(userId) {
   });
   const parsed = LoomOSSettingsSchema.safeParse(raw);
   if (parsed.success) {
-    if (!isRecord4(raw) || raw.schemaVersion !== 2) {
+    if (!isRecord5(raw) || raw.schemaVersion !== 2) {
       await spindle.userStorage.setJson(SETTINGS_PATH, parsed.data, {
         indent: 2,
         userId
@@ -8598,7 +9022,7 @@ async function loadState(identity, userId) {
     spindle.log.warn("Ignored a LoomOS state file with mismatched identity.");
     return null;
   }
-  if (isRecord4(raw) && raw.schemaVersion === 1) {
+  if (isRecord5(raw) && raw.schemaVersion === 1) {
     await spindle.userStorage.setJson(path, state, { indent: 2, userId });
   }
   return state;
@@ -9078,6 +9502,92 @@ async function generateArtifactDraft(requestId, kind, brief, currentArtifact, us
     if (jobs.get(jobKey)?.controller === controller) jobs.delete(jobKey);
   }
 }
+async function refineArtifactBlockDraft(requestId, artifactValue, targetValue, instruction, userId) {
+  if (!spindle.permissions.has("generation")) {
+    throw new Error("PERMISSION_DENIED: generation is required to refine LoomOS artifact blocks.");
+  }
+  if (!instruction.trim()) throw new Error("Describe the block change you want AI to make.");
+  const startedAt = Date.now();
+  const artifact = LoomOSArtifactSchema.parse(artifactValue);
+  const target = targetValue;
+  const settings = await getSettings(userId);
+  const connections = await listConnections(userId);
+  const connection = chooseConnection(connections, settings.connectionId);
+  if (!connection) {
+    throw new Error("No ready Lumiverse LLM connection is available. Configure a connection, then retry.");
+  }
+  const controller = new AbortController();
+  const jobKey = requestJobKey(userId, requestId);
+  jobs.set(jobKey, { controller, identityKey: `artifact-block:${requestId}` });
+  send({
+    type: "artifact_block_refinement_status",
+    requestId,
+    status: "started",
+    message: `Preparing ${connection.name} for block refinement.`,
+    elapsedMs: 0,
+    attempt: 1
+  }, userId);
+  try {
+    const result = await refineArtifactBlockWithRepair({
+      artifact,
+      target,
+      instruction: instruction.slice(0, 8e3),
+      signal: controller.signal,
+      onProgress: (attempt, message) => {
+        send({
+          type: "artifact_block_refinement_status",
+          requestId,
+          status: "progress",
+          message,
+          elapsedMs: Date.now() - startedAt,
+          attempt
+        }, userId);
+      },
+      generate: async (messages, signal) => runQuietGeneration(spindle, {
+        messages,
+        connectionId: connection.id,
+        userId,
+        timeoutMs: settings.generationTimeoutSeconds * 1e3,
+        parentSignal: signal
+      })
+    });
+    if (controller.signal.aborted) throw new DOMException("Block refinement cancelled.", "AbortError");
+    send({
+      type: "artifact_block_refinement_status",
+      requestId,
+      status: "completed",
+      message: result.repaired ? "Block replacement validated after one repair pass." : "Block replacement validated.",
+      elapsedMs: Date.now() - startedAt,
+      attempt: result.repaired ? 2 : 1,
+      artifact: result.artifact,
+      result: result.result,
+      issues: result.issues.slice(0, 8)
+    }, userId);
+  } catch (error) {
+    if (controller.signal.aborted || error instanceof Error && error.name === "AbortError") {
+      send({
+        type: "artifact_block_refinement_status",
+        requestId,
+        status: "cancelled",
+        message: "Block refinement cancelled.",
+        elapsedMs: Date.now() - startedAt,
+        attempt: 1
+      }, userId);
+      return;
+    }
+    send({
+      type: "artifact_block_refinement_status",
+      requestId,
+      status: "failed",
+      message: errorMessage(error),
+      elapsedMs: Date.now() - startedAt,
+      attempt: 1,
+      issues: [errorMessage(error)]
+    }, userId);
+  } finally {
+    if (jobs.get(jobKey)?.controller === controller) jobs.delete(jobKey);
+  }
+}
 function mergeInstalledModule(modules, artifact) {
   const compiled = artifactToCustomModule(artifact);
   const existingIndex = modules.findIndex(
@@ -9255,7 +9765,7 @@ async function installLoomPack(packValue, selectedArtifactIds, installMode, acti
   };
 }
 function parseFrontendRequest(payload) {
-  if (!isRecord4(payload) || typeof payload.type !== "string") {
+  if (!isRecord5(payload) || typeof payload.type !== "string") {
     throw new Error("Invalid LoomOS frontend request.");
   }
   return payload;
@@ -9449,6 +9959,28 @@ async function handleFrontendRequest(payload, userId) {
       case "cancel_artifact_generation":
         abortJob(requestJobKey(userId, request.requestId));
         return;
+      case "refine_artifact_block":
+        void refineArtifactBlockDraft(
+          request.requestId,
+          request.artifact,
+          request.target,
+          request.instruction,
+          userId
+        ).catch((error) => {
+          send({
+            type: "artifact_block_refinement_status",
+            requestId: request.requestId,
+            status: "failed",
+            message: errorMessage(error),
+            elapsedMs: 0,
+            attempt: 1,
+            issues: [errorMessage(error)]
+          }, userId);
+        });
+        return;
+      case "cancel_artifact_block_refinement":
+        abortJob(requestJobKey(userId, request.requestId));
+        return;
       case "install_artifact": {
         const installed = await installArtifact(
           request.artifact,
@@ -9492,8 +10024,8 @@ async function handleFrontendRequest(payload, userId) {
   }
 }
 function eventMessage(payload) {
-  if (!isRecord4(payload)) return null;
-  const message = isRecord4(payload.message) ? payload.message : payload;
+  if (!isRecord5(payload)) return null;
+  const message = isRecord5(payload.message) ? payload.message : payload;
   if (typeof message.id !== "string" || typeof message.chat_id !== "string" || typeof message.swipe_id !== "number" || !Array.isArray(message.swipes)) return null;
   return message;
 }
@@ -9572,7 +10104,7 @@ async function handleSwipeEdited(payload, eventUserId) {
   }
 }
 async function handleMessageDeleted(payload, eventUserId) {
-  if (!isRecord4(payload) || typeof payload.chatId !== "string" || typeof payload.messageId !== "string") return;
+  if (!isRecord5(payload) || typeof payload.chatId !== "string" || typeof payload.messageId !== "string") return;
   for (const userId of eventUsers(payload.chatId, eventUserId)) {
     await invalidateMessageStates(payload.chatId, payload.messageId, userId);
   }
@@ -9606,7 +10138,7 @@ function tryRegisterInterceptor() {
   interceptorRegistered = true;
   interceptorEnabled = true;
   spindle.registerInterceptor(async (messages, context) => {
-    if (!interceptorEnabled || disposed || !isRecord4(context)) return messages;
+    if (!interceptorEnabled || disposed || !isRecord5(context)) return messages;
     if (context.generationType === "quiet" || typeof context.chatId !== "string") return messages;
     if (!spindle.permissions.has("chat_mutation")) return messages;
     const chatId = context.chatId;
@@ -9698,7 +10230,7 @@ disposers.push(spindle.permissions.onChanged(({ permission, granted }) => {
   }
 }));
 disposers.push(spindle.on("SPINDLE_EXTENSION_UNLOADED", (payload) => {
-  if (isRecord4(payload) && payload.extensionId === EXTENSION_ID) disposeBackend();
+  if (isRecord5(payload) && payload.extensionId === EXTENSION_ID) disposeBackend();
 }));
 tryRegisterInterceptor();
 spindle.log.info("LoomOS Command Deck backend loaded.");

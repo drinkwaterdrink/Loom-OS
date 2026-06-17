@@ -198,6 +198,28 @@ test("Phase 4 visual builders remain mobile-first and keep Advanced Code availab
   assert.doesNotMatch(builders, /fetch\s*\(|XMLHttpRequest|WebSocket/);
 });
 
+test("Phase 5 block-level AI refinement UI is exposed without replacing full AI Creator", async () => {
+  const workshop = await readFile("src/frontend/workshop.ts", "utf8");
+  const styles = await readFile("src/frontend/styles.ts", "utf8");
+  const protocol = await readFile("src/shared/protocol.ts", "utf8");
+  assert.match(protocol, /refine_artifact_block/);
+  assert.match(protocol, /cancel_artifact_block_refinement/);
+  assert.match(protocol, /artifact_block_refinement_status/);
+  assert.match(workshop, /Refine this block/);
+  assert.match(workshop, /data-block-refine-instruction/);
+  assert.match(workshop, /Apply Block Change/);
+  assert.match(workshop, /discard-block-refine/);
+  assert.match(workshop, /Refine metadata/);
+  assert.match(workshop, /Refine field schema/);
+  assert.match(workshop, /Refine module HTML/);
+  assert.match(workshop, /Refine design tokens/);
+  assert.match(workshop, /Refine theme CSS/);
+  assert.match(workshop, /Generate Draft/);
+  assert.match(workshop, /Generate Revision/);
+  assert.match(styles, /\.loomos-block-refine/);
+  assert.match(styles, /\.loomos-block-diff/);
+});
+
 test("tracker updates avoid global widget and surface rebuilds", async () => {
   const source = await readFile("src/frontend.ts", "utf8");
   const renderAll = source.match(/function renderAll[\s\S]*?\n  }\n\n  function updateLiveStatusDom/)?.[0] ?? "";
