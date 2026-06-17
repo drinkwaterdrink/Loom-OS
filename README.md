@@ -1,13 +1,16 @@
 # LoomOS Command Deck
 
-Current release: **0.1.25**
+Current release: **0.1.26**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.25
+## Key Features & Upgrades in 0.1.26
 
+- **Phase 5.1 Block Refinement Hardening**: Functional QA tightened block target mapping, request cancellation, stale-response handling, Apply/Discard routing, diff readability, and mobile action behavior after the Phase 5 launch.
+- **Scoped Block Safety**: Block outputs now require matching artifact id, kind, and path plus an explicit `replacementValue`; unsafe HTML, CSS, JavaScript, design tokens, and unrelated changed paths are rejected before they can become a draft.
+- **Clearer Block UX**: The Workshop shows target category labels, language badges, line/character counts, changed-path summaries, Developer Mode warnings, and sticky mobile Apply/Discard controls for staged refinements.
 - **Phase 5 Block-Level AI Refinement**: Modules, Themes, Blueprints, Advanced Code sections, and visual-builder sections can now ask AI to refine one selected block without rewriting the whole artifact.
 - **Safe Apply/Discard Workflow**: Block refinements send bounded context, validate the returned replacement against the full artifact, show before/after preview, and only update the working draft after **Apply Block Change**.
 - **Precise Builder Shortcuts**: Advanced Code exposes **Refine this block** for each source section, while Module Builder and Theme Builder expose targeted actions for metadata, prompt/schema, sample data, design tokens, slots, HTML, and CSS.
@@ -326,6 +329,8 @@ Phase 4.2 splits AI Creator into **Create New** and **Refine Selected** modes. C
 Phase 5 adds block-level AI refinement beside the full-artifact AI Creator. Use **Refine this block** in Advanced Code, or the targeted buttons in Module Builder and Theme Builder, to update only one artifact slice such as a Module prompt, field schema, sample data, HTML/CSS, Theme design tokens, declared slots, or Blueprint module/theme/settings block. LoomOS sends the selected block plus bounded surrounding context, not the whole working artifact, and requires the model to return a strict JSON replacement for that path.
 
 Returned block changes are staged separately from full AI drafts. The drawer shows the target path, summary, warnings, changed paths, and Before/After views. **Preview** renders the validated staged artifact without saving it. **Apply Block Change** revalidates the replacement against the current working artifact and marks the artifact dirty for a later **Save Revision**. **Discard** leaves the working artifact untouched. If a model returns a whole artifact during a block request, LoomOS extracts only the selected block when safe and ignores unrelated fields.
+
+Phase 5.1 hardens those Workshop interaction flows after the mobile-first redesign. Target buttons now resolve against the active artifact before sending, running requests are cancelled or ignored when the user switches artifacts or target blocks, and completed responses stage only when the original request id, artifact id, artifact kind, and block path still match. The block panel also shows category/language badges, line and character counts, changed-path summaries, JavaScript safety warnings, and mobile-friendly sticky Apply/Discard controls.
 
 **Copy External AI Prompt** produces a self-contained builder prompt for ChatGPT or another coding model. Give that model your design request, then paste the returned JSON into Import. This is the fastest way to create a deeply customized tracker without manually filling every field.
 

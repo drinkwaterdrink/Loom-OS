@@ -9,6 +9,7 @@ import {
   applyWorkshopCodeValue,
   applyWorkshopLayoutEdits,
   artifactMatchesPackFilter,
+  blockRefinementResponseCanStage,
   buildWorkshopNativePreviewDocument,
   buildWorkshopThemePreviewDocument,
   externalBuilderPrompt,
@@ -30,6 +31,7 @@ import {
   createStarterThemeArtifact,
   upsertArtifactRecord,
 } from "../src/shared/artifacts";
+import { findArtifactBlockTarget } from "../src/shared/artifactBlocks";
 import { LoomOSSettingsSchema } from "../src/shared/schemas";
 import { buildViewerModel } from "../src/shared/viewerModel";
 import { makeState } from "./fixtures";
@@ -340,4 +342,34 @@ test("selection, contextual installs, and mobile preview routing stay explicit",
   assert.equal(mobilePreviewState(false, "open"), true);
   assert.equal(mobilePreviewState(true, "close"), false);
   assert.equal(mobilePreviewState(false, "toggle"), true);
+});
+
+test("block refinement responses stage only for the active artifact request and target", () => {
+  const module = createStarterModuleArtifact();
+  const theme = createStarterThemeArtifact();
+  const target = findArtifactBlockTarget(module, "prompt")!;
+  const response = {
+    type: "artifact_block_refinement_status" as const,
+    requestId: "block-1",
+    status: "completed" as const,
+    message: "done",
+    elapsedMs: 120,
+    attempt: 1 as const,
+    artifact: { ...module, prompt: "Track only grounded trust changes." },
+    result: {
+      target,
+      replacementValue: "Track only grounded trust changes.",
+      summary: "Prepared prompt.",
+      warnings: [],
+      changedPaths: ["prompt"],
+      repaired: false,
+      issues: [],
+    },
+  };
+
+  assert.equal(blockRefinementResponseCanStage(response, "block-1", module, "prompt"), true);
+  assert.equal(blockRefinementResponseCanStage(response, "block-2", module, "prompt"), false);
+  assert.equal(blockRefinementResponseCanStage(response, "block-1", theme, "prompt"), false);
+  assert.equal(blockRefinementResponseCanStage(response, "block-1", module, "view.css"), false);
+  assert.equal(blockRefinementResponseCanStage(response, "block-1", module, "prompt", new Set(["block-1"])), false);
 });

@@ -16,7 +16,7 @@ import {
   type ModuleCapsuleArtifact,
   type ThemeArtifact,
 } from "../shared/artifacts";
-import type { FrontendRequest } from "../shared/protocol";
+import type { BackendResponse, FrontendRequest } from "../shared/protocol";
 import type { ArtifactBlockTarget } from "../shared/artifactBlocks";
 import { LoomOSSettingsSchema } from "../shared/schemas";
 import type {
@@ -267,6 +267,7 @@ export function aiCreatorCurrentArtifact(
 
 export type GenerateArtifactRequest = Extract<FrontendRequest, { type: "generate_artifact" }>;
 export type RefineArtifactBlockRequest = Extract<FrontendRequest, { type: "refine_artifact_block" }>;
+export type ArtifactBlockStatusResponse = Extract<BackendResponse, { type: "artifact_block_refinement_status" }>;
 
 export function aiCreatorGenerateRequest(
   mode: AiCreatorMode,
@@ -297,6 +298,27 @@ export function artifactBlockRefineRequest(
     target,
     instruction,
   };
+}
+
+export function blockRefinementResponseCanStage(
+  response: ArtifactBlockStatusResponse,
+  currentRequestId: string | null,
+  workingArtifact: LoomOSArtifact | null,
+  targetPath: string | null,
+  ignoredRequestIds: ReadonlySet<string> | string[] = [],
+): boolean {
+  const ignored = !Array.isArray(ignoredRequestIds)
+    ? ignoredRequestIds.has(response.requestId)
+    : ignoredRequestIds.includes(response.requestId);
+  if (ignored || response.status !== "completed" || !currentRequestId || response.requestId !== currentRequestId) {
+    return false;
+  }
+  if (!workingArtifact || !targetPath || !response.artifact || !response.result) return false;
+  return response.artifact.id === workingArtifact.id
+    && response.artifact.kind === workingArtifact.kind
+    && response.result.target.artifactId === workingArtifact.id
+    && response.result.target.kind === workingArtifact.kind
+    && response.result.target.path === targetPath;
 }
 
 export function externalBuilderPrompt(

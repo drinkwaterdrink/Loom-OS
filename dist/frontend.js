@@ -10910,6 +10910,26 @@ var LOOMOS_STYLES = `
     color: var(--loomos-muted);
     font-size: 12px;
   }
+  .loomos-block-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .loomos-block-badges span {
+    border: 1px solid rgba(94, 234, 212, .28);
+    border-radius: 999px;
+    color: #a7f3d0;
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+  .loomos-block-warning {
+    border: 1px solid rgba(251, 191, 36, .35);
+    border-radius: 12px;
+    color: #fde68a;
+    font-size: 12px;
+    margin: 0;
+    padding: 8px 10px;
+  }
   .loomos-block-refine-instruction {
     min-height: 140px;
     resize: vertical;
@@ -10950,7 +10970,17 @@ var LOOMOS_STYLES = `
     word-break: break-word;
     font-size: 11px;
   }
-  .loomos-block-apply-row { grid-column: 1 / -1; justify-content: flex-end; }
+  .loomos-block-apply-row {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    position: sticky;
+    bottom: calc(64px + env(safe-area-inset-bottom));
+    z-index: 2;
+    padding: 8px;
+    border: 1px solid rgba(94, 234, 212, .18);
+    border-radius: 14px;
+    background: rgba(12, 17, 23, .96);
+  }
   .loomos-section-heading h2 { font-size: 15px; margin: 2px 0 0; }
   .loomos-workshop-quick-grid {
     display: grid;
@@ -40894,6 +40924,14 @@ function artifactBlockRefineRequest(artifact, target, requestId2, instruction) {
     instruction
   };
 }
+function blockRefinementResponseCanStage(response, currentRequestId, workingArtifact, targetPath, ignoredRequestIds = []) {
+  const ignored = !Array.isArray(ignoredRequestIds) ? ignoredRequestIds.has(response.requestId) : ignoredRequestIds.includes(response.requestId);
+  if (ignored || response.status !== "completed" || !currentRequestId || response.requestId !== currentRequestId) {
+    return false;
+  }
+  if (!workingArtifact || !targetPath || !response.artifact || !response.result) return false;
+  return response.artifact.id === workingArtifact.id && response.artifact.kind === workingArtifact.kind && response.result.target.artifactId === workingArtifact.id && response.result.target.kind === workingArtifact.kind && response.result.target.path === targetPath;
+}
 function externalBuilderPrompt(kind, currentArtifact = null) {
   const starter = kind === "module" ? createStarterModuleArtifact() : kind === "theme" ? createStarterThemeArtifact() : createStarterBlueprintArtifact();
   return `Create a production-ready LoomOS ${kind} artifact.
@@ -41014,15 +41052,142 @@ var TEXT_SECURITY_RULES = [
   "Do not introduce remote assets, URLs, network calls, eval, Function constructors, storage access, external scripts, or parent DOM access.",
   "Return only the selected block replacement. Do not change unrelated artifact paths."
 ];
+var UNSAFE_HTML_PATTERNS = [
+  [/<\s*(script|iframe|object|embed|link|meta|base|form|style)\b/i, "HTML block contains an unsafe tag."],
+  [/\son[a-z0-9_-]+\s*=/i, "HTML block contains an event-handler attribute."],
+  [/\s(?:href|src|xlink:href|action|formaction)\s*=/i, "HTML block contains an external-link or asset attribute."],
+  [/javascript\s*:/i, "HTML block contains a javascript: URL."]
+];
+var UNSAFE_CSS_PATTERNS = [
+  [/@import\b/i, "CSS block contains @import."],
+  [/@font-face\b/i, "CSS block contains external font-face declarations."],
+  [/url\s*\(/i, "CSS block contains url()."],
+  [/https?\s*:|data\s*:|javascript\s*:/i, "CSS block contains a remote or executable protocol."],
+  [/expression\s*\(/i, "CSS block contains expression()."],
+  [/\bbehavior\s*:/i, "CSS block contains behavior:."],
+  [/-moz-binding\s*:/i, "CSS block contains -moz-binding."]
+];
+var UNSAFE_JS_PATTERNS = [
+  [/\beval\s*\(/i, "JavaScript block contains dynamic code execution."],
+  [/\bnew\s+Function\b|\bFunction\s*\(/i, "JavaScript block contains the Function constructor."],
+  [/\b(?:localStorage|sessionStorage|indexedDB)\b/i, "JavaScript block attempts storage access."],
+  [/\bdocument\.cookie\b/i, "JavaScript block attempts cookie access."],
+  [/\b(?:window\.)?(?:parent|top|opener)\b/i, "JavaScript block attempts parent or opener DOM access."],
+  [/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\b/i, "JavaScript block attempts network access."],
+  [/\bspindle\b/i, "JavaScript block attempts Spindle API access."],
+  [/\bimport\s*\(/i, "JavaScript block attempts dynamic imports."]
+];
 function cloneArtifact2(artifact) {
   return structuredClone(artifact);
 }
-function jsonTarget(artifact, path, label, currentValue, surroundingContext = {}) {
+function artifactBlockLanguageLabel(language2) {
+  if (language2 === "javascript") return "JS";
+  return language2.toUpperCase();
+}
+function artifactBlockTextMetrics(value) {
+  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  return {
+    characters: text.length,
+    lines: text.length === 0 ? 0 : text.split(/\r\n|\r|\n/).length
+  };
+}
+function artifactBlockTextDiffSummary(before, after) {
+  const beforeText = typeof before === "string" ? before : JSON.stringify(before, null, 2);
+  const afterText = typeof after === "string" ? after : JSON.stringify(after, null, 2);
+  const beforeLines = new Set(beforeText.split(/\r\n|\r|\n/));
+  const afterLines = new Set(afterText.split(/\r\n|\r|\n/));
+  return {
+    addedLines: [...afterLines].filter((line) => !beforeLines.has(line)).length,
+    removedLines: [...beforeLines].filter((line) => !afterLines.has(line)).length,
+    characterDelta: afterText.length - beforeText.length
+  };
+}
+function validateArtifactBlockReplacementSecurity(target, replacement) {
+  const value = typeof replacement === "string" ? replacement : "";
+  const patterns = target.language === "html" ? UNSAFE_HTML_PATTERNS : target.language === "css" ? UNSAFE_CSS_PATTERNS : target.language === "javascript" ? UNSAFE_JS_PATTERNS : [];
+  return patterns.filter(([pattern]) => pattern.test(value)).map(([, message]) => `${target.path}: ${message}`);
+}
+function assertBlockReplacementSecurity(target, replacement) {
+  const issues = validateArtifactBlockReplacementSecurity(target, replacement);
+  if (issues.length) throw new Error(issues.join(" "));
+}
+function assertPartialMapSecurity(target, replacement) {
+  if (target.path !== "view.partials" || !replacement || typeof replacement !== "object" || Array.isArray(replacement)) {
+    return;
+  }
+  const issues = Object.entries(replacement).flatMap(
+    ([key, value]) => validateArtifactBlockReplacementSecurity({
+      ...target,
+      path: `${target.path}.${key}`,
+      language: "html",
+      currentValue: value
+    }, value)
+  );
+  if (issues.length) throw new Error(issues.join(" "));
+}
+function assertArtifactSourceSecurity(artifact, sourcePath = artifact.id) {
+  const targets = [];
+  if (artifact.kind === "module" || artifact.kind === "theme") {
+    targets.push({
+      artifactId: artifact.id,
+      kind: artifact.kind,
+      path: `${sourcePath}.view.html`,
+      label: "HTML",
+      category: "View",
+      language: "html",
+      mode: "replace",
+      currentValue: artifact.view.html
+    });
+    targets.push({
+      artifactId: artifact.id,
+      kind: artifact.kind,
+      path: `${sourcePath}.view.css`,
+      label: "CSS",
+      category: "View",
+      language: "css",
+      mode: "replace",
+      currentValue: artifact.view.css
+    });
+    targets.push({
+      artifactId: artifact.id,
+      kind: artifact.kind,
+      path: `${sourcePath}.view.javascript`,
+      label: "JavaScript",
+      category: "View",
+      language: "javascript",
+      mode: "replace",
+      currentValue: artifact.view.javascript
+    });
+    for (const [key, value] of Object.entries(artifact.view.partials)) {
+      targets.push({
+        artifactId: artifact.id,
+        kind: artifact.kind,
+        path: `${sourcePath}.view.partials.${key}`,
+        label: `Partial ${key}`,
+        category: "View",
+        language: "html",
+        mode: "replace",
+        currentValue: value
+      });
+    }
+  }
+  if (artifact.kind === "blueprint") {
+    artifact.modules.forEach((module) => assertArtifactSourceSecurity(module, `${sourcePath}.modules.${module.id}`));
+    if (artifact.theme) assertArtifactSourceSecurity(artifact.theme, `${sourcePath}.theme`);
+    return;
+  }
+  const issues = targets.flatMap(
+    (target) => validateArtifactBlockReplacementSecurity(target, target.currentValue)
+  );
+  if (issues.length) throw new Error(issues.join(" "));
+}
+function jsonTarget(artifact, path, label, category, currentValue, surroundingContext = {}) {
   return {
     artifactId: artifact.id,
     kind: artifact.kind,
     path,
     label,
+    category,
     language: "json",
     mode: "replace",
     currentValue,
@@ -41030,12 +41195,13 @@ function jsonTarget(artifact, path, label, currentValue, surroundingContext = {}
     safetyRules: TEXT_SECURITY_RULES
   };
 }
-function textTarget(artifact, path, label, language2, currentValue, surroundingContext = {}) {
+function textTarget(artifact, path, label, category, language2, currentValue, surroundingContext = {}) {
   return {
     artifactId: artifact.id,
     kind: artifact.kind,
     path,
     label,
+    category,
     language: language2,
     mode: "replace",
     currentValue,
@@ -41046,40 +41212,40 @@ function textTarget(artifact, path, label, language2, currentValue, surroundingC
 function moduleTargets(module) {
   const properties2 = module.schema.properties ?? {};
   return [
-    jsonTarget(module, "meta", "Metadata", module.meta, { artifactName: module.meta.name }),
-    jsonTarget(module, "schema", "Field schema", module.schema, {
+    jsonTarget(module, "meta", "Metadata", "Metadata", module.meta, { artifactName: module.meta.name }),
+    jsonTarget(module, "schema", "Field schema", "Schema", module.schema, {
       required: module.schema.required ?? [],
       propertyKeys: Object.keys(properties2)
     }),
-    textTarget(module, "prompt", "Tracking purpose / prompt", "text", module.prompt, {
+    textTarget(module, "prompt", "Tracking purpose / prompt", "Prompt", "text", module.prompt, {
       schemaKeys: Object.keys(properties2),
       sampleKeys: module.sampleData && typeof module.sampleData === "object" ? Object.keys(module.sampleData) : []
     }),
-    jsonTarget(module, "sampleData", "Sample data", module.sampleData, {
+    jsonTarget(module, "sampleData", "Sample data", "Schema", module.sampleData, {
       schemaKeys: Object.keys(properties2)
     }),
-    jsonTarget(module, "defaults", "Defaults", module.defaults, { group: module.defaults.group }),
-    jsonTarget(module, "visual", "Visual metadata", module.visual ?? {}, {
+    jsonTarget(module, "defaults", "Defaults", "Metadata", module.defaults, { group: module.defaults.group }),
+    jsonTarget(module, "visual", "Visual metadata", "Metadata", module.visual ?? {}, {
       outputMode: module.visual?.outputMode ?? "cards"
     }),
-    textTarget(module, "view.html", "Module HTML", "html", module.view.html, {
+    textTarget(module, "view.html", "Module HTML", "View", "html", module.view.html, {
       cssLength: module.view.css.length,
       javascriptLength: module.view.javascript.length
     }),
-    textTarget(module, "view.css", "Module CSS", "css", module.view.css, {
+    textTarget(module, "view.css", "Module CSS", "View", "css", module.view.css, {
       htmlLength: module.view.html.length
     }),
-    textTarget(module, "view.javascript", "Module JavaScript", "javascript", module.view.javascript, {
+    textTarget(module, "view.javascript", "Module JavaScript", "View", "javascript", module.view.javascript, {
       developerNote: "Module JavaScript is isolated and optional."
     }),
-    jsonTarget(module, "view.partials", "Module partials", module.view.partials, {
+    jsonTarget(module, "view.partials", "Module partials", "View", module.view.partials, {
       partialNames: Object.keys(module.view.partials)
     }),
-    jsonTarget(module, "fieldBuilder.fields", "Field Builder fields", properties2, {
+    jsonTarget(module, "fieldBuilder.fields", "Field Builder fields", "Field", properties2, {
       required: module.schema.required ?? []
     }),
     ...Object.entries(properties2).map(
-      ([key, value]) => jsonTarget(module, `schema.properties.${key}`, `Field definition: ${key}`, value, {
+      ([key, value]) => jsonTarget(module, `schema.properties.${key}`, `Field definition: ${key}`, "Field", value, {
         required: module.schema.required?.includes(key) ?? false
       })
     )
@@ -41088,15 +41254,15 @@ function moduleTargets(module) {
 function themeTargets(theme2) {
   const design = ThemeDesignSchema.parse(theme2.design ?? {});
   return [
-    jsonTarget(theme2, "meta", "Metadata", theme2.meta, { artifactName: theme2.meta.name }),
-    jsonTarget(theme2, "manifest", "Manifest", theme2.manifest, {
+    jsonTarget(theme2, "meta", "Metadata", "Metadata", theme2.meta, { artifactName: theme2.meta.name }),
+    jsonTarget(theme2, "manifest", "Manifest", "Metadata", theme2.manifest, {
       slots: theme2.manifest.slots ?? [],
       capabilities: theme2.manifest.capabilities
     }),
-    jsonTarget(theme2, "design.tokens", "Design tokens", design.tokens, {
+    jsonTarget(theme2, "design.tokens", "Design tokens", "Design", design.tokens, {
       tokenNames: Object.keys(design.tokens)
     }),
-    jsonTarget(theme2, "design.style", "Design style settings", {
+    jsonTarget(theme2, "design.style", "Design style settings", "Design", {
       typography: design.typography,
       backgroundStyle: design.backgroundStyle,
       panelStyle: design.panelStyle,
@@ -41109,23 +41275,23 @@ function themeTargets(theme2) {
     }, {
       tokenNames: Object.keys(design.tokens)
     }),
-    textTarget(theme2, "view.html", "Theme HTML", "html", theme2.view.html, {
+    textTarget(theme2, "view.html", "Theme HTML", "View", "html", theme2.view.html, {
       slots: theme2.manifest.slots ?? [],
       partialNames: Object.keys(theme2.view.partials)
     }),
-    textTarget(theme2, "view.css", "Theme CSS", "css", theme2.view.css, {
+    textTarget(theme2, "view.css", "Theme CSS", "View", "css", theme2.view.css, {
       tokenNames: Object.keys(design.tokens)
     }),
-    textTarget(theme2, "view.javascript", "Theme JavaScript", "javascript", theme2.view.javascript, {
+    textTarget(theme2, "view.javascript", "Theme JavaScript", "View", "javascript", theme2.view.javascript, {
       developerMode: theme2.manifest.developerMode
     }),
-    jsonTarget(theme2, "view.partials", "Theme partials", theme2.view.partials, {
+    jsonTarget(theme2, "view.partials", "Theme partials", "View", theme2.view.partials, {
       partialNames: Object.keys(theme2.view.partials)
     }),
-    jsonTarget(theme2, "sampleData", "Sample data", theme2.sampleData, {}),
-    jsonTarget(theme2, "manifest.slots", "Declared slots", theme2.manifest.slots ?? [], {}),
+    jsonTarget(theme2, "sampleData", "Sample data", "Schema", theme2.sampleData, {}),
+    jsonTarget(theme2, "manifest.slots", "Declared slots", "Design", theme2.manifest.slots ?? [], {}),
     ...(theme2.manifest.slots ?? []).map(
-      (slot) => textTarget(theme2, `manifest.slots.${slot}`, `Slot section: ${slot}`, "text", slot, {
+      (slot) => textTarget(theme2, `manifest.slots.${slot}`, `Slot section: ${slot}`, "Design", "text", slot, {
         declaredSlots: theme2.manifest.slots ?? []
       })
     )
@@ -41133,16 +41299,16 @@ function themeTargets(theme2) {
 }
 function blueprintTargets(blueprint) {
   return [
-    jsonTarget(blueprint, "meta", "Metadata", blueprint.meta, { artifactName: blueprint.meta.name }),
-    jsonTarget(blueprint, "settings", "Recommended settings", blueprint.settings, {}),
-    jsonTarget(blueprint, "modules", "Module list", blueprint.modules, {
+    jsonTarget(blueprint, "meta", "Metadata", "Metadata", blueprint.meta, { artifactName: blueprint.meta.name }),
+    jsonTarget(blueprint, "settings", "Recommended settings", "Blueprint", blueprint.settings, {}),
+    jsonTarget(blueprint, "modules", "Module list", "Blueprint", blueprint.modules, {
       moduleIds: blueprint.modules.map((module) => module.id)
     }),
-    jsonTarget(blueprint, "theme", "Embedded theme", blueprint.theme, {
+    jsonTarget(blueprint, "theme", "Embedded theme", "Blueprint", blueprint.theme, {
       themeId: blueprint.theme?.id ?? null
     }),
     ...blueprint.modules.map(
-      (module) => jsonTarget(blueprint, `modules.${module.id}`, `Embedded module: ${module.meta.name}`, module, {
+      (module) => jsonTarget(blueprint, `modules.${module.id}`, `Embedded module: ${module.meta.name}`, "Blueprint", module, {
         moduleIds: blueprint.modules.map((candidate) => candidate.id)
       })
     )
@@ -41230,11 +41396,19 @@ function applyToBlueprint(artifact, path, replacement) {
   const next = cloneArtifact2(artifact);
   if (path === "meta") next.meta = replacement;
   else if (path === "settings") next.settings = replacement;
-  else if (path === "modules") next.modules = replacement;
-  else if (path === "theme") next.theme = replacement;
-  else if (path.startsWith("modules.")) {
+  else if (path === "modules") {
+    if (!Array.isArray(replacement)) throw new Error("Blueprint modules block must be a JSON array.");
+    const modules = replacement.map((module) => ModuleCapsuleArtifactSchema.parse(module));
+    modules.forEach((module) => assertArtifactSourceSecurity(module, `modules.${module.id}`));
+    next.modules = modules;
+  } else if (path === "theme") {
+    const theme2 = replacement === null ? null : ThemeArtifactSchema.parse(replacement);
+    if (theme2) assertArtifactSourceSecurity(theme2, "theme");
+    next.theme = theme2;
+  } else if (path.startsWith("modules.")) {
     const moduleId = path.slice("modules.".length);
     const module = ModuleCapsuleArtifactSchema.parse(replacement);
+    assertArtifactSourceSecurity(module, `modules.${module.id}`);
     next.modules = next.modules.map((candidate) => candidate.id === moduleId ? module : candidate);
   } else {
     throw new Error(`Unsupported Blueprint block path "${path}".`);
@@ -41243,6 +41417,8 @@ function applyToBlueprint(artifact, path, replacement) {
 }
 function applyArtifactBlockReplacement(artifact, target, replacement) {
   assertTargetMatches(artifact, target);
+  assertBlockReplacementSecurity(target, replacement);
+  assertPartialMapSecurity(target, replacement);
   const next = artifact.kind === "module" ? applyToModule(artifact, target.path, replacement) : artifact.kind === "theme" ? applyToTheme(artifact, target.path, replacement) : applyToBlueprint(artifact, target.path, replacement);
   return {
     artifact: next,
@@ -41463,10 +41639,12 @@ function openCreatorWorkshop(options) {
   let generationStartedAt = 0;
   let generationElapsedMs = 0;
   let blockRefineRequestId = null;
+  let blockRefineRequestTargetPath = null;
   let blockRefineTarget = null;
   let blockRefineInstruction = "";
   let blockRefineStatus = "";
   let stagedBlockRefinement = null;
+  const ignoredBlockRefineRequestIds = /* @__PURE__ */ new Set();
   let aiKind = "module";
   let aiMode = workingArtifact ? "refine" : "create";
   let aiBrief = "";
@@ -41511,8 +41689,30 @@ function openCreatorWorkshop(options) {
     if (!workingArtifact || !path) return null;
     return findArtifactBlockTarget(workingArtifact, path);
   }
+  function cancelActiveBlockRefinement(message) {
+    if (blockRefineRequestId) {
+      ignoredBlockRefineRequestIds.add(blockRefineRequestId);
+      options.send({ type: "cancel_artifact_block_refinement", requestId: blockRefineRequestId });
+    }
+    blockRefineRequestId = null;
+    blockRefineRequestTargetPath = null;
+    stagedBlockRefinement = null;
+    blockRefineStatus = message;
+  }
+  function syncBlockRefineActionState() {
+    const instruction = modal.root.querySelector("[data-block-refine-instruction]")?.value ?? blockRefineInstruction;
+    modal.root.querySelectorAll("[data-block-refine-start]").forEach((button) => {
+      button.disabled = Boolean(blockRefineRequestId) || !instruction.trim();
+      button.title = button.disabled && !instruction.trim() ? "Describe the block change first." : "";
+    });
+    modal.root.querySelectorAll("[data-block-refine-apply]").forEach((button) => {
+      button.disabled = !stagedBlockRefinement;
+      button.title = stagedBlockRefinement ? "" : "No staged block refinement is ready to apply.";
+    });
+  }
   function blockRefineButton(path, label = "Refine with AI") {
-    return `<button type="button" class="loomos-button loomos-button-ai loomos-btn-sm" data-workshop-action="open-block-refine" data-block-path="${escapeHtml(path)}">${escapeHtml(label)}</button>`;
+    const valid = Boolean(refreshBlockTarget(path));
+    return `<button type="button" class="loomos-button loomos-button-ai loomos-btn-sm" data-workshop-action="open-block-refine" data-block-path="${escapeHtml(path)}"${valid ? "" : " disabled"} title="${valid ? "" : "This block is not available for the selected artifact."}">${escapeHtml(label)}</button>`;
   }
   function blockValueText(value, language2 = "json") {
     if (language2 === "json") return JSON.stringify(value, null, 2);
@@ -41525,20 +41725,32 @@ function openCreatorWorkshop(options) {
     const proposed = stagedBlockRefinement?.result.replacementValue;
     const beforeText = blockValueText(currentTarget.currentValue, currentTarget.language);
     const afterText = stagedBlockRefinement ? blockValueText(proposed, currentTarget.language) : "";
+    const beforeMetrics = artifactBlockTextMetrics(currentTarget.currentValue);
+    const afterMetrics = stagedBlockRefinement ? artifactBlockTextMetrics(proposed) : null;
+    const diff = stagedBlockRefinement ? artifactBlockTextDiffSummary(currentTarget.currentValue, proposed) : null;
+    const issues = stagedBlockRefinement?.result.issues ?? [];
+    const developerWarning = currentTarget.language === "javascript" ? `<p class="loomos-block-warning">JavaScript remains developer-gated and must not use network, storage, parent DOM access, eval, Function, or Spindle APIs.</p>` : "";
     return `
       <section class="loomos-block-refine" role="region" aria-label="Block-level AI refinement">
         <div class="loomos-block-refine-heading">
           <div>
             <span class="loomos-kicker">Block AI refinement</span>
             <h3>Refine ${escapeHtml(currentTarget.label)}</h3>
-            <p>Only <code>${escapeHtml(currentTarget.path)}</code> is eligible to change. Apply keeps this as an unsaved Workshop draft.</p>
+            <p>This changes only: <code>${escapeHtml(currentTarget.path)}</code>. Apply keeps this as an unsaved Workshop draft.</p>
           </div>
           <button type="button" class="loomos-button" data-workshop-action="close-block-refine">Close</button>
         </div>
+        <div class="loomos-block-badges">
+          <span>${escapeHtml(currentTarget.category)}</span>
+          <span>${escapeHtml(artifactBlockLanguageLabel(currentTarget.language))}</span>
+          <span>${beforeMetrics.lines} lines</span>
+          <span>${beforeMetrics.characters} chars</span>
+        </div>
+        ${developerWarning}
         <label class="loomos-field">
           <span>Target block</span>
           <select class="loomos-select" data-block-target-select>
-            ${targets.map((target) => `<option value="${escapeHtml(target.path)}"${target.path === currentTarget.path ? " selected" : ""}>${escapeHtml(target.label)} (${escapeHtml(target.path)})</option>`).join("")}
+            ${targets.map((target) => `<option value="${escapeHtml(target.path)}"${target.path === currentTarget.path ? " selected" : ""}>${escapeHtml(target.category)} / ${escapeHtml(target.label)} (${escapeHtml(target.path)})</option>`).join("")}
           </select>
         </label>
         <label class="loomos-field">
@@ -41546,21 +41758,25 @@ function openCreatorWorkshop(options) {
           <textarea class="loomos-input loomos-block-refine-instruction" data-block-refine-instruction placeholder="Ask AI to rewrite only this block.">${escapeHtml(blockRefineInstruction)}</textarea>
         </label>
         <div class="loomos-workshop-actions loomos-block-refine-actions">
-          ${blockRefineRequestId ? `<button type="button" class="loomos-button loomos-button-danger" data-workshop-action="cancel-block-refine">Stop</button>` : `<button type="button" class="loomos-button loomos-button-primary" data-workshop-action="start-block-refine">Refine this block</button>`}
+          ${blockRefineRequestId ? `<button type="button" class="loomos-button loomos-button-danger" data-workshop-action="cancel-block-refine">Stop</button>` : `<button type="button" class="loomos-button loomos-button-primary" data-workshop-action="start-block-refine" data-block-refine-start${blockRefineInstruction.trim() ? "" : " disabled"}>Refine this block</button>`}
+          <button type="button" class="loomos-button" data-workshop-action="open-advanced-code">Open in Advanced Code</button>
           <span class="loomos-workshop-live-status">${escapeHtml(blockRefineStatus || "No library save happens until you apply and Save Revision.")}</span>
         </div>
         ${stagedBlockRefinement ? `
           <div class="loomos-block-diff">
             <div class="loomos-block-diff-summary">
               <strong>${escapeHtml(stagedBlockRefinement.result.summary)}</strong>
-              <span>Changed: ${stagedBlockRefinement.result.changedPaths.map(escapeHtml).join(", ") || escapeHtml(currentTarget.path)}</span>
+              <span>Changed paths: ${stagedBlockRefinement.result.changedPaths.map(escapeHtml).join(", ") || escapeHtml(currentTarget.path)}</span>
+              <span>Diff: +${diff?.addedLines ?? 0} / -${diff?.removedLines ?? 0} lines, ${diff?.characterDelta ?? 0} chars</span>
+              ${afterMetrics ? `<span>After: ${afterMetrics.lines} lines, ${afterMetrics.characters} chars</span>` : ""}
               ${stagedBlockRefinement.result.warnings.length ? `<small>${stagedBlockRefinement.result.warnings.map(escapeHtml).join(" ")}</small>` : ""}
+              ${issues.length ? `<small>Issues: ${issues.map(escapeHtml).join(" ")}</small>` : ""}
             </div>
             <details open><summary>Before</summary><pre>${escapeHtml(beforeText)}</pre></details>
             <details open><summary>After</summary><pre>${escapeHtml(afterText)}</pre></details>
             <div class="loomos-workshop-actions loomos-block-apply-row">
               <button type="button" class="loomos-button" data-workshop-action="preview-block-refine">Preview</button>
-              <button type="button" class="loomos-button loomos-button-primary" data-workshop-action="apply-block-refine">Apply Block Change</button>
+              <button type="button" class="loomos-button loomos-button-primary" data-workshop-action="apply-block-refine" data-block-refine-apply>Apply Block Change</button>
               <button type="button" class="loomos-button loomos-button-danger" data-workshop-action="discard-block-refine">Discard</button>
               <button type="button" class="loomos-button" data-workshop-action="open-advanced-code">Open in Advanced Code</button>
             </div>
@@ -41700,6 +41916,10 @@ function openCreatorWorkshop(options) {
     return true;
   }
   function chooseArtifact(artifact, saved = true) {
+    if (blockRefineRequestId) {
+      ignoredBlockRefineRequestIds.add(blockRefineRequestId);
+      options.send({ type: "cancel_artifact_block_refinement", requestId: blockRefineRequestId });
+    }
     codeEditor?.destroy();
     codeEditor = null;
     selectedId = artifact.id;
@@ -41708,6 +41928,8 @@ function openCreatorWorkshop(options) {
     stagedArtifact = null;
     stagedBlockRefinement = null;
     blockRefineTarget = null;
+    blockRefineRequestId = null;
+    blockRefineRequestTargetPath = null;
     blockRefineStatus = "";
     codeSection = codeSections(artifact)[0]?.id ?? "meta";
     codeError = "";
@@ -42900,6 +43122,7 @@ function openCreatorWorkshop(options) {
     applyPackFilters();
     applyModuleFilters();
     applyRailFilters();
+    syncBlockRefineActionState();
   }
   async function openImport() {
     const importModal = options.ctx.ui.showModal({
@@ -43520,6 +43743,9 @@ function openCreatorWorkshop(options) {
         render();
         return;
       }
+      if (blockRefineRequestId && blockRefineRequestTargetPath !== target.path) {
+        cancelActiveBlockRefinement("Previous block refinement cancelled because the target changed.");
+      }
       blockRefineTarget = target;
       stagedBlockRefinement = null;
       blockRefineStatus = "";
@@ -43527,12 +43753,26 @@ function openCreatorWorkshop(options) {
       return;
     }
     if (action === "close-block-refine") {
+      if (blockRefineRequestId) {
+        cancelActiveBlockRefinement("");
+      }
       blockRefineTarget = null;
+      stagedBlockRefinement = null;
       blockRefineStatus = "";
       render();
       return;
     }
     if (action === "start-block-refine" && workingArtifact && blockRefineTarget) {
+      if (generationRequestId) {
+        blockRefineStatus = "Stop full artifact generation before refining a block.";
+        render();
+        return;
+      }
+      if (blockRefineRequestId) {
+        blockRefineStatus = "A block refinement is already running.";
+        render();
+        return;
+      }
       blockRefineInstruction = modal.root.querySelector("[data-block-refine-instruction]")?.value ?? blockRefineInstruction;
       if (!blockRefineInstruction.trim()) {
         blockRefineStatus = "Describe the block change first.";
@@ -43558,6 +43798,7 @@ function openCreatorWorkshop(options) {
       }
       blockRefineTarget = freshTarget;
       blockRefineRequestId = options.requestId("artifact-block-refine");
+      blockRefineRequestTargetPath = freshTarget.path;
       blockRefineStatus = "Starting block refinement";
       stagedBlockRefinement = null;
       options.send(artifactBlockRefineRequest(
@@ -43570,12 +43811,13 @@ function openCreatorWorkshop(options) {
       return;
     }
     if (action === "cancel-block-refine" && blockRefineRequestId) {
-      options.send({ type: "cancel_artifact_block_refinement", requestId: blockRefineRequestId });
+      cancelActiveBlockRefinement("Block refinement cancelled.");
+      render();
       return;
     }
     if (action === "discard-block-refine") {
       stagedBlockRefinement = null;
-      blockRefineStatus = "Block refinement discarded.";
+      blockRefineStatus = "";
       render();
       return;
     }
@@ -43586,6 +43828,14 @@ function openCreatorWorkshop(options) {
     }
     if (action === "apply-block-refine" && workingArtifact && stagedBlockRefinement) {
       try {
+        if (activeView === "advanced-code" && !commitCodeDraft()) {
+          blockRefineStatus = `Current code draft is invalid: ${codeError}`;
+          render();
+          return;
+        }
+        if (stagedBlockRefinement.artifact.id !== workingArtifact.id || stagedBlockRefinement.artifact.kind !== workingArtifact.kind || stagedBlockRefinement.result.target.artifactId !== workingArtifact.id || stagedBlockRefinement.result.target.kind !== workingArtifact.kind) {
+          throw new Error("Staged block refinement no longer matches the selected artifact.");
+        }
         const replacement = stagedBlockRefinement.result.replacementValue;
         const appliedPath = stagedBlockRefinement.result.target.path;
         const applied = replacement === void 0 ? { artifact: LoomOSArtifactSchema.parse(stagedBlockRefinement.artifact) } : applyArtifactBlockReplacement(workingArtifact, stagedBlockRefinement.result.target, replacement);
@@ -43595,7 +43845,7 @@ function openCreatorWorkshop(options) {
         visualDraftValid = true;
         visualError = "";
         codeError = "Block change applied. Save Revision when ready.";
-        blockRefineStatus = "Block change applied as an unsaved draft.";
+        blockRefineStatus = "";
         blockRefineTarget = refreshBlockTarget(appliedPath);
         render();
       } catch (error) {
@@ -43698,6 +43948,9 @@ function openCreatorWorkshop(options) {
       return;
     }
     if (action === "generate-ai") {
+      if (blockRefineRequestId) {
+        cancelActiveBlockRefinement("Block refinement cancelled because full artifact generation started.");
+      }
       aiBrief = modal.root.querySelector("[data-ai-brief]")?.value ?? aiBrief;
       const brief = aiBrief.trim();
       if (!brief) {
@@ -43869,6 +44122,7 @@ function openCreatorWorkshop(options) {
     }
     if (input?.matches("[data-block-refine-instruction]")) {
       blockRefineInstruction = input.value;
+      syncBlockRefineActionState();
       return;
     }
     if (input?.matches("[data-workshop-search]")) {
@@ -43921,6 +44175,9 @@ function openCreatorWorkshop(options) {
     if (target?.matches("[data-block-target-select]")) {
       const selectedTarget = refreshBlockTarget(target.value);
       if (selectedTarget) {
+        if (blockRefineRequestId && blockRefineRequestTargetPath !== selectedTarget.path) {
+          cancelActiveBlockRefinement("Previous block refinement cancelled because the target changed.");
+        }
         blockRefineTarget = selectedTarget;
         stagedBlockRefinement = null;
         blockRefineStatus = "";
@@ -44014,19 +44271,38 @@ function openCreatorWorkshop(options) {
     },
     handleBackendResponse(response) {
       if (response.type === "artifact_block_refinement_status") {
-        if (blockRefineRequestId && response.requestId !== blockRefineRequestId) return false;
+        if (ignoredBlockRefineRequestIds.has(response.requestId)) {
+          if (response.status === "completed" || response.status === "cancelled" || response.status === "failed") {
+            ignoredBlockRefineRequestIds.delete(response.requestId);
+          }
+          return true;
+        }
+        if (!blockRefineRequestId || response.requestId !== blockRefineRequestId) return false;
         blockRefineStatus = response.message;
         if (response.status === "started" || response.status === "progress") {
-          if (!blockRefineRequestId) blockRefineRequestId = response.requestId;
+          render();
+          return true;
+        }
+        const canStage = blockRefinementResponseCanStage(
+          response,
+          blockRefineRequestId,
+          workingArtifact,
+          blockRefineRequestTargetPath,
+          ignoredBlockRefineRequestIds
+        );
+        blockRefineRequestId = null;
+        blockRefineRequestTargetPath = null;
+        if (response.status === "completed" && canStage && response.artifact && response.result) {
+          stagedBlockRefinement = {
+            artifact: response.artifact,
+            result: response.result
+          };
+          blockRefineTarget = refreshBlockTarget(response.result.target.path) ?? response.result.target;
+        } else if (response.status === "completed") {
+          stagedBlockRefinement = null;
+          blockRefineStatus = "Ignored stale block refinement result.";
         } else {
-          blockRefineRequestId = null;
-          if (response.status === "completed" && response.artifact && response.result) {
-            stagedBlockRefinement = {
-              artifact: response.artifact,
-              result: response.result
-            };
-            blockRefineTarget = refreshBlockTarget(response.result.target.path) ?? response.result.target;
-          }
+          stagedBlockRefinement = null;
         }
         render();
         return true;
@@ -45090,7 +45366,7 @@ function setup(ctx) {
   function diagnosticText() {
     const layoutIssues = settings.layout ? inspectLayoutDiagnostics(settings.layout, settings, activeTheme()) : [];
     const lines = [
-      `version: 0.1.25`,
+      `version: 0.1.26`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,

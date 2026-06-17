@@ -81,3 +81,67 @@ test("block refinement repair pass validates replacement after malformed output"
     assert.equal(result.artifact.prompt, "Track grounded changes concisely.");
   }
 });
+
+test("block refinement rejects blank instructions before generation", async () => {
+  const module = createStarterModuleArtifact();
+  const target = findArtifactBlockTarget(module, "prompt")!;
+  let calls = 0;
+  await assert.rejects(() => refineArtifactBlockWithRepair({
+    artifact: module,
+    target,
+    instruction: "   ",
+    signal: new AbortController().signal,
+    generate: async () => {
+      calls += 1;
+      return "{}";
+    },
+  }), /Describe the block change/);
+  assert.equal(calls, 0);
+});
+
+test("block refinement cancellation stops before model generation", async () => {
+  const module = createStarterModuleArtifact();
+  const target = findArtifactBlockTarget(module, "prompt")!;
+  const controller = new AbortController();
+  controller.abort();
+  let calls = 0;
+  await assert.rejects(() => refineArtifactBlockWithRepair({
+    artifact: module,
+    target,
+    instruction: "Make the prompt concise.",
+    signal: controller.signal,
+    generate: async () => {
+      calls += 1;
+      return "{}";
+    },
+  }), /cancelled|AbortError/);
+  assert.equal(calls, 0);
+});
+
+test("block refinement cancellation stops before repair output is applied", async () => {
+  const module = createStarterModuleArtifact();
+  const target = findArtifactBlockTarget(module, "prompt")!;
+  const controller = new AbortController();
+  const attempts: number[] = [];
+  await assert.rejects(() => refineArtifactBlockWithRepair({
+    artifact: module,
+    target,
+    instruction: "Make the prompt concise.",
+    signal: controller.signal,
+    generate: async (_messages, _signal, attempt) => {
+      attempts.push(attempt);
+      if (attempt === 1) return "not json";
+      controller.abort();
+      return JSON.stringify({
+        target: { artifactId: module.id, kind: "module", path: "prompt" },
+        replacementValue: "This should not be applied.",
+        summary: "Prepared.",
+        warnings: [],
+        changedPaths: ["prompt"],
+        repaired: true,
+        issues: [],
+      });
+    },
+  }), /cancelled|AbortError/);
+  assert.deepEqual(attempts, [1, 2]);
+});

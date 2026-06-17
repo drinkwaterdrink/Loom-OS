@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   applyArtifactBlockReplacement,
+  artifactBlockLanguageLabel,
+  artifactBlockTextDiffSummary,
+  artifactBlockTextMetrics,
   boundedBlockContext,
   enumerateArtifactBlockTargets,
   findArtifactBlockTarget,
@@ -15,7 +18,8 @@ import {
 
 test("block target enumeration covers Module artifact sections", () => {
   const module = createStarterModuleArtifact();
-  const paths = enumerateArtifactBlockTargets(module).map((target) => target.path);
+  const targets = enumerateArtifactBlockTargets(module);
+  const paths = targets.map((target) => target.path);
   for (const path of [
     "meta",
     "schema",
@@ -31,11 +35,17 @@ test("block target enumeration covers Module artifact sections", () => {
   ]) {
     assert.ok(paths.includes(path), path);
   }
+  for (const path of ["meta", "visual", "prompt", "view.html", "view.css", "view.javascript", "fieldBuilder.fields"]) {
+    assert.ok(findArtifactBlockTarget(module, path), path);
+  }
+  assert.equal(findArtifactBlockTarget(module, "prompt")?.category, "Prompt");
+  assert.equal(findArtifactBlockTarget(module, "view.html")?.category, "View");
 });
 
 test("block target enumeration covers Theme artifact sections", () => {
   const theme = createStarterThemeArtifact();
-  const paths = enumerateArtifactBlockTargets(theme).map((target) => target.path);
+  const targets = enumerateArtifactBlockTargets(theme);
+  const paths = targets.map((target) => target.path);
   for (const path of [
     "meta",
     "manifest",
@@ -50,6 +60,11 @@ test("block target enumeration covers Theme artifact sections", () => {
   ]) {
     assert.ok(paths.includes(path), path);
   }
+  for (const path of ["meta", "manifest", "design.tokens", "design.style", "view.html", "view.css", "view.javascript"]) {
+    assert.ok(findArtifactBlockTarget(theme, path), path);
+  }
+  assert.equal(findArtifactBlockTarget(theme, "design.tokens")?.category, "Design");
+  assert.equal(artifactBlockLanguageLabel(findArtifactBlockTarget(theme, "view.javascript")!.language), "JS");
 });
 
 test("block target enumeration covers Blueprint artifact sections", () => {
@@ -66,6 +81,18 @@ test("block target enumeration covers Blueprint artifact sections", () => {
   assert.ok(paths.includes("modules"));
   assert.ok(paths.includes("theme"));
   assert.ok(paths.includes(`modules.${module.id}`));
+  assert.equal(findArtifactBlockTarget(blueprint, "settings")?.category, "Blueprint");
+});
+
+test("block metrics and summaries describe staged replacements", () => {
+  const before = "one\ntwo";
+  const after = "one\ntwo\nthree";
+  assert.deepEqual(artifactBlockTextMetrics(before), { characters: 7, lines: 2 });
+  assert.deepEqual(artifactBlockTextDiffSummary(before, after), {
+    addedLines: 1,
+    removedLines: 0,
+    characterDelta: 6,
+  });
 });
 
 test("applying a prompt replacement to a Module produces a valid artifact", () => {
@@ -138,6 +165,65 @@ test("unsafe design token refinement is rejected", () => {
     bg: "url(https://bad.example/bg.png)",
   }), /unsafe CSS value/);
   assert.equal(theme.design!.tokens.bg, "#101114");
+});
+
+test("unsafe HTML CSS and JavaScript block replacements are rejected", () => {
+  const theme = createStarterThemeArtifact();
+  assert.throws(() => applyArtifactBlockReplacement(
+    theme,
+    findArtifactBlockTarget(theme, "view.html")!,
+    `<article onclick="alert(1)">bad</article>`,
+  ), /event-handler/);
+  assert.throws(() => applyArtifactBlockReplacement(
+    theme,
+    findArtifactBlockTarget(theme, "view.css")!,
+    `.card { background: url(https://bad.example/bg.png); }`,
+  ), /url\(\)|remote or executable/);
+  assert.throws(() => applyArtifactBlockReplacement(
+    theme,
+    findArtifactBlockTarget(theme, "view.javascript")!,
+    "fetch('https://bad.example')",
+  ), /network access|restricted API/);
+  assert.doesNotMatch(theme.view.html, /onclick/);
+});
+
+test("block replacement target identity must match artifact kind and path", () => {
+  const module = createStarterModuleArtifact();
+  const theme = createStarterThemeArtifact();
+  const target = findArtifactBlockTarget(module, "prompt")!;
+  assert.throws(() => applyArtifactBlockReplacement(theme, target, "Wrong artifact."), /does not match/);
+  assert.throws(() => parseArtifactBlockRefinementText(JSON.stringify({
+    target: { artifactId: "other", kind: "module", path: "prompt" },
+    replacementValue: "Track trust.",
+    changedPaths: ["prompt"],
+  }), module, target), /artifactId/);
+  assert.throws(() => parseArtifactBlockRefinementText(JSON.stringify({
+    target: { artifactId: module.id, kind: "theme", path: "prompt" },
+    replacementValue: "Track trust.",
+    changedPaths: ["prompt"],
+  }), module, target), /kind/);
+  assert.throws(() => parseArtifactBlockRefinementText(JSON.stringify({
+    target: { artifactId: module.id, kind: "module", path: "view.css" },
+    replacementValue: "Track trust.",
+    changedPaths: ["view.css"],
+  }), module, target), /target path/);
+});
+
+test("block outputs must include replacementValue unless they are matching full artifacts", () => {
+  const module = createStarterModuleArtifact();
+  const target = findArtifactBlockTarget(module, "prompt")!;
+  assert.throws(() => parseArtifactBlockRefinementText(JSON.stringify({
+    target: { artifactId: module.id, kind: "module", path: "prompt" },
+    summary: "Missing payload.",
+    changedPaths: ["prompt"],
+  }), module, target), /replacementValue/);
+  assert.throws(() => parseArtifactBlockRefinementText(JSON.stringify({
+    ...module,
+    id: "different",
+  }), module, target), /did not match/);
+  assert.throws(() => parseArtifactBlockRefinementText(JSON.stringify({
+    replacementValue: "Raw-ish JSON is not accepted without a target.",
+  }), module, target), /result object/);
 });
 
 test("unrelated path changes in block output are rejected", () => {

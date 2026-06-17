@@ -67,6 +67,7 @@ import {
   applyWorkshopCodeValue,
   applyWorkshopLayoutEdits,
   artifactMatchesPackFilter,
+  blockRefinementResponseCanStage,
   buildWorkshopNativePreviewDocument,
   buildWorkshopThemePreviewDocument,
   externalBuilderPrompt,
@@ -87,6 +88,9 @@ import {
 } from "./workshopBehavior";
 import {
   applyArtifactBlockReplacement,
+  artifactBlockLanguageLabel,
+  artifactBlockTextDiffSummary,
+  artifactBlockTextMetrics,
   enumerateArtifactBlockTargets,
   findArtifactBlockTarget,
   type ArtifactBlockRefinementResult,
@@ -348,6 +352,7 @@ export function openCreatorWorkshop(
   let generationStartedAt = 0;
   let generationElapsedMs = 0;
   let blockRefineRequestId: string | null = null;
+  let blockRefineRequestTargetPath: string | null = null;
   let blockRefineTarget: ArtifactBlockTarget | null = null;
   let blockRefineInstruction = "";
   let blockRefineStatus = "";
@@ -355,6 +360,7 @@ export function openCreatorWorkshop(
     artifact: LoomOSArtifact;
     result: ArtifactBlockRefinementResult;
   } | null = null;
+  const ignoredBlockRefineRequestIds = new Set<string>();
   let aiKind: LoomOSArtifact["kind"] = "module";
   let aiMode: AiCreatorMode = workingArtifact ? "refine" : "create";
   let aiBrief = "";
@@ -405,8 +411,33 @@ export function openCreatorWorkshop(
     return findArtifactBlockTarget(workingArtifact, path);
   }
 
+  function cancelActiveBlockRefinement(message: string): void {
+    if (blockRefineRequestId) {
+      ignoredBlockRefineRequestIds.add(blockRefineRequestId);
+      options.send({ type: "cancel_artifact_block_refinement", requestId: blockRefineRequestId });
+    }
+    blockRefineRequestId = null;
+    blockRefineRequestTargetPath = null;
+    stagedBlockRefinement = null;
+    blockRefineStatus = message;
+  }
+
+  function syncBlockRefineActionState(): void {
+    const instruction = modal.root.querySelector<HTMLTextAreaElement>("[data-block-refine-instruction]")?.value
+      ?? blockRefineInstruction;
+    modal.root.querySelectorAll<HTMLButtonElement>("[data-block-refine-start]").forEach((button) => {
+      button.disabled = Boolean(blockRefineRequestId) || !instruction.trim();
+      button.title = button.disabled && !instruction.trim() ? "Describe the block change first." : "";
+    });
+    modal.root.querySelectorAll<HTMLButtonElement>("[data-block-refine-apply]").forEach((button) => {
+      button.disabled = !stagedBlockRefinement;
+      button.title = stagedBlockRefinement ? "" : "No staged block refinement is ready to apply.";
+    });
+  }
+
   function blockRefineButton(path: string, label = "Refine with AI"): string {
-    return `<button type="button" class="loomos-button loomos-button-ai loomos-btn-sm" data-workshop-action="open-block-refine" data-block-path="${escapeHtml(path)}">${escapeHtml(label)}</button>`;
+    const valid = Boolean(refreshBlockTarget(path));
+    return `<button type="button" class="loomos-button loomos-button-ai loomos-btn-sm" data-workshop-action="open-block-refine" data-block-path="${escapeHtml(path)}"${valid ? "" : " disabled"} title="${valid ? "" : "This block is not available for the selected artifact."}">${escapeHtml(label)}</button>`;
   }
 
   function blockValueText(value: unknown, language: ArtifactBlockTarget["language"] = "json"): string {
@@ -423,20 +454,36 @@ export function openCreatorWorkshop(
     const afterText = stagedBlockRefinement
       ? blockValueText(proposed, currentTarget.language)
       : "";
+    const beforeMetrics = artifactBlockTextMetrics(currentTarget.currentValue);
+    const afterMetrics = stagedBlockRefinement ? artifactBlockTextMetrics(proposed) : null;
+    const diff = stagedBlockRefinement
+      ? artifactBlockTextDiffSummary(currentTarget.currentValue, proposed)
+      : null;
+    const issues = stagedBlockRefinement?.result.issues ?? [];
+    const developerWarning = currentTarget.language === "javascript"
+      ? `<p class="loomos-block-warning">JavaScript remains developer-gated and must not use network, storage, parent DOM access, eval, Function, or Spindle APIs.</p>`
+      : "";
     return `
       <section class="loomos-block-refine" role="region" aria-label="Block-level AI refinement">
         <div class="loomos-block-refine-heading">
           <div>
             <span class="loomos-kicker">Block AI refinement</span>
             <h3>Refine ${escapeHtml(currentTarget.label)}</h3>
-            <p>Only <code>${escapeHtml(currentTarget.path)}</code> is eligible to change. Apply keeps this as an unsaved Workshop draft.</p>
+            <p>This changes only: <code>${escapeHtml(currentTarget.path)}</code>. Apply keeps this as an unsaved Workshop draft.</p>
           </div>
           <button type="button" class="loomos-button" data-workshop-action="close-block-refine">Close</button>
         </div>
+        <div class="loomos-block-badges">
+          <span>${escapeHtml(currentTarget.category)}</span>
+          <span>${escapeHtml(artifactBlockLanguageLabel(currentTarget.language))}</span>
+          <span>${beforeMetrics.lines} lines</span>
+          <span>${beforeMetrics.characters} chars</span>
+        </div>
+        ${developerWarning}
         <label class="loomos-field">
           <span>Target block</span>
           <select class="loomos-select" data-block-target-select>
-            ${targets.map((target) => `<option value="${escapeHtml(target.path)}"${target.path === currentTarget.path ? " selected" : ""}>${escapeHtml(target.label)} (${escapeHtml(target.path)})</option>`).join("")}
+            ${targets.map((target) => `<option value="${escapeHtml(target.path)}"${target.path === currentTarget.path ? " selected" : ""}>${escapeHtml(target.category)} / ${escapeHtml(target.label)} (${escapeHtml(target.path)})</option>`).join("")}
           </select>
         </label>
         <label class="loomos-field">
@@ -446,22 +493,26 @@ export function openCreatorWorkshop(
         <div class="loomos-workshop-actions loomos-block-refine-actions">
           ${blockRefineRequestId
             ? `<button type="button" class="loomos-button loomos-button-danger" data-workshop-action="cancel-block-refine">Stop</button>`
-            : `<button type="button" class="loomos-button loomos-button-primary" data-workshop-action="start-block-refine">Refine this block</button>`
+            : `<button type="button" class="loomos-button loomos-button-primary" data-workshop-action="start-block-refine" data-block-refine-start${blockRefineInstruction.trim() ? "" : " disabled"}>Refine this block</button>`
           }
+          <button type="button" class="loomos-button" data-workshop-action="open-advanced-code">Open in Advanced Code</button>
           <span class="loomos-workshop-live-status">${escapeHtml(blockRefineStatus || "No library save happens until you apply and Save Revision.")}</span>
         </div>
         ${stagedBlockRefinement ? `
           <div class="loomos-block-diff">
             <div class="loomos-block-diff-summary">
               <strong>${escapeHtml(stagedBlockRefinement.result.summary)}</strong>
-              <span>Changed: ${stagedBlockRefinement.result.changedPaths.map(escapeHtml).join(", ") || escapeHtml(currentTarget.path)}</span>
+              <span>Changed paths: ${stagedBlockRefinement.result.changedPaths.map(escapeHtml).join(", ") || escapeHtml(currentTarget.path)}</span>
+              <span>Diff: +${diff?.addedLines ?? 0} / -${diff?.removedLines ?? 0} lines, ${diff?.characterDelta ?? 0} chars</span>
+              ${afterMetrics ? `<span>After: ${afterMetrics.lines} lines, ${afterMetrics.characters} chars</span>` : ""}
               ${stagedBlockRefinement.result.warnings.length ? `<small>${stagedBlockRefinement.result.warnings.map(escapeHtml).join(" ")}</small>` : ""}
+              ${issues.length ? `<small>Issues: ${issues.map(escapeHtml).join(" ")}</small>` : ""}
             </div>
             <details open><summary>Before</summary><pre>${escapeHtml(beforeText)}</pre></details>
             <details open><summary>After</summary><pre>${escapeHtml(afterText)}</pre></details>
             <div class="loomos-workshop-actions loomos-block-apply-row">
               <button type="button" class="loomos-button" data-workshop-action="preview-block-refine">Preview</button>
-              <button type="button" class="loomos-button loomos-button-primary" data-workshop-action="apply-block-refine">Apply Block Change</button>
+              <button type="button" class="loomos-button loomos-button-primary" data-workshop-action="apply-block-refine" data-block-refine-apply>Apply Block Change</button>
               <button type="button" class="loomos-button loomos-button-danger" data-workshop-action="discard-block-refine">Discard</button>
               <button type="button" class="loomos-button" data-workshop-action="open-advanced-code">Open in Advanced Code</button>
             </div>
@@ -612,6 +663,10 @@ export function openCreatorWorkshop(
   }
 
   function chooseArtifact(artifact: LoomOSArtifact, saved = true): void {
+    if (blockRefineRequestId) {
+      ignoredBlockRefineRequestIds.add(blockRefineRequestId);
+      options.send({ type: "cancel_artifact_block_refinement", requestId: blockRefineRequestId });
+    }
     codeEditor?.destroy();
     codeEditor = null;
     selectedId = artifact.id;
@@ -620,6 +675,8 @@ export function openCreatorWorkshop(
     stagedArtifact = null;
     stagedBlockRefinement = null;
     blockRefineTarget = null;
+    blockRefineRequestId = null;
+    blockRefineRequestTargetPath = null;
     blockRefineStatus = "";
     codeSection = codeSections(artifact)[0]?.id ?? "meta";
     codeError = "";
@@ -1889,6 +1946,7 @@ export function openCreatorWorkshop(
     applyPackFilters();
     applyModuleFilters();
     applyRailFilters();
+    syncBlockRefineActionState();
   }
 
   async function openImport(): Promise<void> {
@@ -2561,6 +2619,9 @@ export function openCreatorWorkshop(
         render();
         return;
       }
+      if (blockRefineRequestId && blockRefineRequestTargetPath !== target.path) {
+        cancelActiveBlockRefinement("Previous block refinement cancelled because the target changed.");
+      }
       blockRefineTarget = target;
       stagedBlockRefinement = null;
       blockRefineStatus = "";
@@ -2568,12 +2629,26 @@ export function openCreatorWorkshop(
       return;
     }
     if (action === "close-block-refine") {
+      if (blockRefineRequestId) {
+        cancelActiveBlockRefinement("");
+      }
       blockRefineTarget = null;
+      stagedBlockRefinement = null;
       blockRefineStatus = "";
       render();
       return;
     }
     if (action === "start-block-refine" && workingArtifact && blockRefineTarget) {
+      if (generationRequestId) {
+        blockRefineStatus = "Stop full artifact generation before refining a block.";
+        render();
+        return;
+      }
+      if (blockRefineRequestId) {
+        blockRefineStatus = "A block refinement is already running.";
+        render();
+        return;
+      }
       blockRefineInstruction = modal.root.querySelector<HTMLTextAreaElement>("[data-block-refine-instruction]")?.value ?? blockRefineInstruction;
       if (!blockRefineInstruction.trim()) {
         blockRefineStatus = "Describe the block change first.";
@@ -2599,6 +2674,7 @@ export function openCreatorWorkshop(
       }
       blockRefineTarget = freshTarget;
       blockRefineRequestId = options.requestId("artifact-block-refine");
+      blockRefineRequestTargetPath = freshTarget.path;
       blockRefineStatus = "Starting block refinement";
       stagedBlockRefinement = null;
       options.send(artifactBlockRefineRequest(
@@ -2611,12 +2687,13 @@ export function openCreatorWorkshop(
       return;
     }
     if (action === "cancel-block-refine" && blockRefineRequestId) {
-      options.send({ type: "cancel_artifact_block_refinement", requestId: blockRefineRequestId });
+      cancelActiveBlockRefinement("Block refinement cancelled.");
+      render();
       return;
     }
     if (action === "discard-block-refine") {
       stagedBlockRefinement = null;
-      blockRefineStatus = "Block refinement discarded.";
+      blockRefineStatus = "";
       render();
       return;
     }
@@ -2627,6 +2704,19 @@ export function openCreatorWorkshop(
     }
     if (action === "apply-block-refine" && workingArtifact && stagedBlockRefinement) {
       try {
+        if (activeView === "advanced-code" && !commitCodeDraft()) {
+          blockRefineStatus = `Current code draft is invalid: ${codeError}`;
+          render();
+          return;
+        }
+        if (
+          stagedBlockRefinement.artifact.id !== workingArtifact.id
+          || stagedBlockRefinement.artifact.kind !== workingArtifact.kind
+          || stagedBlockRefinement.result.target.artifactId !== workingArtifact.id
+          || stagedBlockRefinement.result.target.kind !== workingArtifact.kind
+        ) {
+          throw new Error("Staged block refinement no longer matches the selected artifact.");
+        }
         const replacement = stagedBlockRefinement.result.replacementValue;
         const appliedPath = stagedBlockRefinement.result.target.path;
         const applied = replacement === undefined
@@ -2638,7 +2728,7 @@ export function openCreatorWorkshop(
         visualDraftValid = true;
         visualError = "";
         codeError = "Block change applied. Save Revision when ready.";
-        blockRefineStatus = "Block change applied as an unsaved draft.";
+        blockRefineStatus = "";
         blockRefineTarget = refreshBlockTarget(appliedPath);
         render();
       } catch (error) {
@@ -2741,6 +2831,9 @@ export function openCreatorWorkshop(
       return;
     }
     if (action === "generate-ai") {
+      if (blockRefineRequestId) {
+        cancelActiveBlockRefinement("Block refinement cancelled because full artifact generation started.");
+      }
       aiBrief = modal.root.querySelector<HTMLTextAreaElement>("[data-ai-brief]")?.value ?? aiBrief;
       const brief = aiBrief.trim();
       if (!brief) {
@@ -2914,6 +3007,7 @@ export function openCreatorWorkshop(
     }
     if (input?.matches("[data-block-refine-instruction]")) {
       blockRefineInstruction = input.value;
+      syncBlockRefineActionState();
       return;
     }
     if (input?.matches("[data-workshop-search]")) {
@@ -2967,6 +3061,9 @@ export function openCreatorWorkshop(
     if (target?.matches("[data-block-target-select]")) {
       const selectedTarget = refreshBlockTarget((target as HTMLSelectElement).value);
       if (selectedTarget) {
+        if (blockRefineRequestId && blockRefineRequestTargetPath !== selectedTarget.path) {
+          cancelActiveBlockRefinement("Previous block refinement cancelled because the target changed.");
+        }
         blockRefineTarget = selectedTarget;
         stagedBlockRefinement = null;
         blockRefineStatus = "";
@@ -3064,19 +3161,38 @@ export function openCreatorWorkshop(
     },
     handleBackendResponse(response) {
       if (response.type === "artifact_block_refinement_status") {
-        if (blockRefineRequestId && response.requestId !== blockRefineRequestId) return false;
+        if (ignoredBlockRefineRequestIds.has(response.requestId)) {
+          if (response.status === "completed" || response.status === "cancelled" || response.status === "failed") {
+            ignoredBlockRefineRequestIds.delete(response.requestId);
+          }
+          return true;
+        }
+        if (!blockRefineRequestId || response.requestId !== blockRefineRequestId) return false;
         blockRefineStatus = response.message;
         if (response.status === "started" || response.status === "progress") {
-          if (!blockRefineRequestId) blockRefineRequestId = response.requestId;
+          render();
+          return true;
+        }
+        const canStage = blockRefinementResponseCanStage(
+          response,
+          blockRefineRequestId,
+          workingArtifact,
+          blockRefineRequestTargetPath,
+          ignoredBlockRefineRequestIds,
+        );
+        blockRefineRequestId = null;
+        blockRefineRequestTargetPath = null;
+        if (response.status === "completed" && canStage && response.artifact && response.result) {
+          stagedBlockRefinement = {
+            artifact: response.artifact,
+            result: response.result,
+          };
+          blockRefineTarget = refreshBlockTarget(response.result.target.path) ?? response.result.target;
+        } else if (response.status === "completed") {
+          stagedBlockRefinement = null;
+          blockRefineStatus = "Ignored stale block refinement result.";
         } else {
-          blockRefineRequestId = null;
-          if (response.status === "completed" && response.artifact && response.result) {
-            stagedBlockRefinement = {
-              artifact: response.artifact,
-              result: response.result,
-            };
-            blockRefineTarget = refreshBlockTarget(response.result.target.path) ?? response.result.target;
-          }
+          stagedBlockRefinement = null;
         }
         render();
         return true;

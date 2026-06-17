@@ -7947,15 +7947,120 @@ var TEXT_SECURITY_RULES = [
   "Do not introduce remote assets, URLs, network calls, eval, Function constructors, storage access, external scripts, or parent DOM access.",
   "Return only the selected block replacement. Do not change unrelated artifact paths."
 ];
+var UNSAFE_HTML_PATTERNS = [
+  [/<\s*(script|iframe|object|embed|link|meta|base|form|style)\b/i, "HTML block contains an unsafe tag."],
+  [/\son[a-z0-9_-]+\s*=/i, "HTML block contains an event-handler attribute."],
+  [/\s(?:href|src|xlink:href|action|formaction)\s*=/i, "HTML block contains an external-link or asset attribute."],
+  [/javascript\s*:/i, "HTML block contains a javascript: URL."]
+];
+var UNSAFE_CSS_PATTERNS = [
+  [/@import\b/i, "CSS block contains @import."],
+  [/@font-face\b/i, "CSS block contains external font-face declarations."],
+  [/url\s*\(/i, "CSS block contains url()."],
+  [/https?\s*:|data\s*:|javascript\s*:/i, "CSS block contains a remote or executable protocol."],
+  [/expression\s*\(/i, "CSS block contains expression()."],
+  [/\bbehavior\s*:/i, "CSS block contains behavior:."],
+  [/-moz-binding\s*:/i, "CSS block contains -moz-binding."]
+];
+var UNSAFE_JS_PATTERNS = [
+  [/\beval\s*\(/i, "JavaScript block contains dynamic code execution."],
+  [/\bnew\s+Function\b|\bFunction\s*\(/i, "JavaScript block contains the Function constructor."],
+  [/\b(?:localStorage|sessionStorage|indexedDB)\b/i, "JavaScript block attempts storage access."],
+  [/\bdocument\.cookie\b/i, "JavaScript block attempts cookie access."],
+  [/\b(?:window\.)?(?:parent|top|opener)\b/i, "JavaScript block attempts parent or opener DOM access."],
+  [/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\b/i, "JavaScript block attempts network access."],
+  [/\bspindle\b/i, "JavaScript block attempts Spindle API access."],
+  [/\bimport\s*\(/i, "JavaScript block attempts dynamic imports."]
+];
 function cloneArtifact(artifact) {
   return structuredClone(artifact);
 }
-function jsonTarget(artifact, path, label, currentValue, surroundingContext = {}) {
+function validateArtifactBlockReplacementSecurity(target, replacement) {
+  const value = typeof replacement === "string" ? replacement : "";
+  const patterns = target.language === "html" ? UNSAFE_HTML_PATTERNS : target.language === "css" ? UNSAFE_CSS_PATTERNS : target.language === "javascript" ? UNSAFE_JS_PATTERNS : [];
+  return patterns.filter(([pattern]) => pattern.test(value)).map(([, message]) => `${target.path}: ${message}`);
+}
+function assertBlockReplacementSecurity(target, replacement) {
+  const issues = validateArtifactBlockReplacementSecurity(target, replacement);
+  if (issues.length) throw new Error(issues.join(" "));
+}
+function assertPartialMapSecurity(target, replacement) {
+  if (target.path !== "view.partials" || !replacement || typeof replacement !== "object" || Array.isArray(replacement)) {
+    return;
+  }
+  const issues = Object.entries(replacement).flatMap(
+    ([key, value]) => validateArtifactBlockReplacementSecurity({
+      ...target,
+      path: `${target.path}.${key}`,
+      language: "html",
+      currentValue: value
+    }, value)
+  );
+  if (issues.length) throw new Error(issues.join(" "));
+}
+function assertArtifactSourceSecurity(artifact, sourcePath = artifact.id) {
+  const targets = [];
+  if (artifact.kind === "module" || artifact.kind === "theme") {
+    targets.push({
+      artifactId: artifact.id,
+      kind: artifact.kind,
+      path: `${sourcePath}.view.html`,
+      label: "HTML",
+      category: "View",
+      language: "html",
+      mode: "replace",
+      currentValue: artifact.view.html
+    });
+    targets.push({
+      artifactId: artifact.id,
+      kind: artifact.kind,
+      path: `${sourcePath}.view.css`,
+      label: "CSS",
+      category: "View",
+      language: "css",
+      mode: "replace",
+      currentValue: artifact.view.css
+    });
+    targets.push({
+      artifactId: artifact.id,
+      kind: artifact.kind,
+      path: `${sourcePath}.view.javascript`,
+      label: "JavaScript",
+      category: "View",
+      language: "javascript",
+      mode: "replace",
+      currentValue: artifact.view.javascript
+    });
+    for (const [key, value] of Object.entries(artifact.view.partials)) {
+      targets.push({
+        artifactId: artifact.id,
+        kind: artifact.kind,
+        path: `${sourcePath}.view.partials.${key}`,
+        label: `Partial ${key}`,
+        category: "View",
+        language: "html",
+        mode: "replace",
+        currentValue: value
+      });
+    }
+  }
+  if (artifact.kind === "blueprint") {
+    artifact.modules.forEach((module) => assertArtifactSourceSecurity(module, `${sourcePath}.modules.${module.id}`));
+    if (artifact.theme) assertArtifactSourceSecurity(artifact.theme, `${sourcePath}.theme`);
+    return;
+  }
+  const issues = targets.flatMap(
+    (target) => validateArtifactBlockReplacementSecurity(target, target.currentValue)
+  );
+  if (issues.length) throw new Error(issues.join(" "));
+}
+function jsonTarget(artifact, path, label, category, currentValue, surroundingContext = {}) {
   return {
     artifactId: artifact.id,
     kind: artifact.kind,
     path,
     label,
+    category,
     language: "json",
     mode: "replace",
     currentValue,
@@ -7963,12 +8068,13 @@ function jsonTarget(artifact, path, label, currentValue, surroundingContext = {}
     safetyRules: TEXT_SECURITY_RULES
   };
 }
-function textTarget(artifact, path, label, language, currentValue, surroundingContext = {}) {
+function textTarget(artifact, path, label, category, language, currentValue, surroundingContext = {}) {
   return {
     artifactId: artifact.id,
     kind: artifact.kind,
     path,
     label,
+    category,
     language,
     mode: "replace",
     currentValue,
@@ -7979,40 +8085,40 @@ function textTarget(artifact, path, label, language, currentValue, surroundingCo
 function moduleTargets(module) {
   const properties = module.schema.properties ?? {};
   return [
-    jsonTarget(module, "meta", "Metadata", module.meta, { artifactName: module.meta.name }),
-    jsonTarget(module, "schema", "Field schema", module.schema, {
+    jsonTarget(module, "meta", "Metadata", "Metadata", module.meta, { artifactName: module.meta.name }),
+    jsonTarget(module, "schema", "Field schema", "Schema", module.schema, {
       required: module.schema.required ?? [],
       propertyKeys: Object.keys(properties)
     }),
-    textTarget(module, "prompt", "Tracking purpose / prompt", "text", module.prompt, {
+    textTarget(module, "prompt", "Tracking purpose / prompt", "Prompt", "text", module.prompt, {
       schemaKeys: Object.keys(properties),
       sampleKeys: module.sampleData && typeof module.sampleData === "object" ? Object.keys(module.sampleData) : []
     }),
-    jsonTarget(module, "sampleData", "Sample data", module.sampleData, {
+    jsonTarget(module, "sampleData", "Sample data", "Schema", module.sampleData, {
       schemaKeys: Object.keys(properties)
     }),
-    jsonTarget(module, "defaults", "Defaults", module.defaults, { group: module.defaults.group }),
-    jsonTarget(module, "visual", "Visual metadata", module.visual ?? {}, {
+    jsonTarget(module, "defaults", "Defaults", "Metadata", module.defaults, { group: module.defaults.group }),
+    jsonTarget(module, "visual", "Visual metadata", "Metadata", module.visual ?? {}, {
       outputMode: module.visual?.outputMode ?? "cards"
     }),
-    textTarget(module, "view.html", "Module HTML", "html", module.view.html, {
+    textTarget(module, "view.html", "Module HTML", "View", "html", module.view.html, {
       cssLength: module.view.css.length,
       javascriptLength: module.view.javascript.length
     }),
-    textTarget(module, "view.css", "Module CSS", "css", module.view.css, {
+    textTarget(module, "view.css", "Module CSS", "View", "css", module.view.css, {
       htmlLength: module.view.html.length
     }),
-    textTarget(module, "view.javascript", "Module JavaScript", "javascript", module.view.javascript, {
+    textTarget(module, "view.javascript", "Module JavaScript", "View", "javascript", module.view.javascript, {
       developerNote: "Module JavaScript is isolated and optional."
     }),
-    jsonTarget(module, "view.partials", "Module partials", module.view.partials, {
+    jsonTarget(module, "view.partials", "Module partials", "View", module.view.partials, {
       partialNames: Object.keys(module.view.partials)
     }),
-    jsonTarget(module, "fieldBuilder.fields", "Field Builder fields", properties, {
+    jsonTarget(module, "fieldBuilder.fields", "Field Builder fields", "Field", properties, {
       required: module.schema.required ?? []
     }),
     ...Object.entries(properties).map(
-      ([key, value]) => jsonTarget(module, `schema.properties.${key}`, `Field definition: ${key}`, value, {
+      ([key, value]) => jsonTarget(module, `schema.properties.${key}`, `Field definition: ${key}`, "Field", value, {
         required: module.schema.required?.includes(key) ?? false
       })
     )
@@ -8021,15 +8127,15 @@ function moduleTargets(module) {
 function themeTargets(theme) {
   const design = ThemeDesignSchema.parse(theme.design ?? {});
   return [
-    jsonTarget(theme, "meta", "Metadata", theme.meta, { artifactName: theme.meta.name }),
-    jsonTarget(theme, "manifest", "Manifest", theme.manifest, {
+    jsonTarget(theme, "meta", "Metadata", "Metadata", theme.meta, { artifactName: theme.meta.name }),
+    jsonTarget(theme, "manifest", "Manifest", "Metadata", theme.manifest, {
       slots: theme.manifest.slots ?? [],
       capabilities: theme.manifest.capabilities
     }),
-    jsonTarget(theme, "design.tokens", "Design tokens", design.tokens, {
+    jsonTarget(theme, "design.tokens", "Design tokens", "Design", design.tokens, {
       tokenNames: Object.keys(design.tokens)
     }),
-    jsonTarget(theme, "design.style", "Design style settings", {
+    jsonTarget(theme, "design.style", "Design style settings", "Design", {
       typography: design.typography,
       backgroundStyle: design.backgroundStyle,
       panelStyle: design.panelStyle,
@@ -8042,23 +8148,23 @@ function themeTargets(theme) {
     }, {
       tokenNames: Object.keys(design.tokens)
     }),
-    textTarget(theme, "view.html", "Theme HTML", "html", theme.view.html, {
+    textTarget(theme, "view.html", "Theme HTML", "View", "html", theme.view.html, {
       slots: theme.manifest.slots ?? [],
       partialNames: Object.keys(theme.view.partials)
     }),
-    textTarget(theme, "view.css", "Theme CSS", "css", theme.view.css, {
+    textTarget(theme, "view.css", "Theme CSS", "View", "css", theme.view.css, {
       tokenNames: Object.keys(design.tokens)
     }),
-    textTarget(theme, "view.javascript", "Theme JavaScript", "javascript", theme.view.javascript, {
+    textTarget(theme, "view.javascript", "Theme JavaScript", "View", "javascript", theme.view.javascript, {
       developerMode: theme.manifest.developerMode
     }),
-    jsonTarget(theme, "view.partials", "Theme partials", theme.view.partials, {
+    jsonTarget(theme, "view.partials", "Theme partials", "View", theme.view.partials, {
       partialNames: Object.keys(theme.view.partials)
     }),
-    jsonTarget(theme, "sampleData", "Sample data", theme.sampleData, {}),
-    jsonTarget(theme, "manifest.slots", "Declared slots", theme.manifest.slots ?? [], {}),
+    jsonTarget(theme, "sampleData", "Sample data", "Schema", theme.sampleData, {}),
+    jsonTarget(theme, "manifest.slots", "Declared slots", "Design", theme.manifest.slots ?? [], {}),
     ...(theme.manifest.slots ?? []).map(
-      (slot) => textTarget(theme, `manifest.slots.${slot}`, `Slot section: ${slot}`, "text", slot, {
+      (slot) => textTarget(theme, `manifest.slots.${slot}`, `Slot section: ${slot}`, "Design", "text", slot, {
         declaredSlots: theme.manifest.slots ?? []
       })
     )
@@ -8066,16 +8172,16 @@ function themeTargets(theme) {
 }
 function blueprintTargets(blueprint) {
   return [
-    jsonTarget(blueprint, "meta", "Metadata", blueprint.meta, { artifactName: blueprint.meta.name }),
-    jsonTarget(blueprint, "settings", "Recommended settings", blueprint.settings, {}),
-    jsonTarget(blueprint, "modules", "Module list", blueprint.modules, {
+    jsonTarget(blueprint, "meta", "Metadata", "Metadata", blueprint.meta, { artifactName: blueprint.meta.name }),
+    jsonTarget(blueprint, "settings", "Recommended settings", "Blueprint", blueprint.settings, {}),
+    jsonTarget(blueprint, "modules", "Module list", "Blueprint", blueprint.modules, {
       moduleIds: blueprint.modules.map((module) => module.id)
     }),
-    jsonTarget(blueprint, "theme", "Embedded theme", blueprint.theme, {
+    jsonTarget(blueprint, "theme", "Embedded theme", "Blueprint", blueprint.theme, {
       themeId: blueprint.theme?.id ?? null
     }),
     ...blueprint.modules.map(
-      (module) => jsonTarget(blueprint, `modules.${module.id}`, `Embedded module: ${module.meta.name}`, module, {
+      (module) => jsonTarget(blueprint, `modules.${module.id}`, `Embedded module: ${module.meta.name}`, "Blueprint", module, {
         moduleIds: blueprint.modules.map((candidate) => candidate.id)
       })
     )
@@ -8166,11 +8272,19 @@ function applyToBlueprint(artifact, path, replacement) {
   const next = cloneArtifact(artifact);
   if (path === "meta") next.meta = replacement;
   else if (path === "settings") next.settings = replacement;
-  else if (path === "modules") next.modules = replacement;
-  else if (path === "theme") next.theme = replacement;
-  else if (path.startsWith("modules.")) {
+  else if (path === "modules") {
+    if (!Array.isArray(replacement)) throw new Error("Blueprint modules block must be a JSON array.");
+    const modules = replacement.map((module) => ModuleCapsuleArtifactSchema.parse(module));
+    modules.forEach((module) => assertArtifactSourceSecurity(module, `modules.${module.id}`));
+    next.modules = modules;
+  } else if (path === "theme") {
+    const theme = replacement === null ? null : ThemeArtifactSchema.parse(replacement);
+    if (theme) assertArtifactSourceSecurity(theme, "theme");
+    next.theme = theme;
+  } else if (path.startsWith("modules.")) {
     const moduleId = path.slice("modules.".length);
     const module = ModuleCapsuleArtifactSchema.parse(replacement);
+    assertArtifactSourceSecurity(module, `modules.${module.id}`);
     next.modules = next.modules.map((candidate) => candidate.id === moduleId ? module : candidate);
   } else {
     throw new Error(`Unsupported Blueprint block path "${path}".`);
@@ -8179,6 +8293,8 @@ function applyToBlueprint(artifact, path, replacement) {
 }
 function applyArtifactBlockReplacement(artifact, target, replacement) {
   assertTargetMatches(artifact, target);
+  assertBlockReplacementSecurity(target, replacement);
+  assertPartialMapSecurity(target, replacement);
   const next = artifact.kind === "module" ? applyToModule(artifact, target.path, replacement) : artifact.kind === "theme" ? applyToTheme(artifact, target.path, replacement) : applyToBlueprint(artifact, target.path, replacement);
   return {
     artifact: next,
@@ -8217,13 +8333,24 @@ function boundedBlockContext(artifact, target) {
 }
 function parseArtifactBlockRefinementText(raw, artifact, target, repaired = false) {
   const value = extractJsonText(raw);
-  let payload = value;
+  let payload;
   let summary = "Block refinement prepared.";
   let warnings = [];
   let changedPaths = [target.path];
-  if (isRecord4(value) && value.target && value.replacementValue !== void 0) {
+  if (isRecord4(value) && value.target) {
+    if (!Object.prototype.hasOwnProperty.call(value, "replacementValue")) {
+      throw new Error("Block refinement output must include replacementValue.");
+    }
     const outputTarget = isRecord4(value.target) ? value.target : {};
+    const outputArtifactId = String(outputTarget.artifactId ?? "");
+    const outputKind = String(outputTarget.kind ?? "");
     const outputPath = String(outputTarget.path ?? target.path);
+    if (outputArtifactId !== target.artifactId) {
+      throw new Error(`Model returned artifactId "${outputArtifactId}" but "${target.artifactId}" was requested.`);
+    }
+    if (outputKind !== target.kind) {
+      throw new Error(`Model returned kind "${outputKind}" but "${target.kind}" was requested.`);
+    }
     if (outputPath !== target.path) {
       throw new Error(`Model returned target path "${outputPath}" but "${target.path}" was requested.`);
     }
@@ -8245,6 +8372,8 @@ function parseArtifactBlockRefinementText(raw, artifact, target, repaired = fals
     if (payload === void 0) throw new Error(`Could not extract "${target.path}" from full artifact output.`);
     summary = "Model returned a full artifact; only the requested block was extracted.";
     warnings = ["Full artifact output was bounded to the selected block."];
+  } else {
+    throw new Error("Block refinement output must be a result object with replacementValue or a matching full artifact.");
   }
   const applied = applyArtifactBlockReplacement(artifact, target, payload);
   return {
@@ -8260,6 +8389,10 @@ function parseArtifactBlockRefinementText(raw, artifact, target, repaired = fals
 }
 
 // src/backend/artifactBlockRefinement.ts
+function throwIfAborted(signal) {
+  if (!signal.aborted) return;
+  throw new DOMException("Block refinement cancelled.", "AbortError");
+}
 function artifactBlockContract(artifact, target) {
   const common = `Artifact contract:
 - format is "${ARTIFACT_FORMAT}", version is ${ARTIFACT_VERSION}
@@ -8321,14 +8454,17 @@ function buildArtifactBlockRefinementMessages(request) {
 }
 async function refineArtifactBlockWithRepair(request) {
   if (!request.instruction.trim()) throw new Error("Describe the block change you want AI to make.");
+  throwIfAborted(request.signal);
   request.onProgress?.(1, `Refining ${request.target.label}.`);
   const messages = buildArtifactBlockRefinementMessages(request);
   const firstRaw = await request.generate(messages, request.signal, 1);
+  throwIfAborted(request.signal);
   try {
     const applied = parseArtifactBlockRefinementText(firstRaw, request.artifact, request.target, false);
     return { ...applied, repaired: false, issues: applied.result.issues };
   } catch (error) {
     const issue = error instanceof Error ? error.message : String(error);
+    throwIfAborted(request.signal);
     request.onProgress?.(2, `Repairing block output: ${issue.split("\n")[0] ?? "invalid output"}`);
     const repairMessages = [
       {
@@ -8352,6 +8488,7 @@ Repair the malformed block result. Return only the strict JSON object for target
       }
     ];
     const repairedRaw = await request.generate(repairMessages, request.signal, 2);
+    throwIfAborted(request.signal);
     const applied = parseArtifactBlockRefinementText(repairedRaw, request.artifact, request.target, true);
     return {
       ...applied,

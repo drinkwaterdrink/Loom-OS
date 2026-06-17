@@ -3388,6 +3388,26 @@ export const LOOMOS_STYLES = `
     color: var(--loomos-muted);
     font-size: 12px;
   }
+  .loomos-block-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .loomos-block-badges span {
+    border: 1px solid rgba(94, 234, 212, .28);
+    border-radius: 999px;
+    color: #a7f3d0;
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+  .loomos-block-warning {
+    border: 1px solid rgba(251, 191, 36, .35);
+    border-radius: 12px;
+    color: #fde68a;
+    font-size: 12px;
+    margin: 0;
+    padding: 8px 10px;
+  }
   .loomos-block-refine-instruction {
     min-height: 140px;
     resize: vertical;
@@ -3428,7 +3448,17 @@ export const LOOMOS_STYLES = `
     word-break: break-word;
     font-size: 11px;
   }
-  .loomos-block-apply-row { grid-column: 1 / -1; justify-content: flex-end; }
+  .loomos-block-apply-row {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    position: sticky;
+    bottom: calc(64px + env(safe-area-inset-bottom));
+    z-index: 2;
+    padding: 8px;
+    border: 1px solid rgba(94, 234, 212, .18);
+    border-radius: 14px;
+    background: rgba(12, 17, 23, .96);
+  }
   .loomos-section-heading h2 { font-size: 15px; margin: 2px 0 0; }
   .loomos-workshop-quick-grid {
     display: grid;

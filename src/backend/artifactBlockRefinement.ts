@@ -30,6 +30,11 @@ export interface ArtifactBlockRefinementGenerationResult extends AppliedArtifact
   issues: string[];
 }
 
+function throwIfAborted(signal: AbortSignal): void {
+  if (!signal.aborted) return;
+  throw new DOMException("Block refinement cancelled.", "AbortError");
+}
+
 function artifactBlockContract(artifact: LoomOSArtifact, target: ArtifactBlockTarget): string {
   const common = `Artifact contract:
 - format is "${ARTIFACT_FORMAT}", version is ${ARTIFACT_VERSION}
@@ -100,14 +105,17 @@ export async function refineArtifactBlockWithRepair(
   request: ArtifactBlockRefinementRequest,
 ): Promise<ArtifactBlockRefinementGenerationResult> {
   if (!request.instruction.trim()) throw new Error("Describe the block change you want AI to make.");
+  throwIfAborted(request.signal);
   request.onProgress?.(1, `Refining ${request.target.label}.`);
   const messages = buildArtifactBlockRefinementMessages(request);
   const firstRaw = await request.generate(messages, request.signal, 1);
+  throwIfAborted(request.signal);
   try {
     const applied = parseArtifactBlockRefinementText(firstRaw, request.artifact, request.target, false);
     return { ...applied, repaired: false, issues: applied.result.issues };
   } catch (error) {
     const issue = error instanceof Error ? error.message : String(error);
+    throwIfAborted(request.signal);
     request.onProgress?.(2, `Repairing block output: ${issue.split("\n")[0] ?? "invalid output"}`);
     const repairMessages: LlmMessageDTO[] = [
       {
@@ -131,6 +139,7 @@ Repair the malformed block result. Return only the strict JSON object for target
       },
     ];
     const repairedRaw = await request.generate(repairMessages, request.signal, 2);
+    throwIfAborted(request.signal);
     const applied = parseArtifactBlockRefinementText(repairedRaw, request.artifact, request.target, true);
     return {
       ...applied,

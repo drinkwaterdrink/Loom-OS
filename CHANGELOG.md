@@ -2,6 +2,25 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.26] - 2026-06-16
+
+### Added
+
+- Added Phase 5.1 functional hardening for block-level AI refinement after the Phase 5 launch.
+- Added category labels, language badges, before/after line and character metrics, changed-path summaries, JavaScript safety warnings, and sticky mobile Apply/Discard controls to the block refinement panel.
+- Added behavioral coverage for block target mapping, stale response staging, blank instructions, cancellation, missing `replacementValue`, target id/kind/path mismatches, unsafe HTML/CSS/JavaScript replacements, and full-artifact mismatch handling.
+
+### Fixed
+
+- Fixed stale block refinement completions being able to stage after cancel, artifact switch, or target switch.
+- Fixed block refinement target changes so active requests are cancelled or ignored and stale staged results are cleared.
+- Fixed Apply Block Change to revalidate that the staged artifact id, kind, and target still match the current working artifact before mutating the draft.
+- Fixed backend block-refinement cancellation checks so aborted requests stop before generation, repair, or apply.
+
+### Preserved
+
+- Kept full-artifact AI Creator, Advanced Code, visual builders, Loom Pack import/export, legacy imports, exact-swipe storage, compiler core behavior, sandbox/CSP, Developer Mode gating, and restricted raw `renderedContent` behavior unchanged.
+
 ## [0.1.25] - 2026-06-16
 
 ### Added

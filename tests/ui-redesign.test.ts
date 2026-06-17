@@ -220,6 +220,24 @@ test("Phase 5 block-level AI refinement UI is exposed without replacing full AI 
   assert.match(styles, /\.loomos-block-diff/);
 });
 
+test("Phase 5.1 block refinement hardening exposes scoped UX and stale-response guards", async () => {
+  const workshop = await readFile("src/frontend/workshop.ts", "utf8");
+  const behavior = await readFile("src/frontend/workshopBehavior.ts", "utf8");
+  const blocks = await readFile("src/shared/artifactBlocks.ts", "utf8");
+  const styles = await readFile("src/frontend/styles.ts", "utf8");
+  assert.match(workshop, /This changes only:/);
+  assert.match(workshop, /data-block-refine-start/);
+  assert.match(workshop, /data-block-refine-apply/);
+  assert.match(workshop, /ignoredBlockRefineRequestIds/);
+  assert.match(workshop, /blockRefineRequestTargetPath/);
+  assert.match(workshop, /JavaScript remains developer-gated/);
+  assert.match(behavior, /blockRefinementResponseCanStage/);
+  assert.match(blocks, /Block refinement output must include replacementValue/);
+  assert.match(blocks, /validateArtifactBlockReplacementSecurity/);
+  assert.match(styles, /\.loomos-block-badges/);
+  assert.match(styles, /position:\s*sticky/);
+});
+
 test("tracker updates avoid global widget and surface rebuilds", async () => {
   const source = await readFile("src/frontend.ts", "utf8");
   const renderAll = source.match(/function renderAll[\s\S]*?\n  }\n\n  function updateLiveStatusDom/)?.[0] ?? "";
