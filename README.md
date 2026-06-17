@@ -1,13 +1,16 @@
 # LoomOS Command Deck
 
-Current release: **0.1.23**
+Current release: **0.1.24**
 
 LoomOS is a full-stack Lumiverse Spindle extension that compiles roleplay chat history into an exact-swipe, structured story operating system. It tracks what changed, what must remain true, where everyone and everything is, which story threads are active, and what compact context is useful for future replies.
 
 ---
 
-## Key Features & Upgrades in 0.1.23
+## Key Features & Upgrades in 0.1.24
 
+- **Phase 4.2 AI Creator Modes**: AI Creator now clearly separates **Create New** from **Refine Selected**, so choosing an existing Theme no longer locks new drafts to Theme.
+- **Correct AI Kind Routing**: Create mode always uses the selected Module, Theme, or Blueprint type and sends no current artifact. Refine mode uses the selected artifact kind and includes that artifact for revision work.
+- **Creator Workflow Hardening**: External AI prompts, brief text, staged draft accept/preview/discard, and mobile tap targets now follow the active Creator mode predictably.
 - **Phase 4.1 Builder Hardening**: Tightened visual Module and Theme validation, schema round trips, visual/code synchronization, action routing, and mobile editing after the Phase 4 launch.
 - **Schema-Safe Field Editing**: Rejects duplicate or invalid keys, empty enums, invalid numeric ranges, unsafe list bounds, missing required properties, and type-mismatched defaults before they can replace a valid artifact.
 - **Strict Local Design Tokens**: Applies per-token color, length, and font allowlists while rejecting URLs, imports, protocols, scripts, rule delimiters, comments, and unknown CSS variables.
@@ -313,6 +316,8 @@ Theme slots are trimmed and deduplicated, manifest capabilities and minimum widt
 ### AI Creation
 
 The built-in creator supports Module, Theme, and Blueprint jobs. A job uses the selected Lumiverse connection and the normal generation timeout. LoomOS sends the exact artifact contract, validates the result, and performs one repair generation if the first result is malformed. The draft remains separate until **Accept Draft**, after which it can be edited, saved, previewed, or installed.
+
+Phase 4.2 splits AI Creator into **Create New** and **Refine Selected** modes. Create New generates a separate Module, Theme, or Blueprint using the visible type selector, even when another artifact is selected in the Workshop. Refine Selected targets the currently selected artifact, includes it as context, and labels the action as a revision.
 
 **Copy External AI Prompt** produces a self-contained builder prompt for ChatGPT or another coding model. Give that model your design request, then paste the returned JSON into Import. This is the fastest way to create a deeply customized tracker without manually filling every field.
 

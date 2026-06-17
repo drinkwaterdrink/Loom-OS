@@ -59,13 +59,18 @@ import {
 } from "./render";
 import {
   WORKSHOP_NAV,
+  aiCreatorCurrentArtifact,
+  aiCreatorGenerateRequest,
+  aiCreatorSelectedKind,
   activeSetupCounts,
   applyWorkshopCodeValue,
   applyWorkshopLayoutEdits,
   artifactMatchesPackFilter,
   buildWorkshopNativePreviewDocument,
   buildWorkshopThemePreviewDocument,
+  externalBuilderPrompt,
   mobilePreviewState,
+  normalizeAiCreatorMode,
   parseWorkshopImportText,
   saveWorkshopCodeDraft,
   selectedArtifactRecord,
@@ -73,6 +78,7 @@ import {
   workshopInstallTarget,
   workshopSaveLabel,
   workshopSaveTarget,
+  type AiCreatorMode,
   type PreviewDataMode,
   type PreviewSurface,
   type WidgetControlPatch,
@@ -278,23 +284,6 @@ function changedTopLevelKeys(before: LoomOSArtifact | null, after: LoomOSArtifac
   );
 }
 
-function externalBuilderPrompt(kind: LoomOSArtifact["kind"]): string {
-  const starter = kind === "module"
-    ? createStarterModuleArtifact()
-    : kind === "theme"
-    ? createStarterThemeArtifact()
-    : createStarterBlueprintArtifact();
-  return `Create a production-ready LoomOS ${kind} artifact.
-Return exactly one JSON object with no Markdown commentary.
-Use format "loomos-artifact", version 2, and kind "${kind}".
-Keep generation data semantic. LoomOS derives display counts, percentages, colors, labels, and visibility.
-Themes are mobile-first and use escaped Handlebars-compatible paths, #if, #unless, #each, else, partials, and the helpers count, percent, json, uppercase, lowercase, and fallback.
-Interactive themes may use window.LoomOS.model and window.LoomOS.action(), but must not use network requests, storage, parent DOM access, eval, Function constructors, or external assets.
-
-STARTER CONTRACT:
-${JSON.stringify(starter, null, 2)}`;
-}
-
 function previewThemeForArtifact(
   artifact: LoomOSArtifact,
 ): ThemeArtifact | null {
@@ -351,6 +340,8 @@ export function openCreatorWorkshop(
   let generationStartedAt = 0;
   let generationElapsedMs = 0;
   let aiKind: LoomOSArtifact["kind"] = "module";
+  let aiMode: AiCreatorMode = workingArtifact ? "refine" : "create";
+  let aiBrief = "";
   let elapsedTimer: ReturnType<typeof setInterval> | null = null;
   let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
   let destroyed = false;
@@ -730,30 +721,47 @@ export function openCreatorWorkshop(
   }
 
   function aiHtml(embedded = false): string {
-    const kind = workingArtifact?.kind ?? aiKind;
+    const mode = normalizeAiCreatorMode(aiMode, Boolean(workingArtifact));
+    const kind = aiCreatorSelectedKind(mode, aiKind, workingArtifact);
+    const currentArtifact = aiCreatorCurrentArtifact(mode, workingArtifact);
     const changed = stagedArtifact ? changedTopLevelKeys(workingArtifact, stagedArtifact) : [];
+    const refineDisabled = !workingArtifact;
     return `
       <section class="${embedded ? "loomos-ai-creator loomos-ai-creator-embedded" : "loomos-workshop-panel loomos-ai-creator"}">
         <div class="loomos-workshop-heading">
           <div>
             <span class="loomos-kicker">Built-in creator</span>
-            <h2>${workingArtifact ? `Refine ${escapeHtml(workingArtifact.meta.name)}` : "Create an artifact with AI"}</h2>
+            <h2>${mode === "refine" && currentArtifact ? `Refine ${escapeHtml(currentArtifact.meta.name)}.` : "Create an artifact with AI."}</h2>
+            <p class="loomos-ai-mode-helper">${mode === "refine"
+              ? "Revise the currently selected artifact."
+              : "Generate a separate new Module, Theme, or Blueprint."}</p>
           </div>
           <button type="button" class="loomos-button" data-workshop-action="copy-builder-prompt">Copy External AI Prompt</button>
         </div>
-        <div class="loomos-ai-kind-row" role="group" aria-label="Artifact type">
+        <div class="loomos-ai-mode-row loomos-segmented" role="group" aria-label="AI Creator mode">
+          <button type="button" data-workshop-action="ai-mode" data-ai-mode="create" class="${mode === "create" ? "active" : ""}">Create New</button>
+          <button type="button" data-workshop-action="ai-mode" data-ai-mode="refine" class="${mode === "refine" ? "active" : ""}"${refineDisabled ? " disabled" : ""}>Refine Selected</button>
+        </div>
+        ${mode === "refine" && currentArtifact ? `
+          <div class="loomos-ai-selected-context">
+            <span class="loomos-kicker">Selected artifact</span>
+            <strong>${escapeHtml(currentArtifact.meta.name)}</strong>
+            <small>${escapeHtml(artifactKindLabel(currentArtifact.kind))} · ${escapeHtml(currentArtifact.id)}</small>
+          </div>
+        ` : ""}
+        <div class="loomos-ai-kind-row loomos-segmented" role="group" aria-label="Artifact type">
           ${(["module", "theme", "blueprint"] as const).map((value) => `
-            <button type="button" data-workshop-action="ai-kind" data-kind="${value}" class="${kind === value ? "active" : ""}"${workingArtifact ? " disabled" : ""}>${value}</button>
+            <button type="button" data-workshop-action="ai-kind" data-kind="${value}" class="${kind === value ? "active" : ""}"${mode === "refine" ? " disabled" : ""}>${value}</button>
           `).join("")}
         </div>
         <label class="loomos-field">
           <span>What should LoomOS build or change?</span>
-          <textarea class="loomos-input loomos-ai-brief" data-ai-brief placeholder="Describe the tracker data, interface, visual direction, interactions, and mobile priorities."></textarea>
+          <textarea class="loomos-input loomos-ai-brief" data-ai-brief placeholder="Describe the tracker data, interface, visual direction, interactions, and mobile priorities.">${escapeHtml(aiBrief)}</textarea>
         </label>
         <div class="loomos-workshop-actions">
           ${generationRequestId
             ? `<button type="button" class="loomos-button loomos-button-danger" data-workshop-action="cancel-ai">Stop <span data-workshop-elapsed>${Math.floor(generationElapsedMs / 1000)}s</span></button>`
-            : `<button type="button" class="loomos-button loomos-button-primary" data-workshop-action="generate-ai"${settings.connectionId === "" ? "" : ""}>${workingArtifact ? "Generate Revision" : "Generate Draft"}</button>`
+            : `<button type="button" class="loomos-button loomos-button-primary" data-workshop-action="generate-ai"${settings.connectionId === "" ? "" : ""}>${mode === "refine" ? "Generate Revision" : "Generate Draft"}</button>`
           }
           <span class="loomos-workshop-live-status">${escapeHtml(generationStatus || "AI output is staged until you accept it.")}</span>
         </div>
@@ -1676,6 +1684,7 @@ export function openCreatorWorkshop(
 
   function render(): void {
     if (destroyed) return;
+    aiMode = normalizeAiCreatorMode(aiMode, Boolean(workingArtifact));
     codeEditor?.destroy();
     codeEditor = null;
     modal.root.dataset.skin = settings.skin;
@@ -2479,28 +2488,36 @@ export function openCreatorWorkshop(
       return;
     }
     if (action === "ai-kind") {
+      aiBrief = modal.root.querySelector<HTMLTextAreaElement>("[data-ai-brief]")?.value ?? aiBrief;
+      if (normalizeAiCreatorMode(aiMode, Boolean(workingArtifact)) === "refine") return;
       aiKind = (button.dataset.kind ?? "module") as LoomOSArtifact["kind"];
       render();
       return;
     }
+    if (action === "ai-mode") {
+      aiBrief = modal.root.querySelector<HTMLTextAreaElement>("[data-ai-brief]")?.value ?? aiBrief;
+      const requestedMode = button.dataset.aiMode === "refine" ? "refine" : "create";
+      aiMode = normalizeAiCreatorMode(requestedMode, Boolean(workingArtifact));
+      if (requestedMode === "refine" && !workingArtifact) {
+        generationStatus = "Select an artifact before using Refine Selected.";
+      }
+      render();
+      return;
+    }
     if (action === "generate-ai") {
-      const brief = modal.root.querySelector<HTMLTextAreaElement>("[data-ai-brief]")?.value.trim() ?? "";
+      aiBrief = modal.root.querySelector<HTMLTextAreaElement>("[data-ai-brief]")?.value ?? aiBrief;
+      const brief = aiBrief.trim();
       if (!brief) {
         generationStatus = "Describe what you want the AI to build.";
         render();
         return;
       }
+      aiMode = normalizeAiCreatorMode(aiMode, Boolean(workingArtifact));
       generationRequestId = options.requestId("artifact-generate");
       generationStatus = "Starting artifact generation";
       generationElapsedMs = 0;
       startTimer();
-      options.send({
-        type: "generate_artifact",
-        requestId: generationRequestId,
-        kind: workingArtifact?.kind ?? aiKind,
-        brief,
-        currentArtifact: workingArtifact,
-      });
+      options.send(aiCreatorGenerateRequest(aiMode, aiKind, workingArtifact, generationRequestId, brief));
       render();
       return;
     }
@@ -2530,8 +2547,11 @@ export function openCreatorWorkshop(
       return;
     }
     if (action === "copy-builder-prompt") {
-      const kind = workingArtifact?.kind ?? aiKind;
-      await navigator.clipboard.writeText(externalBuilderPrompt(kind));
+      aiBrief = modal.root.querySelector<HTMLTextAreaElement>("[data-ai-brief]")?.value ?? aiBrief;
+      aiMode = normalizeAiCreatorMode(aiMode, Boolean(workingArtifact));
+      const currentArtifact = aiCreatorCurrentArtifact(aiMode, workingArtifact);
+      const kind = aiCreatorSelectedKind(aiMode, aiKind, workingArtifact);
+      await navigator.clipboard.writeText(externalBuilderPrompt(kind, currentArtifact));
       generationStatus = "External AI builder prompt copied.";
       render();
       return;
@@ -2652,6 +2672,10 @@ export function openCreatorWorkshop(
       applyVisualBuilderFromDOM();
       return;
     }
+    if (input?.matches("[data-ai-brief]")) {
+      aiBrief = input.value;
+      return;
+    }
     if (input?.matches("[data-workshop-search]")) {
       packQuery = input.value;
       applyPackFilters();
@@ -2770,6 +2794,7 @@ export function openCreatorWorkshop(
           workingArtifact = null;
           originalArtifact = null;
           stagedArtifact = null;
+          aiMode = "create";
         }
       }
       if (!visualDraftValid) return;

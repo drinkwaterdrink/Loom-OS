@@ -1219,7 +1219,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       ? inspectLayoutDiagnostics(settings.layout, settings, activeTheme())
       : [];
     const lines = [
-      `version: 0.1.23`,
+      `version: 0.1.24`,
       `identity: ${exactLabel()}`,
       `state: ${state ? `schema ${state.schemaVersion}, ${state.activeModules.length} modules` : "none"}`,
       `permissions: generation=${permissions.generation} chat=${permissions.chatMutation} interceptor=${permissions.interceptor}`,

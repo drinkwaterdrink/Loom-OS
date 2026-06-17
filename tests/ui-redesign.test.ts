@@ -173,6 +173,14 @@ test("Phase 4 visual builders remain mobile-first and keep Advanced Code availab
   assert.match(workshop, /Design Tokens/);
   assert.match(workshop, /open-advanced-code/);
   assert.match(workshop, /data-design-token/);
+  assert.match(workshop, /data-ai-mode="create"/);
+  assert.match(workshop, /data-ai-mode="refine"/);
+  assert.match(workshop, /Generate a separate new Module, Theme, or Blueprint/);
+  assert.match(workshop, /Revise the currently selected artifact/);
+  assert.match(workshop, /aiBrief/);
+  assert.match(workshop, /aiCreatorGenerateRequest\(aiMode, aiKind, workingArtifact/);
+  assert.match(workshop, /chooseArtifact\(stagedArtifact, false\)/);
+  assert.match(workshop, /activeView = "test-lab"/);
   assert.match(workshop, /Invalid form input stays visible in the editor/);
   assert.match(workshop, /syncMobilePreviewOverlay/);
   assert.match(workshop, /visualDraftValid/);
@@ -182,6 +190,8 @@ test("Phase 4 visual builders remain mobile-first and keep Advanced Code availab
   assert.match(builders, /parseJsonSchemaToVisualFields/);
   assert.match(styles, /\.loomos-visual-form-grid/);
   assert.match(styles, /\.loomos-token-grid/);
+  assert.match(styles, /\.loomos-ai-mode-row/);
+  assert.match(styles, /min-height:\s*44px/);
   assert.match(styles, /\.loomos-field-enum/);
   assert.match(styles, /overflow-wrap: anywhere/);
   assert.doesNotMatch(builders, /\beval\s*\(|new Function|Function\s*\(/);

@@ -3,6 +3,9 @@ import {
   LoomOSArtifactSchema,
   ModuleCapsuleArtifactSchema,
   ThemeArtifactSchema,
+  createStarterBlueprintArtifact,
+  createStarterModuleArtifact,
+  createStarterThemeArtifact,
   extractJsonText,
   parseLoomOSArtifact,
   parseLoomPack,
@@ -38,6 +41,7 @@ export type WorkshopView =
 
 export type PreviewSurface = "theme" | "native";
 export type PreviewDataMode = "current" | "empty" | "dense";
+export type AiCreatorMode = "create" | "refine";
 
 export const WORKSHOP_NAV: ReadonlyArray<{
   id: WorkshopView;
@@ -232,6 +236,74 @@ export function mobilePreviewState(
   if (action === "open") return true;
   if (action === "close") return false;
   return !current;
+}
+
+export function normalizeAiCreatorMode(
+  mode: AiCreatorMode,
+  hasWorkingArtifact: boolean,
+): AiCreatorMode {
+  return mode === "refine" && !hasWorkingArtifact ? "create" : mode;
+}
+
+export function aiCreatorSelectedKind(
+  mode: AiCreatorMode,
+  aiKind: LoomOSArtifact["kind"],
+  workingArtifact: LoomOSArtifact | null,
+): LoomOSArtifact["kind"] {
+  return normalizeAiCreatorMode(mode, Boolean(workingArtifact)) === "refine" && workingArtifact
+    ? workingArtifact.kind
+    : aiKind;
+}
+
+export function aiCreatorCurrentArtifact(
+  mode: AiCreatorMode,
+  workingArtifact: LoomOSArtifact | null,
+): LoomOSArtifact | null {
+  return normalizeAiCreatorMode(mode, Boolean(workingArtifact)) === "refine"
+    ? workingArtifact
+    : null;
+}
+
+export type GenerateArtifactRequest = Extract<FrontendRequest, { type: "generate_artifact" }>;
+
+export function aiCreatorGenerateRequest(
+  mode: AiCreatorMode,
+  aiKind: LoomOSArtifact["kind"],
+  workingArtifact: LoomOSArtifact | null,
+  requestId: string,
+  brief: string,
+): GenerateArtifactRequest {
+  return {
+    type: "generate_artifact",
+    requestId,
+    kind: aiCreatorSelectedKind(mode, aiKind, workingArtifact),
+    brief,
+    currentArtifact: aiCreatorCurrentArtifact(mode, workingArtifact),
+  };
+}
+
+export function externalBuilderPrompt(
+  kind: LoomOSArtifact["kind"],
+  currentArtifact: LoomOSArtifact | null = null,
+): string {
+  const starter = kind === "module"
+    ? createStarterModuleArtifact()
+    : kind === "theme"
+    ? createStarterThemeArtifact()
+    : createStarterBlueprintArtifact();
+  return `Create a production-ready LoomOS ${kind} artifact.
+Return exactly one JSON object with no Markdown commentary.
+Use format "loomos-artifact", version 2, and kind "${kind}".
+Keep generation data semantic. LoomOS derives display counts, percentages, colors, labels, and visibility.
+Themes are mobile-first and use escaped Handlebars-compatible paths, #if, #unless, #each, else, partials, and the helpers count, percent, json, uppercase, lowercase, and fallback.
+Interactive themes may use window.LoomOS.model and window.LoomOS.action(), but must not use network requests, storage, parent DOM access, eval, Function constructors, or external assets.
+${currentArtifact ? `
+REFINE CURRENT ARTIFACT:
+Keep the artifact id, kind, and compatible contracts unless the requested change requires otherwise.
+${JSON.stringify(currentArtifact, null, 2)}
+` : ""}
+STARTER CONTRACT:
+${JSON.stringify(starter, null, 2)}`;
 }
 
 export type WorkshopImport =

@@ -2,13 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   WORKSHOP_NAV,
+  aiCreatorCurrentArtifact,
+  aiCreatorGenerateRequest,
+  aiCreatorSelectedKind,
   activeSetupCounts,
   applyWorkshopCodeValue,
   applyWorkshopLayoutEdits,
   artifactMatchesPackFilter,
   buildWorkshopNativePreviewDocument,
   buildWorkshopThemePreviewDocument,
+  externalBuilderPrompt,
   mobilePreviewState,
+  normalizeAiCreatorMode,
   parseWorkshopImportText,
   saveWorkshopCodeDraft,
   selectedArtifactRecord,
@@ -156,6 +161,57 @@ test("bottom Save labels match visual artifact and settings actions", () => {
   assert.equal(workshopSaveLabel("theme", "artifact", true), "Save Revision");
   assert.equal(workshopSaveLabel("modules", "settings", false), "Save Modules");
   assert.equal(workshopSaveLabel("layout", "settings", false), "Save Layout");
+});
+
+test("AI Creator create mode routes kind selection independently of selected artifact", () => {
+  const theme = createStarterThemeArtifact();
+  assert.equal(normalizeAiCreatorMode("create", true), "create");
+  assert.equal(aiCreatorSelectedKind("create", "module", theme), "module");
+  assert.equal(aiCreatorSelectedKind("create", "blueprint", theme), "blueprint");
+  assert.equal(aiCreatorCurrentArtifact("create", theme), null);
+
+  const request = aiCreatorGenerateRequest(
+    "create",
+    "blueprint",
+    theme,
+    "ai-create",
+    "Build a tracker pack.",
+  );
+  assert.equal(request.kind, "blueprint");
+  assert.equal(request.currentArtifact, null);
+});
+
+test("AI Creator refine mode routes to the selected artifact and keeps create fallback safe", () => {
+  const theme = createStarterThemeArtifact();
+  assert.equal(normalizeAiCreatorMode("refine", false), "create");
+  assert.equal(aiCreatorSelectedKind("refine", "module", null), "module");
+  assert.equal(aiCreatorSelectedKind("refine", "module", theme), "theme");
+  assert.equal(aiCreatorCurrentArtifact("refine", theme)?.id, theme.id);
+
+  const request = aiCreatorGenerateRequest(
+    "refine",
+    "module",
+    theme,
+    "ai-refine",
+    "Tighten the active theme.",
+  );
+  assert.equal(request.kind, "theme");
+  assert.equal(request.currentArtifact?.id, theme.id);
+});
+
+test("AI Creator external prompts use create kind or refine selected artifact", () => {
+  const theme = createStarterThemeArtifact();
+  const createPrompt = externalBuilderPrompt(aiCreatorSelectedKind("create", "module", theme));
+  assert.match(createPrompt, /kind "module"/);
+  assert.doesNotMatch(createPrompt, /REFINE CURRENT ARTIFACT/);
+
+  const refinePrompt = externalBuilderPrompt(
+    aiCreatorSelectedKind("refine", "module", theme),
+    aiCreatorCurrentArtifact("refine", theme),
+  );
+  assert.match(refinePrompt, /kind "theme"/);
+  assert.match(refinePrompt, /REFINE CURRENT ARTIFACT/);
+  assert.match(refinePrompt, new RegExp(theme.id));
 });
 
 test("preview builders use the real Theme runtime and native dashboard renderer", () => {

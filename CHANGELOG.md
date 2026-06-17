@@ -2,6 +2,24 @@
 
 All notable changes to LoomOS Command Deck are documented here.
 
+## [0.1.24] - 2026-06-16
+
+### Added
+
+- Added explicit **Create New** and **Refine Selected** modes to AI Creator with helper text, mobile-friendly segmented controls, and preserved brief text while switching modes.
+- Added behavioral tests for AI kind routing, create/refine payloads, current artifact inclusion, prompt-copy routing, safe no-selection fallback, and staged draft flow preservation.
+
+### Fixed
+
+- Fixed AI Creator type selection being locked to the currently selected artifact kind, especially when a Theme was selected.
+- Fixed Create mode generation so it sends the chosen Module, Theme, or Blueprint kind and does not include `currentArtifact`.
+- Fixed Refine mode generation so it uses the selected artifact kind and includes the selected artifact for revision context.
+- Fixed Copy External AI Prompt to follow Create mode's selected kind or Refine mode's selected artifact kind.
+
+### Preserved
+
+- Kept Module Builder, Theme Builder, Design Tokens, Advanced Code, Test Lab, staged draft preview/accept/discard, exact-swipe storage, compiler core behavior, sandbox/CSP, Loom Pack import/export, legacy imports, and restricted raw `renderedContent` unchanged.
+
 ## [0.1.23] - 2026-06-15
 
 ### Added

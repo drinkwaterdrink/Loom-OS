@@ -3382,6 +3382,37 @@ export const LOOMOS_STYLES = `
   .loomos-workshop-disclosure > summary > span:first-child { display: grid; }
   .loomos-workshop-disclosure > summary small { color: var(--loomos-muted); }
   .loomos-ai-creator-embedded { border-top: 1px solid var(--loomos-border); padding: 12px; }
+  .loomos-ai-mode-helper {
+    color: var(--loomos-muted);
+    line-height: 1.45;
+    margin: 4px 0 0;
+  }
+  .loomos-ai-mode-row,
+  .loomos-ai-kind-row {
+    width: 100%;
+  }
+  .loomos-ai-creator .loomos-segmented button {
+    min-height: 44px;
+    white-space: normal;
+  }
+  .loomos-ai-creator .loomos-segmented button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+  .loomos-ai-selected-context {
+    background: var(--loomos-panel);
+    border: 1px solid var(--loomos-border);
+    border-radius: 8px;
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+    padding: 10px 12px;
+  }
+  .loomos-ai-selected-context strong,
+  .loomos-ai-selected-context small {
+    overflow-wrap: anywhere;
+  }
+  .loomos-ai-selected-context small { color: var(--loomos-muted); }
   .loomos-artifact-glossary {
     display: grid;
     gap: 6px;
